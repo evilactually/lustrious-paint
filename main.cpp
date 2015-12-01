@@ -1,6 +1,9 @@
 
 #include <windows.h>
+#include <windowsx.h>
 #include "resource.h"
+#include <sstream>
+
 
 LRESULT CALLBACK WindowProc(
 	HWND	hWnd,
@@ -11,11 +14,54 @@ LRESULT CALLBACK WindowProc(
 	HDC         hdc;
 	PAINTSTRUCT ps;
 	RECT        rect;
+	static int count = 0;
+	static bool grab = false;
+	static int cl_x = 100;
+	static int cl_y = 100;
 
 	// sort through and find what code to run for the message given
 	switch (uMsg)
 	{
-		// this message is read when the window is closed
+	case WM_LBUTTONDOWN: {
+		RECT wr = { 0, 0, 640, 480 };
+		InvalidateRect(hWnd, &wr, false);
+		UpdateWindow(hWnd);
+		SetCapture(hWnd);
+		grab = true;
+		//cl_x = GET_X_LPARAM(lParam);
+		//cl_y = GET_Y_LPARAM(lParam);
+		POINT abs_xy;
+		GetCursorPos(&abs_xy);
+		RECT rct;
+		if (!GetWindowRect(hWnd, &rct)) {
+			grab = false;
+		}
+		cl_x = abs_xy.x - rct.left;
+		cl_y = abs_xy.y - rct.top;
+		count = rct.top;
+		break;
+	}
+	case WM_LBUTTONUP: {
+		ReleaseCapture();
+		grab = false;
+		break;
+	}
+	case WM_MOUSEMOVE: {
+		if (grab) {
+			POINT abs_xy;
+			GetCursorPos(&abs_xy);
+			//count = cl_y;
+			RECT rct;
+			GetWindowRect(hWnd, &rct);
+			MoveWindow(hWnd, abs_xy.x-cl_x, abs_xy.y-cl_y, rct.right-rct.left, rct.bottom-rct.top, false);
+			//MoveWindow(hWnd, 100, abs_xy.y - cl_y, 640, 480, false);
+			RECT wr = { 0, 0, 640, 480 };
+			InvalidateRect(hWnd, &wr, true);
+			UpdateWindow(hWnd);
+			SetCapture(hWnd);
+		}
+		break;
+	}
 	case WM_DESTROY:
 	{
 		// close the application entirely
@@ -25,7 +71,10 @@ LRESULT CALLBACK WindowProc(
 	case WM_PAINT:
 		hdc = BeginPaint(hWnd, &ps);
 		GetClientRect(hWnd, &rect);
-		DrawText(hdc, TEXT("Hello, Windows 98!"), -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+		std::stringstream ss;
+		ss << count;
+		DrawText(hdc, ss.str().c_str(), -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+		count++;
 		EndPaint(hWnd, &ps);
 		break;
 	}
@@ -39,10 +88,15 @@ int WINAPI WinMain(
 	LPSTR		lpCmdLine,
 	int			nCmdShow)
 {
+	
 	// the handle for the window, filled by a function
 	HWND hWnd;
 	// this struct holds information for the window class
 	WNDCLASSEX wc;
+
+	// Get window size
+	RECT wr = { 0, 0, 640, 480 };
+	AdjustWindowRect(&wr, WS_POPUP, FALSE);
 
 	// clear out the window class for use
 	ZeroMemory(&wc, sizeof(WNDCLASSEX));
@@ -65,18 +119,18 @@ int WINAPI WinMain(
 		NULL,
 		"WindowClass",        // class name
 		"Lustrious Paint",    // title
-		WS_OVERLAPPEDWINDOW,  // style
-		CW_USEDEFAULT,        // x-position
-		CW_USEDEFAULT,        // y-position
-		500,                  // width
-		400,                  // height
+		WS_POPUP,             // style
+		100,              // x-position
+		100,               // y-position
+		wr.right-wr.left,     // width
+		wr.bottom-wr.top,     // height
 		NULL,                 // no parent
 		NULL,                 // no menus
 		hInstance,
 		NULL);                // used with multiple windows, NULL
 
 	ShowWindow(hWnd, nCmdShow);
-
+	
 	// enter the main loop:
 
 	// this struct holds Windows event messages
