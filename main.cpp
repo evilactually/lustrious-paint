@@ -4,6 +4,89 @@
 #include "resource.h"
 #include <sstream>
 
+enum GRAB_STATE;
+
+class Window {
+	// [events]
+	void SetCursorImage();
+	void SetCursorVisibility();
+	void SetPosition();
+	void SetSize();
+	
+	// minimize
+	// maximize
+	// restore
+	void Maximize();
+	void Minimize();
+	void Restore();
+	void Update();
+	void BeginGrab(GRAB_STATE target);
+	void EndGrab();
+};
+
+enum GRAB_STATE {
+	GRB_NOTHING,
+	GRB_WINDOW, 
+	GRB_TOP_EDGE, 
+	GRB_RIGHT_EDGE, 
+	GRB_BOTTOM_EDGE, 
+	GRB_LEFT_EDGE, 
+	GRB_TOP_LEFT_CORNER,
+	GRB_TOP_RIGHT_CORNER,
+	GRB_BOTTOM_RIGHT_CORNER,
+	GRB_BOTTOM_LEFT_CORNER
+};
+
+HWND  m_hwnd;
+HINSTANCE	hinst;
+POINT m_grab_point = {0,0};
+bool  m_is_grabbed = false;
+GRAB_STATE m_grab_state;
+int m_grab_width;
+RECT m_original_rect;
+
+void BeginGrab(GRAB_STATE target) {
+	// calculate and save grab point(in window coordinates)
+	//RECT r;
+	//POINT c;
+	//GetCursorPos(&c);
+	
+	//GetWindowRect(m_hwnd, &r);
+	//m_grab_point = { c.x - r.left, c.y - r.top };
+	//m_grab_width = r.right - r.left;
+
+	GetCursorPos(&m_grab_point);
+	GetWindowRect(m_hwnd, &m_original_rect);
+
+	// allow mouse to get over the edge and still recieve mouse events
+	SetCapture(m_hwnd);
+
+	m_grab_state = target;
+}
+
+void EndGrab() {
+	m_grab_state = GRB_NOTHING;
+	ReleaseCapture();
+}
+
+void BeginWindowGrab() {
+	// calculate and save grab point(in window coordinates)
+	RECT r;
+	POINT c;
+	GetCursorPos(&c);
+	GetWindowRect(m_hwnd, &r);
+	m_grab_point = { c.x - r.left, c.y - r.top };
+
+	// allow mouse to get over the edge and still recieve mouse events
+	SetCapture(m_hwnd);
+
+	m_is_grabbed = true;
+};
+
+void EndWindowGrab() {
+	ReleaseCapture();
+	m_is_grabbed = false;
+}
 
 LRESULT CALLBACK WindowProc(
 	HWND	hWnd,
@@ -15,51 +98,114 @@ LRESULT CALLBACK WindowProc(
 	PAINTSTRUCT ps;
 	RECT        rect;
 	static int count = 0;
-	static bool grab = false;
-	static int cl_x = 100;
-	static int cl_y = 100;
 
 	// sort through and find what code to run for the message given
 	switch (uMsg)
 	{
-	case WM_LBUTTONDOWN: {
-		RECT wr = { 0, 0, 640, 480 };
-		InvalidateRect(hWnd, &wr, false);
-		UpdateWindow(hWnd);
-		SetCapture(hWnd);
-		grab = true;
-		//cl_x = GET_X_LPARAM(lParam);
-		//cl_y = GET_Y_LPARAM(lParam);
-		POINT abs_xy;
-		GetCursorPos(&abs_xy);
-		RECT rct;
-		if (!GetWindowRect(hWnd, &rct)) {
-			grab = false;
+	case WM_NCHITTEST: {
+		return HTCAPTION;
+		break;
+	}
+	case WM_GETICON: {
+		/*RECT wr{ 0,0,640,480 };
+		InvalidateRect(hWnd, &wr, true);
+		UpdateWindow(hWnd);*/
+		
+		if (count % 2) {
+			return  (LRESULT)LoadIcon(hinst, MAKEINTRESOURCE(IDI_LUSTRIOUS_PAINT));
 		}
-		cl_x = abs_xy.x - rct.left;
-		cl_y = abs_xy.y - rct.top;
-		count = rct.top;
+		else {
+			return  (LRESULT)LoadIcon(hinst, MAKEINTRESOURCE(IDI_WARNING));
+		}
+		break;
+	}
+	case WM_LBUTTONDOWN: {
+
+		//SetClassLong(hWnd, GCL_HICON, (LONG)LoadIcon(NULL, IDI_APPLICATION));
+		//SetClassLong(hWnd, GCL_HCURSOR, (LONG)LoadCursor(NULL, IDC_HAND));
+		count++;
+		//ShowWindow(hWnd, SW_MINIMIZE);
+
+		//BeginGrab(GRB_WINDOW);
+		//BeginGrab(GRB_RIGHT_EDGE);
+		//BeginGrab(GRB_LEFT_EDGE);
+		//BeginGrab(GRB_BOTTOM_EDGE);
+		//BeginGrab(GRB_TOP_EDGE);
+		//BeginGrab(GRB_BOTTOM_RIGHT_CORNER);
+		//BeginGrab(GRB_TOP_RIGHT_CORNER);
+		//BeginGrab(GRB_BOTTOM_LEFT_CORNER);
+		//BeginGrab(GRB_TOP_LEFT_CORNER);
+		//SendMessageA(hWnd, 0, NULL, NULL);
+		
 		break;
 	}
 	case WM_LBUTTONUP: {
-		ReleaseCapture();
-		grab = false;
+		EndGrab();
 		break;
 	}
 	case WM_MOUSEMOVE: {
-		if (grab) {
-			POINT abs_xy;
-			GetCursorPos(&abs_xy);
-			//count = cl_y;
-			RECT rct;
-			GetWindowRect(hWnd, &rct);
-			MoveWindow(hWnd, abs_xy.x-cl_x, abs_xy.y-cl_y, rct.right-rct.left, rct.bottom-rct.top, false);
-			//MoveWindow(hWnd, 100, abs_xy.y - cl_y, 640, 480, false);
-			RECT wr = { 0, 0, 640, 480 };
-			InvalidateRect(hWnd, &wr, true);
-			UpdateWindow(hWnd);
-			SetCapture(hWnd);
+		if (m_grab_state != GRB_NOTHING) {
+			POINT final_point;
+			GetCursorPos(&final_point);
+			POINT drag_delta = { final_point.x - m_grab_point.x, final_point.y - m_grab_point.y };
+			int original_width = m_original_rect.right - m_original_rect.left;
+			int original_height = m_original_rect.bottom - m_original_rect.top;
+
+			switch (m_grab_state)
+			{
+			case GRB_WINDOW: {
+				MoveWindow(hWnd, m_original_rect.left + drag_delta.x, m_original_rect.top + drag_delta.y, original_width, original_height, false);
+				break;
+			}
+			case GRB_RIGHT_EDGE:
+				MoveWindow(hWnd, m_original_rect.left, m_original_rect.top, original_width + drag_delta.x, original_height, false);
+				break;
+			case GRB_LEFT_EDGE: 
+				MoveWindow(hWnd, m_original_rect.left + drag_delta.x, m_original_rect.top, original_width - drag_delta.x, original_height, false);
+				break;
+			case GRB_BOTTOM_EDGE:
+				MoveWindow(hWnd, m_original_rect.left, m_original_rect.top, original_width, original_height + drag_delta.y, false);
+				break;
+			case GRB_TOP_EDGE:
+				MoveWindow(hWnd, m_original_rect.left, m_original_rect.top + drag_delta.y, original_width, original_height - drag_delta.y, false);
+				break;
+			case GRB_BOTTOM_RIGHT_CORNER:
+				MoveWindow(hWnd, m_original_rect.left, m_original_rect.top, original_width + drag_delta.x, original_height + drag_delta.y, false);
+				break;
+			case GRB_TOP_RIGHT_CORNER:
+				MoveWindow(hWnd, m_original_rect.left, m_original_rect.top + drag_delta.y, original_width + drag_delta.x, original_height - drag_delta.y, false);
+				break;
+			case GRB_BOTTOM_LEFT_CORNER:
+				MoveWindow(hWnd, m_original_rect.left + drag_delta.x, m_original_rect.top, original_width - drag_delta.x, original_height + drag_delta.y, false);
+				break;
+			case GRB_TOP_LEFT_CORNER:
+				MoveWindow(hWnd, m_original_rect.left + drag_delta.x, m_original_rect.top + drag_delta.y, original_width - drag_delta.x, original_height - drag_delta.y, false);
+				break;
+			default:
+				break;
+			}
+		
 		}
+
+		//if (m_grab_state == GRB_WINDOW) {
+		//	POINT abs_xy;
+		//	GetCursorPos(&abs_xy);
+		//	RECT rct;
+		//	GetWindowRect(hWnd, &rct);
+		//	MoveWindow(hWnd, abs_xy.x - m_grab_point.x, abs_xy.y- m_grab_point.y, rct.right-rct.left, rct.bottom-rct.top, false);
+		//	//MoveWindow(hWnd, 100, abs_xy.y - cl_y, 640, 480, false);
+		//	/*RECT wr = { 0, 0, 640, 480 };
+		//	InvalidateRect(hWnd, &wr, true);
+		//	UpdateWindow(hWnd);
+		//	SetCapture(hWnd);*/
+		//}
+		//if (m_grab_state == GRB_RIGHT_EDGE) {
+		//	POINT abs_xy;
+		//	GetCursorPos(&abs_xy);
+		//	RECT rct;
+		//	GetWindowRect(hWnd, &rct);
+		//	MoveWindow(hWnd, rct.left, rct.top, m_grab_width + (abs_xy.x - m_grab_point.x), rct.bottom - rct.top, false);
+		//}
 		break;
 	}
 	case WM_DESTROY:
@@ -73,6 +219,7 @@ LRESULT CALLBACK WindowProc(
 		GetClientRect(hWnd, &rect);
 		std::stringstream ss;
 		ss << count;
+		//FillRect(hdc, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
 		DrawText(hdc, ss.str().c_str(), -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 		count++;
 		EndPaint(hWnd, &ps);
@@ -82,21 +229,34 @@ LRESULT CALLBACK WindowProc(
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
+// #define WS_STYLE 0x860f0000 
+//                    820a0000
+#define  WS_STYLE WS_POPUP |/* WS_CLIPCHILDREN | WS_CLIPSIBLINGS |*/ WS_SYSMENU | WS_THICKFRAME /*| WS_GROUP  |*/ | WS_TABSTOP
+//|  WS_OVERLAPPEDWINDOW
+//#define WS_STYLE WS_OVERLAPPEDWINDOW
+// #define WS_STYLE /*WS_OVERLAPPEDWINDOW WS_POPUP*/  (WS_OVERLAPPED | WS_CAPTION | /*WS_SYSMENU |*/ WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX) | WS_EX_LAYERED 
+//#define WS_STYLE WS_POPUP | WS_CLIPCHILDREN | WS_GROUP | WS_SYSMENU | WS_BORDER | WS_CLIPSIBLINGS
+//#define WS_STYLE WS_POPUP | WS_SIZEBOX
+//#define WS_STYLE WS_POPUP | WS_OVERLAPPED
+//#define WS_STYLE WS_POPUP | WS_BORDER | WS_SYSMENU
+//#define WS_STYLE WS_POPUP | WS_SIZEBOX
+
 int WINAPI WinMain(
 	HINSTANCE	hInstance,
 	HINSTANCE	hPrevInstance,
 	LPSTR		lpCmdLine,
 	int			nCmdShow)
 {
-	
+	hinst = hInstance;
+
 	// the handle for the window, filled by a function
-	HWND hWnd;
+	//HWND hWnd;
 	// this struct holds information for the window class
 	WNDCLASSEX wc;
 
 	// Get window size
 	RECT wr = { 0, 0, 640, 480 };
-	AdjustWindowRect(&wr, WS_POPUP, FALSE);
+	AdjustWindowRect(&wr, WS_STYLE, FALSE);
 
 	// clear out the window class for use
 	ZeroMemory(&wc, sizeof(WNDCLASSEX));
@@ -106,22 +266,25 @@ int WINAPI WinMain(
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = WindowProc;
 	wc.hInstance = hInstance; 
-	wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_LUSTRIOUS_PAINT));
+	wc.hIcon = NULL; // LoadIcon(hInstance, MAKEINTRESOURCE(IDI_LUSTRIOUS_PAINT));
+	wc.hIconSm = NULL; // LoadIcon(hInstance, IDI_APPLICATION);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
+	wc.hbrBackground = (HBRUSH)COLOR_BACKGROUND;
+	//wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	//wc.hbrBackground = NULL;
 	wc.lpszClassName = "WindowClass";
 
 	// register the window class
 	RegisterClassEx(&wc);
 
 	// create the window and use the result as the handle
-	hWnd = CreateWindowEx(
+	m_hwnd = CreateWindowEx(
 		NULL,
 		"WindowClass",        // class name
 		"Lustrious Paint",    // title
-		WS_POPUP,             // style
-		100,              // x-position
-		100,               // y-position
+		WS_STYLE,             // style
+		100,                  // x-position
+		100,                  // y-position
 		wr.right-wr.left,     // width
 		wr.bottom-wr.top,     // height
 		NULL,                 // no parent
@@ -129,8 +292,11 @@ int WINAPI WinMain(
 		hInstance,
 		NULL);                // used with multiple windows, NULL
 
-	ShowWindow(hWnd, nCmdShow);
+	ShowWindow(m_hwnd, nCmdShow);
 	
+	SetWindowLong(m_hwnd, GWL_EXSTYLE, GetWindowLong(m_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+	SetLayeredWindowAttributes(m_hwnd, RGB(0,0,0), 0, LWA_COLORKEY);
+
 	// enter the main loop:
 
 	// this struct holds Windows event messages
