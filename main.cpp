@@ -161,6 +161,13 @@ class Win32ClientHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 	Win32ClientHitTestHandler(); // hit tests top level controls that cover the caption and overrides
 };                               // some controls need to be masked somehow from this test
 
+class Win32JustCaptionHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
+public:
+	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		return Just<LRESULT>(HTCAPTION);
+	}
+};
+
 class Win32CaptionHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 public:
 	Win32CaptionHitTestHandler(unsigned int caption_height) {};
@@ -169,7 +176,7 @@ public:
 	}
 };
 
-class Win32ExpandClientArea : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
+class Win32OverdrawHandler : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
 	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		if (wParam) {
 			return Just<LRESULT>(0);
@@ -179,6 +186,15 @@ class Win32ExpandClientArea : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
 		}
 	}
 };
+
+class Win32TerminationHandler: public Win32TypedMsgHandler<WM_DESTROY> {
+	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		// close the application entirely
+		PostQuitMessage(0);
+		return Just<LRESULT>(0);
+	}
+};
+
 
 //case WM_NCCALCSIZE: {
 //	// Take over non-client area
@@ -416,8 +432,10 @@ int WINAPI WinMain(
 	
 	Win32WndProc basic_behavior;
 	basic_behavior.SetMessageHandler<WM_NCHITTEST>(0, std::make_shared<Win32BorderHitTestHandler>(8));
-	basic_behavior.SetMessageHandler<WM_NCCALCSIZE>(0, std::make_shared<Win32ExpandClientArea>());
-	//basic_behavior.EnableMessageHandler(WM_NCH,1,false);
+	basic_behavior.SetMessageHandler<WM_NCHITTEST>(1, std::make_shared<Win32JustCaptionHandler>());
+	basic_behavior.SetMessageHandler<WM_NCCALCSIZE>(0, std::make_shared<Win32OverdrawHandler>());
+	basic_behavior.SetMessageHandler<WM_DESTROY>(0, std::make_shared<Win32TerminationHandler>());
+	//basic_behavior.EnableMessageHandler(WM_NCHITTEST,1,false);
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
 	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
 
