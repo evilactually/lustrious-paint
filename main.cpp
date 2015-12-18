@@ -77,10 +77,8 @@ public:
 
 /* Typed message handler accepts only specific message */
 
+template<unsigned int M>
 class Win32TypedMsgHandler: public Win32MsgHandler {
-protected:
-	const UINT m_message_type;
-	Win32TypedMsgHandler(UINT message_type) : m_message_type(message_type) {};
 public:
 	class handler_misuse : public std::exception {
 		UINT m_expected_type;
@@ -90,19 +88,19 @@ public:
 		UINT GetExpectedType() { return m_expected_type; }
 		UINT GetRecievedType() { return m_recieved_type; }
 	};
-	virtual Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam);
+	virtual Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) = 0;
 	Maybe<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
 		if (uMsg != GetMessageType()) throw handler_misuse(GetMessageType(), uMsg);
 		return HandleTypedMessage(hWnd, wParam, lParam);
 	};
-	UINT GetMessageType() { return m_message_type; };
+	UINT GetMessageType() { return M; };
 };
 
-class Win32BorderHitTestHandler : public Win32TypedMsgHandler {
+class Win32BorderHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 protected:
 	LONG m_border_width;
 public:
-	Win32BorderHitTestHandler(LONG border_width) : Win32TypedMsgHandler(WM_NCHITTEST), m_border_width(border_width) { };
+	Win32BorderHitTestHandler(LONG border_width) : m_border_width(border_width) { };
 	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		RECT winrect;
 		GetWindowRect(hWnd, &winrect);
@@ -159,15 +157,28 @@ public:
 	};
 };
 
-class Win32ClientHitTestHandler : public Win32TypedMsgHandler {
+class Win32ClientHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 	Win32ClientHitTestHandler(); // hit tests top level controls that cover the caption and overrides
 };                               // some controls need to be masked somehow from this test
 
-class Win32CaptionHitTestHandler : public Win32TypedMsgHandler {
-	Win32CaptionHitTestHandler(unsigned int border_height);
+class Win32CaptionHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
+public:
+	Win32CaptionHitTestHandler(unsigned int caption_height) {};
+	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		return Nothing<LRESULT>();
+	}
 };
 
-//class Win32Overdraw : public Win32TypedMsgHandler {
+class Win32ExpandClientArea : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
+	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		if (wParam) {
+			return Just<LRESULT>(0);
+		}
+		else {
+			return Nothing<LRESULT>();
+		}
+	}
+};
 
 //case WM_NCCALCSIZE: {
 //	// Take over non-client area
@@ -254,21 +265,20 @@ class Win32WndProc final {
 		return found_handler_it->second;
 	}
 public:
-	void AttachToWindow(HWND hWnd) {
-		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG)this);
-	}
-	
-	void SetMessageHandler(UINT place, std::shared_ptr<Win32TypedMsgHandler> handler) {
+		
+	template<unsigned int M>
+	void SetMessageHandler(UINT place, std::shared_ptr<Win32TypedMsgHandler<M>> handler) {
 		UINT uMsg = handler->GetMessageType();
-		m_main_handlers[uMsg][place].handler = handler;
+		m_main_handlers[uMsg][place].handler = handler; // TODO: throw if already exists
 	}
 
 	void SetDefaultHandler(UINT place, std::shared_ptr<Win32MsgHandler> handler) {
-		m_default_handlers[place].handler = handler;
+		m_default_handlers[place].handler = handler;    // TODO: throw if already exists
 	}
 
-	std::shared_ptr<Win32TypedMsgHandler> GetMessageHandler(UINT uMsg, UINT uPlace) {
-		return std::static_pointer_cast<Win32TypedMsgHandler>(get_handler_entry(uMsg, uPlace).handler);
+	template<unsigned int M>
+	std::shared_ptr<Win32TypedMsgHandler<M>> GetMessageHandler(UINT uMsg, UINT uPlace) {
+		return std::static_pointer_cast<Win32TypedMsgHandler<M>>(get_handler_entry(uMsg, uPlace).handler);
 	}
 
 	std::shared_ptr<Win32MsgHandler> GetDefaultHandler(UINT uPlace) {
@@ -347,7 +357,7 @@ public:
 	}
 };
 
-static class Win32WndProcRegistrar final {
+class Win32WndProcRegistrar final {
 private:
 	Win32WndProcRegistrar();
 	static std::map<ATOM, Win32WndProc*> m_wndproc_map;
@@ -386,8 +396,7 @@ int WINAPI WinMain(
 	LPSTR		lpCmdLine,
 	int			nCmdShow)
 {
-	BBB b;
-	AAA* a = &b;
+	
 
 	const UINT WS_STYLE = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | WS_TABSTOP | WS_BORDER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 		
@@ -406,6 +415,9 @@ int WINAPI WinMain(
 	ATOM ca = RegisterClassEx(&wc);
 	
 	Win32WndProc basic_behavior;
+	basic_behavior.SetMessageHandler<WM_NCHITTEST>(0, std::make_shared<Win32BorderHitTestHandler>(8));
+	basic_behavior.SetMessageHandler<WM_NCCALCSIZE>(0, std::make_shared<Win32ExpandClientArea>());
+	//basic_behavior.EnableMessageHandler(WM_NCH,1,false);
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
 	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
 
