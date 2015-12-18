@@ -167,6 +167,13 @@ class Win32CaptionHitTestHandler : public Win32TypedMsgHandler {
 	Win32CaptionHitTestHandler(unsigned int border_height);
 };
 
+//class Win32Overdraw : public Win32TypedMsgHandler {
+
+//case WM_NCCALCSIZE: {
+//	// Take over non-client area
+//	return 0;
+//	break;
+
 class Win32DefWndProc : public Win32MsgHandler {
 public:
 	virtual Maybe<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
@@ -340,7 +347,9 @@ public:
 	}
 };
 
-class WndProcRegistrar {
+static class Win32WndProcRegistrar final {
+private:
+	Win32WndProcRegistrar();
 	static std::map<ATOM, Win32WndProc*> m_wndproc_map;
 public:
 	static void RegisterClassProcedure(ATOM class_atom, Win32WndProc* procedure) {
@@ -351,19 +360,18 @@ public:
 		m_wndproc_map.erase(class_atom);
 	}
 
-	/* A redirect is needed because member function pointers are incompatible with regular function pointers */
 	static LRESULT CALLBACK WndProcRedirect(
 		HWND	hWnd,
 		UINT	uMsg,
 		WPARAM	wParam,
 		LPARAM	lParam)
 	{
-		Win32WndProc* procedure = m_wndproc_map[GetClassLong(hWnd, GCW_ATOM)];
+		Win32WndProc* procedure = m_wndproc_map[(ATOM)GetClassLong(hWnd, GCW_ATOM)];
 		return procedure->WndProc(hWnd, uMsg, wParam, lParam);
 	}
 };
 
-std::map<ATOM, Win32WndProc*> WndProcRegistrar::m_wndproc_map;
+std::map<ATOM, Win32WndProc*> Win32WndProcRegistrar::m_wndproc_map;
 
 RECT CalculateWindowRect(RECT client_rect, UINT style) {
 	AdjustWindowRect(&client_rect, style, FALSE);
@@ -371,29 +379,6 @@ RECT CalculateWindowRect(RECT client_rect, UINT style) {
 }
 
 #include "resource.h"
-
-class AAA {
-public:
-	virtual void handle(int i) = 0;
-};
-
-class BBB : public AAA {
-protected:
-	int k;
-	
-public:
-	void handle(int i) override {
-		k += i;
-	}
-	virtual void handle() {
-		handle(5);
-	}
-};
-
-struct WNDCLASSEX_EXTRA {
-	WNDCLASSEX     base;
-	Win32WndProc*  win32wndproc;
-};
 
 int WINAPI WinMain(
 	HINSTANCE	hInstance,
@@ -411,7 +396,7 @@ int WINAPI WinMain(
 	WNDCLASSEX wc = { 0 };
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
-	wc.lpfnWndProc = &WndProcRegistrar::WndProcRedirect;
+	wc.lpfnWndProc = &Win32WndProcRegistrar::WndProcRedirect;
 	wc.hInstance = hInstance;
 	wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_LUSTRIOUS_PAINT));
 	wc.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_LUSTRIOUS_PAINT));
@@ -422,7 +407,7 @@ int WINAPI WinMain(
 	
 	Win32WndProc basic_behavior;
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
-	WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
+	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
 
 	HWND hwnd = CreateWindowEx(
 		WS_EX_APPWINDOW,
