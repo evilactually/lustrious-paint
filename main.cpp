@@ -15,23 +15,23 @@ enum {
 };
 
 template<class T>
-class Just;
+class Value;
 
 template<class T>
 class Nothing;
 
 template<class T>
-class Maybe {
-friend Just<T>;
+class Optional {
+friend Value<T>;
 protected:
 	T m_value;
 	bool m_is_just;
-	Maybe() : m_is_just(false) {};
-	Maybe(T value, bool is_just) : m_value(value), m_is_just(is_just) {};
+	Optional() : m_is_just(false) {};
+	Optional(T value, bool is_just) : m_value(value), m_is_just(is_just) {};
 public:
-	Maybe(Maybe<T>& maybe) : m_value(maybe.m_value), m_is_just(maybe.m_is_just) {};
-	Maybe(Just<T>& just) : Maybe(just.m_value, true) {}
-	Maybe(Nothing<T>& nothing) : Maybe() {}
+	Optional(Optional<T>& Optional) : m_value(Optional.m_value), m_is_just(Optional.m_is_just) {};
+	Optional(Value<T>& Value) : Optional(Value.m_value, true) {}
+	Optional(Nothing<T>& nothing) : Optional() {}
 	bool isJust() {
 		return m_is_just;
 	}
@@ -41,12 +41,12 @@ public:
 };
 
 template<class T>
-class Just : public Maybe<T> {
+class Value : public Optional<T> {
 public:
-	Just(T value) : Maybe(value, true) {}
-	Just(Maybe<T>& maybe):Maybe(maybe) {
-		if (!maybe.m_is_just) {
-			throw std::range_error("Nothing<T> cannot be converted to Just<T>");
+	Value(T value) : Optional(value, true) {}
+	Value(Optional<T>& Optional):Optional(Optional) {
+		if (!Optional.m_is_just) {
+			throw std::range_error("Nothing<T> cannot be converted to Value<T>");
 		}
 	}
 	T GetValue() {
@@ -55,30 +55,34 @@ public:
 };
 
 template<class T>
-class Nothing : public Maybe<T> {
+class Nothing : public Optional<T> {
 public:
-	Nothing() : Maybe() {}
+	Nothing() : Optional() {}
 };
 
 void f() {
-	Maybe<int> val = Nothing<int>();// Just<int>(2);
-	Just<int> just = Just<int>(val);
-	int j = just.GetValue();
+	Optional<int> val = Nothing<int>();// Value<int>(2);
+	Value<int> value = Value<int>(val);
+	int j = value.GetValue();
 }
 
 /* A message handler is a piece of Window behavior */
 
 /* Untyped message handler accepts any message */
 
-class Win32MsgHandler {
+class IWin32MsgHandler {
+protected:
+	IWin32MsgHandler() {};
 public:
-	virtual Maybe<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) = 0;
+	IWin32MsgHandler(const IWin32MsgHandler&) = delete;
+	IWin32MsgHandler& operator=(const IWin32MsgHandler&) = delete;
+	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) = 0;
 };
 
 /* Typed message handler accepts only specific message */
 
 template<unsigned int M>
-class Win32TypedMsgHandler: public Win32MsgHandler {
+class Win32TypedMsgHandler: public IWin32MsgHandler {
 public:
 	class handler_misuse : public std::exception {
 		UINT m_expected_type;
@@ -88,8 +92,8 @@ public:
 		UINT GetExpectedType() { return m_expected_type; }
 		UINT GetRecievedType() { return m_recieved_type; }
 	};
-	virtual Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) = 0;
-	Maybe<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
+	virtual Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) = 0;
+	Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
 		if (uMsg != GetMessageType()) throw handler_misuse(GetMessageType(), uMsg);
 		return HandleTypedMessage(hWnd, wParam, lParam);
 	};
@@ -101,7 +105,7 @@ protected:
 	LONG m_border_width;
 public:
 	Win32BorderHitTestHandler(LONG border_width) : m_border_width(border_width) { };
-	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		RECT winrect;
 		GetWindowRect(hWnd, &winrect);
 		long x = GET_X_LPARAM(lParam);
@@ -111,45 +115,45 @@ public:
 		if (x >= winrect.left && x < winrect.left + m_border_width &&
 			y < winrect.bottom && y >= winrect.bottom - m_border_width)
 		{
-			return Just<LRESULT>(HTBOTTOMLEFT);
+			return Value<LRESULT>(HTBOTTOMLEFT);
 		}
 		//bottom right corner
 		if (x < winrect.right && x >= winrect.right - m_border_width &&
 			y < winrect.bottom && y >= winrect.bottom - m_border_width)
 		{
-			return Just<LRESULT>(HTBOTTOMRIGHT);
+			return Value<LRESULT>(HTBOTTOMRIGHT);
 		}
 		//top left corner
 		if (x >= winrect.left && x < winrect.left + m_border_width &&
 			y >= winrect.top && y < winrect.top + m_border_width)
 		{
-			return Just<LRESULT>(HTTOPLEFT);
+			return Value<LRESULT>(HTTOPLEFT);
 		}
 		//top right corner
 		if (x < winrect.right && x >= winrect.right - m_border_width &&
 			y >= winrect.top && y < winrect.top + m_border_width)
 		{
-			return Just<LRESULT>(HTTOPRIGHT);
+			return Value<LRESULT>(HTTOPRIGHT);
 		}
 		//left border
 		if (x >= winrect.left && x < winrect.left + m_border_width)
 		{
-			return Just<LRESULT>(HTLEFT);
+			return Value<LRESULT>(HTLEFT);
 		}
 		//right border
 		if (x < winrect.right && x >= winrect.right - m_border_width)
 		{
-			return Just<LRESULT>(HTRIGHT);
+			return Value<LRESULT>(HTRIGHT);
 		}
 		//bottom border
 		if (y < winrect.bottom && y >= winrect.bottom - m_border_width)
 		{
-			return Just<LRESULT>(HTBOTTOM);
+			return Value<LRESULT>(HTBOTTOM);
 		}
 		//top border
 		if (y >= winrect.top && y < winrect.top + m_border_width)
 		{
-			return Just<LRESULT>(HTTOP);
+			return Value<LRESULT>(HTTOP);
 		}
 
 		// invoke next handler
@@ -163,23 +167,33 @@ class Win32ClientHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 
 class Win32JustCaptionHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 public:
-	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
-		return Just<LRESULT>(HTCAPTION);
+	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		return Value<LRESULT>(HTCAPTION);
 	}
 };
 
 class Win32CaptionHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
+	int m_caption_height;
 public:
-	Win32CaptionHitTestHandler(unsigned int caption_height) {};
-	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
-		return Nothing<LRESULT>();
+	Win32CaptionHitTestHandler(unsigned int caption_height) : m_caption_height(caption_height) {};
+	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+		RECT winrect;
+		GetWindowRect(hWnd, &winrect);
+		long y = GET_Y_LPARAM(lParam);
+		if (y >= winrect.top && y < winrect.top + m_caption_height)
+		{
+			return Value<LRESULT>(HTCAPTION);
+		}
+		else {
+			return Nothing<LRESULT>();
+		}
 	}
 };
 
 class Win32OverdrawHandler : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
-	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		if (wParam) {
-			return Just<LRESULT>(0);
+			return Value<LRESULT>(0);
 		}
 		else {
 			return Nothing<LRESULT>();
@@ -188,27 +202,21 @@ class Win32OverdrawHandler : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
 };
 
 class Win32TerminationHandler: public Win32TypedMsgHandler<WM_DESTROY> {
-	Maybe<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
+	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		// close the application entirely
 		PostQuitMessage(0);
-		return Just<LRESULT>(0);
+		return Value<LRESULT>(0);
 	}
 };
 
-
-//case WM_NCCALCSIZE: {
-//	// Take over non-client area
-//	return 0;
-//	break;
-
-class Win32DefWndProc : public Win32MsgHandler {
+class Win32DefWndProc : public IWin32MsgHandler {
 public:
-	virtual Maybe<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
+	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
 		if (uMsg == WM_NCHITTEST) {
-			return Just<LRESULT>(DefWindowProc(hWnd, uMsg, wParam, lParam));
+			return Value<LRESULT>(DefWindowProc(hWnd, uMsg, wParam, lParam));
 		}
-		return Just<LRESULT>(DefWindowProc(hWnd, uMsg, wParam, lParam));
+		return Value<LRESULT>(DefWindowProc(hWnd, uMsg, wParam, lParam));
 	}
 };
 
@@ -217,8 +225,8 @@ public:
 class Win32WndProc final {
 
 	struct HandlerEntry {
-		std::shared_ptr<Win32MsgHandler> handler;
-		bool                             enabled = true;
+		std::shared_ptr<IWin32MsgHandler> handler;
+		bool                              enabled = true;
 	};
 
 	std::map<UINT, std::map<UINT, HandlerEntry>> m_main_handlers;
@@ -244,7 +252,7 @@ class Win32WndProc final {
 		int GetMessage() { return m_uMsg; };
 	};
 		
-	Maybe<LRESULT> invoke_handlers(
+	Optional<LRESULT> invoke_handlers(
 		std::map<UINT, HandlerEntry> handlers,
 		HWND	hWnd,
 		UINT	uMsg,
@@ -255,7 +263,7 @@ class Win32WndProc final {
 		{
 			HandlerEntry handler_entry = map_entry.second;
 			if (handler_entry.enabled) {
-				Maybe<LRESULT> response = handler_entry.handler->HandleMessage(hWnd, uMsg, wParam, lParam);
+				Optional<LRESULT> response = handler_entry.handler->HandleMessage(hWnd, uMsg, wParam, lParam);
 				if (response.isJust()) {
 					return response;
 				}
@@ -280,15 +288,27 @@ class Win32WndProc final {
 			throw default_handler_not_found(uPlace);
 		return found_handler_it->second;
 	}
+
 public:
-		
+	Win32WndProc() {};
+
+	// allow move
+	Win32WndProc(const Win32WndProc&& p) {
+		this->m_default_handlers = p.m_default_handlers;
+		this->m_main_handlers = p.m_main_handlers;
+	}
+
+	// disallow copy
+	Win32WndProc(const Win32WndProc& p) = delete;
+	Win32WndProc& operator=(const Win32WndProc&) = delete;
+
 	template<unsigned int M>
 	void SetMessageHandler(UINT place, std::shared_ptr<Win32TypedMsgHandler<M>> handler) {
 		UINT uMsg = handler->GetMessageType();
 		m_main_handlers[uMsg][place].handler = handler; // TODO: throw if already exists
 	}
 
-	void SetDefaultHandler(UINT place, std::shared_ptr<Win32MsgHandler> handler) {
+	void SetDefaultHandler(UINT place, std::shared_ptr<IWin32MsgHandler> handler) {
 		m_default_handlers[place].handler = handler;    // TODO: throw if already exists
 	}
 
@@ -297,7 +317,7 @@ public:
 		return std::static_pointer_cast<Win32TypedMsgHandler<M>>(get_handler_entry(uMsg, uPlace).handler);
 	}
 
-	std::shared_ptr<Win32MsgHandler> GetDefaultHandler(UINT uPlace) {
+	std::shared_ptr<IWin32MsgHandler> GetDefaultHandler(UINT uPlace) {
 		return get_default_handler_entry(uPlace).handler;
 	}
 	
@@ -341,16 +361,16 @@ public:
 		auto found_handlers_it = m_main_handlers.find(uMsg);
 		if (found_handlers_it != m_main_handlers.end()) {
 			// try to get response from handler stack
-			Maybe<LRESULT> response = invoke_handlers(found_handlers_it->second, hWnd, uMsg, wParam, lParam);
+			Optional<LRESULT> response = invoke_handlers(found_handlers_it->second, hWnd, uMsg, wParam, lParam);
 			if (response.isJust()) {
-				return Just<LRESULT>(response).GetValue();
+				return Value<LRESULT>(response).GetValue();
 			}
 			// if non of the handlers return a result, try default handler stack
 			else {
 				// try to get response from default handler stack
 				response = invoke_handlers(m_default_handlers, hWnd, uMsg, wParam, lParam);
 				if (response.isJust()) {
-					return Just<LRESULT>(response).GetValue();
+					return Value<LRESULT>(response).GetValue();
 				}
 				// if even default handler stack doesn't respond, throw error
 				else {
@@ -361,9 +381,9 @@ public:
 		// if not found use default handlers
 		else {
 			// try to get response from default handler stack
-			Maybe<LRESULT> response = invoke_handlers(m_default_handlers, hWnd, uMsg, wParam, lParam);
+			Optional<LRESULT> response = invoke_handlers(m_default_handlers, hWnd, uMsg, wParam, lParam);
 			if (response.isJust()) {
-				return Just<LRESULT>(response).GetValue();
+				return Value<LRESULT>(response).GetValue();
 			}
 			// if even default handler stack doesn't respond, throw error
 			else {
@@ -375,9 +395,9 @@ public:
 
 class Win32WndProcRegistrar final {
 private:
-	Win32WndProcRegistrar();
 	static std::map<ATOM, Win32WndProc*> m_wndproc_map;
 public:
+	Win32WndProcRegistrar() = delete;
 	static void RegisterClassProcedure(ATOM class_atom, Win32WndProc* procedure) {
 		m_wndproc_map[class_atom] = procedure;
 	}
@@ -405,6 +425,13 @@ RECT CalculateWindowRect(RECT client_rect, UINT style) {
 }
 
 #include "resource.h"
+#include <vector>
+
+
+Win32WndProc testtt() {
+	Win32WndProc proc;
+	return proc;
+}
 
 int WINAPI WinMain(
 	HINSTANCE	hInstance,
@@ -412,12 +439,10 @@ int WINAPI WinMain(
 	LPSTR		lpCmdLine,
 	int			nCmdShow)
 {
-	
-
-	const UINT WS_STYLE = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | WS_TABSTOP | WS_BORDER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+	const UINT WS_STYLE = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | /*WS_TABSTOP |*/ WS_BORDER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 		
 	RECT wr = CalculateWindowRect({ 0, 0, 640, 480 }, WS_POPUP);
-		
+	throw std::exception("error");
 	WNDCLASSEX wc = { 0 };
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -431,13 +456,14 @@ int WINAPI WinMain(
 	ATOM ca = RegisterClassEx(&wc);
 	
 	Win32WndProc basic_behavior;
+	Win32WndProc basic_behavior2;
 	basic_behavior.SetMessageHandler<WM_NCHITTEST>(0, std::make_shared<Win32BorderHitTestHandler>(8));
-	basic_behavior.SetMessageHandler<WM_NCHITTEST>(1, std::make_shared<Win32JustCaptionHandler>());
+	basic_behavior.SetMessageHandler<WM_NCHITTEST>(1, std::make_shared<Win32CaptionHitTestHandler>(40));
 	basic_behavior.SetMessageHandler<WM_NCCALCSIZE>(0, std::make_shared<Win32OverdrawHandler>());
 	basic_behavior.SetMessageHandler<WM_DESTROY>(0, std::make_shared<Win32TerminationHandler>());
-	//basic_behavior.EnableMessageHandler(WM_NCHITTEST,1,false);
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
 	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
+	//basic_behavior = basic_behavior2;
 
 	HWND hwnd = CreateWindowEx(
 		WS_EX_APPWINDOW,
