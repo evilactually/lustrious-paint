@@ -167,9 +167,11 @@ class handler_misuse : public std::exception {
 		UINT GetRecievedType() { return m_recieved_type; }
 };
 
+class Win32WndProc;
+
 template<unsigned int M>
 class Win32TypedMsgHandler: public IWin32MsgHandler {
-public:
+	friend Win32WndProc;
 	virtual Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) = 0;
 	Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
 		if (uMsg != GetMessageType()) throw handler_misuse(GetMessageType(), uMsg);
@@ -179,10 +181,7 @@ public:
 };
 
 class Win32BorderHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
-protected:
 	LONG m_border_width;
-public:
-	Win32BorderHitTestHandler(LONG border_width) : m_border_width(border_width) { };
 	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		RECT winrect;
 		GetWindowRect(hWnd, &winrect);
@@ -237,6 +236,8 @@ public:
 		// invoke next handler
 		return Nothing<LRESULT>();
 	};
+public:
+	Win32BorderHitTestHandler(LONG border_width) : m_border_width(border_width) { };
 };
 
 class Win32ClientHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
@@ -252,8 +253,6 @@ public:
 
 class Win32CaptionHitTestHandler : public Win32TypedMsgHandler<WM_NCHITTEST> {
 	int m_caption_height;
-public:
-	Win32CaptionHitTestHandler(unsigned int caption_height) : m_caption_height(caption_height) {};
 	Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override {
 		RECT winrect;
 		GetWindowRect(hWnd, &winrect);
@@ -266,6 +265,8 @@ public:
 			return Nothing<LRESULT>();
 		}
 	}
+public:
+	Win32CaptionHitTestHandler(unsigned int caption_height) : m_caption_height(caption_height) {};
 };
 
 class Win32OverdrawHandler : public Win32TypedMsgHandler<WM_NCCALCSIZE> {
@@ -284,6 +285,16 @@ class Win32TerminationHandler: public Win32TypedMsgHandler<WM_DESTROY> {
 		// close the application entirely
 		PostQuitMessage(0);
 		return Value<LRESULT>(0);
+	}
+};
+
+class Win32MouseMessageHandler : public IWin32MsgHandler {
+	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
+	{
+	}
+public:
+	Win32MouseMessageHandler() {
+
 	}
 };
 
