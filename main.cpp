@@ -3,8 +3,10 @@
 #include <windowsx.h>
 #include <exception>
 #include <map>
+#include <vector>
 #include <deque>
 #include <memory>
+#include <algorithm>
 
 HINSTANCE hInstance;
 HWND      hWnds[2];
@@ -72,8 +74,8 @@ void f() {
 //	EventManager();
 //	virtual ~EventManager();
 //
-//	bool AddEventListener(eEVENT EventID, IEventListener* pListener);
-//	bool DelEventListener(eEVENT EventID, IEventListener* pListener);
+//	bool RegisterEventListener(eEVENT EventID, IEventListener* pListener);
+//	bool UnregisterEventListener(eEVENT EventID, IEventListener* pListener);
 //
 //	bool ProcessEvent(EventPtr pEvent);
 //	bool QueueEvent(EventPtr pEvent);
@@ -87,6 +89,58 @@ void f() {
 //
 //	static EventManager* m_spEventManager;
 //};
+
+// event-action association
+// event-emitter
+// event-reciever
+// 
+
+class Event {
+private:
+	unsigned int m_timestamp;
+	unsigned int m_type;
+public:
+	Event(unsigned int type, unsigned int timestamp) : m_type(type), m_timestamp(timestamp) {};
+	Event(const Event&) = delete;
+	Event(const Event&&) = delete;
+	Event& operator=(const Event&) = delete;
+	unsigned int GetTimestamp() { return m_timestamp; }
+	unsigned int GetType() { return m_type; }
+};
+
+class IEventHandler {
+public:
+	virtual void HandleEvent(Event* e) = 0;
+};
+
+class IEventEmitter {
+private:
+	std::vector<IEventHandler*>* m_event_handlers;
+protected:
+	IEventEmitter(unsigned int type_count) {
+		m_event_handlers = new std::vector<IEventHandler*>[type_count];
+	};
+	virtual ~IEventEmitter() {
+		delete[] m_event_handlers;
+	}
+	void Emit(Event* e) {
+		std::vector<IEventHandler*> handlers = m_event_handlers[e->GetType()];
+		for (IEventHandler* h : handlers) { h->HandleEvent(e); }
+	}
+public:
+	class handler_not_found : public std::exception {
+		unsigned int m_type;
+	public:
+		handler_not_found(unsigned int type) : m_type(type) {}
+		int GetType() { return m_type; }
+	};
+	void Subscribe(unsigned int type, IEventHandler* handler) {
+		m_event_handlers[type].push_back(handler);
+	}
+	void Unsubscribe(unsigned int type, IEventHandler* handler) {
+		m_event_handlers[type].erase(std::remove(m_event_handlers[type].begin(), m_event_handlers[type].end(), handler), m_event_handlers[type].end());
+	}
+};
 
 /* A message handler is a piece of Window behavior */
 
@@ -243,9 +297,6 @@ public:
 		return Value<LRESULT>(DefWindowProc(hWnd, uMsg, wParam, lParam));
 	}
 };
-
-#include <memory>
-#include <type_traits>
 
 /* Win32WndProc assembles Win32TypedMsgHandlers into a WndProc that can be used with Win32 Api */
 
@@ -452,7 +503,6 @@ RECT CalculateWindowRect(RECT client_rect, UINT style) {
 }
 
 #include "resource.h"
-#include <vector>
 
 
 Win32WndProc testtt() {
@@ -500,7 +550,7 @@ int WINAPI WinMain(
 	basic_behavior.SetMessageHandler(WM_NCHITTEST, 0, std::make_shared<Win32BorderHitTestHandler>(8));
 	basic_behavior.SetMessageHandler(WM_NCHITTEST, 1, std::make_shared<Win32CaptionHitTestHandler>(40));
 	basic_behavior.SetMessageHandler(WM_NCCALCSIZE, 0, std::make_shared<Win32OverdrawHandler>());
-	basic_behavior.SetMessageHandler(WM_DESTROY+1, 0, std::make_shared<Win32TerminationHandler>());
+	basic_behavior.SetMessageHandler(WM_DESTROY, 0, std::make_shared<Win32TerminationHandler>());
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
 	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
 
