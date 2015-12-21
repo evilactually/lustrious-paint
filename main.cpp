@@ -25,8 +25,8 @@ class Optional {
 friend Value<T>;
 protected:
 	T m_value;
-	bool m_is_just;
-	Optional() : m_is_just(false) {};
+	bool m_is_just = false;
+	Optional() = default;
 	Optional(T value, bool is_just) : m_value(value), m_is_just(is_just) {};
 public:
 	Optional(Optional<T>& Optional) : m_value(Optional.m_value), m_is_just(Optional.m_is_just) {};
@@ -66,32 +66,56 @@ void f() {
 	int j = value.GetValue();
 }
 
+//class EventManager
+//{
+//public:
+//	EventManager();
+//	virtual ~EventManager();
+//
+//	bool AddEventListener(eEVENT EventID, IEventListener* pListener);
+//	bool DelEventListener(eEVENT EventID, IEventListener* pListener);
+//
+//	bool ProcessEvent(EventPtr pEvent);
+//	bool QueueEvent(EventPtr pEvent);
+//	bool ProcessEventQueue();
+//
+//	static EventManager* Get();
+//
+//protected:
+//	std::vector< IEventListener* > m_EventHandlers[NUM_EVENTS];
+//	std::vector< EventPtr > m_EventQueue;
+//
+//	static EventManager* m_spEventManager;
+//};
+
 /* A message handler is a piece of Window behavior */
 
 /* Untyped message handler accepts any message */
 
 class IWin32MsgHandler {
 protected:
-	IWin32MsgHandler() {};
+	IWin32MsgHandler() = default;
 public:
-	IWin32MsgHandler(const IWin32MsgHandler&) = delete;
+	IWin32MsgHandler(const IWin32MsgHandler&) = delete;  // NOTE: There isn't enough information to write a copy or move ctors 
+	IWin32MsgHandler(const IWin32MsgHandler&&) = delete; //       given only a base class. Fields in derived classes would be lost!
 	IWin32MsgHandler& operator=(const IWin32MsgHandler&) = delete;
 	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) = 0;
 };
 
 /* Typed message handler accepts only specific message */
 
-template<unsigned int M>
-class Win32TypedMsgHandler: public IWin32MsgHandler {
-public:
-	class handler_misuse : public std::exception {
+class handler_misuse : public std::exception {
 		UINT m_expected_type;
 		UINT m_recieved_type;
 	public:
 		handler_misuse(UINT expected_type, UINT recieved_type) : m_expected_type(expected_type), m_recieved_type(recieved_type) {};
 		UINT GetExpectedType() { return m_expected_type; }
 		UINT GetRecievedType() { return m_recieved_type; }
-	};
+};
+
+template<unsigned int M>
+class Win32TypedMsgHandler: public IWin32MsgHandler {
+public:
 	virtual Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) = 0;
 	Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
 		if (uMsg != GetMessageType()) throw handler_misuse(GetMessageType(), uMsg);
@@ -220,6 +244,9 @@ public:
 	}
 };
 
+#include <memory>
+#include <type_traits>
+
 /* Win32WndProc assembles Win32TypedMsgHandlers into a WndProc that can be used with Win32 Api */
 
 class Win32WndProc final {
@@ -290,21 +317,22 @@ class Win32WndProc final {
 	}
 
 public:
-	Win32WndProc() {};
+	Win32WndProc() = default;
 
-	// allow move
+	// Allow move, since is not a class hierarchy
 	Win32WndProc(const Win32WndProc&& p) {
 		this->m_default_handlers = p.m_default_handlers;
 		this->m_main_handlers = p.m_main_handlers;
 	}
 
-	// disallow copy
+	// Disallow copy. Otherwise the copied Win32WndProc would refer to same handler objects!
 	Win32WndProc(const Win32WndProc& p) = delete;
 	Win32WndProc& operator=(const Win32WndProc&) = delete;
 
-	template<unsigned int M>
-	void SetMessageHandler(UINT place, std::shared_ptr<Win32TypedMsgHandler<M>> handler) {
-		UINT uMsg = handler->GetMessageType();
+	template<typename T> // NOTE: Type of handler is generalized std::shared_ptr<T> to allow automatic template deduction
+	void SetMessageHandler(UINT uMsg, UINT place, std::shared_ptr<T> handler) {
+		if (uMsg != handler->GetMessageType()) 
+			throw handler_misuse(handler->GetMessageType(), uMsg);
 		m_main_handlers[uMsg][place].handler = handler; // TODO: throw if already exists
 	}
 
@@ -312,9 +340,8 @@ public:
 		m_default_handlers[place].handler = handler;    // TODO: throw if already exists
 	}
 
-	template<unsigned int M>
-	std::shared_ptr<Win32TypedMsgHandler<M>> GetMessageHandler(UINT uMsg, UINT uPlace) {
-		return std::static_pointer_cast<Win32TypedMsgHandler<M>>(get_handler_entry(uMsg, uPlace).handler);
+	std::shared_ptr<IWin32MsgHandler> GetMessageHandler(UINT uMsg, UINT uPlace) {
+		return get_handler_entry(uMsg, uPlace).handler;
 	}
 
 	std::shared_ptr<IWin32MsgHandler> GetDefaultHandler(UINT uPlace) {
@@ -433,6 +460,20 @@ Win32WndProc testtt() {
 	return proc;
 }
 
+template<unsigned int T>
+void f02(std::shared_ptr<Win32TypedMsgHandler<T>> h) {
+
+}
+
+class CCC {
+public:
+	template<unsigned int T>
+	void SetMessageHandler(UINT place, std::shared_ptr<Win32TypedMsgHandler<T>> handler) {
+		UINT uMsg = handler->GetMessageType();
+		//m_main_handlers[M][place].handler = handler; // TODO: throw if already exists
+	}
+};
+
 int WINAPI WinMain(
 	HINSTANCE	hInstance,
 	HINSTANCE	hPrevInstance,
@@ -442,7 +483,7 @@ int WINAPI WinMain(
 	const UINT WS_STYLE = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | /*WS_TABSTOP |*/ WS_BORDER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 		
 	RECT wr = CalculateWindowRect({ 0, 0, 640, 480 }, WS_POPUP);
-	throw std::exception("error");
+	
 	WNDCLASSEX wc = { 0 };
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -456,14 +497,28 @@ int WINAPI WinMain(
 	ATOM ca = RegisterClassEx(&wc);
 	
 	Win32WndProc basic_behavior;
-	Win32WndProc basic_behavior2;
-	basic_behavior.SetMessageHandler<WM_NCHITTEST>(0, std::make_shared<Win32BorderHitTestHandler>(8));
-	basic_behavior.SetMessageHandler<WM_NCHITTEST>(1, std::make_shared<Win32CaptionHitTestHandler>(40));
-	basic_behavior.SetMessageHandler<WM_NCCALCSIZE>(0, std::make_shared<Win32OverdrawHandler>());
-	basic_behavior.SetMessageHandler<WM_DESTROY>(0, std::make_shared<Win32TerminationHandler>());
+	basic_behavior.SetMessageHandler(WM_NCHITTEST, 0, std::make_shared<Win32BorderHitTestHandler>(8));
+	basic_behavior.SetMessageHandler(WM_NCHITTEST, 1, std::make_shared<Win32CaptionHitTestHandler>(40));
+	basic_behavior.SetMessageHandler(WM_NCCALCSIZE, 0, std::make_shared<Win32OverdrawHandler>());
+	basic_behavior.SetMessageHandler(WM_DESTROY+1, 0, std::make_shared<Win32TerminationHandler>());
 	basic_behavior.SetDefaultHandler(0, std::make_shared<Win32DefWndProc>());
 	Win32WndProcRegistrar::RegisterClassProcedure(ca, &basic_behavior);
-	//basic_behavior = basic_behavior2;
+
+	std::shared_ptr<IWin32MsgHandler> fdd = basic_behavior.GetMessageHandler(WM_NCCALCSIZE, 0);
+	std::shared_ptr<Win32OverdrawHandler> fdo = std::static_pointer_cast<Win32OverdrawHandler>(fdd);
+
+	/*std::shared_ptr<Win32TypedMsgHandler<WM_DESTROY>> dest_hdl = std::make_shared<Win32TerminationHandler>();
+	std::shared_ptr<Win32TerminationHandler> dest_hdl2 = std::make_shared<Win32TerminationHandler>();
+	dest_hdl = std::make_shared<Win32TerminationHandler>();
+	f02(dest_hdl);
+	f02(std::static_pointer_cast<Win32TypedMsgHandler<WM_DESTROY>>(dest_hdl2));
+	f02<WM_DESTROY>(dest_hdl2);
+
+	CCC c;
+	c.SetMessageHandler(1, dest_hdl);*/
+	//c.SetMessageHandler(1, std::make_shared<Win32TerminationHandler>());
+	//c.SetMessageHandler(1, dest_hdl2);
+
 
 	HWND hwnd = CreateWindowEx(
 		WS_EX_APPWINDOW,
