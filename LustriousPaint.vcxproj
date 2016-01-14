@@ -90,7 +90,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OutputFile>.\Debug\LustriousPaint.exe</OutputFile>
-      <AdditionalDependencies>Dwmapi.lib;d3d11.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>../lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
@@ -129,15 +129,23 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <SubSystem>Windows</SubSystem>
       <OutputFile>.\Release\LustriousPaint.exe</OutputFile>
-      <AdditionalDependencies>Dwmapi.lib;d3d11.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>../lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="dx11.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Win32Classes.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dx11.h" />
+    <ClInclude Include="IWndProcListener.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="win32.h" />
+    <ClInclude Include="Window.h" />
+    <ClInclude Include="WindowClasses.h" />
+    <ClInclude Include="WndProcCallback.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="LustriousPaint.rc" />

@@ -7,6 +7,7 @@
 #include <deque>
 #include <memory>
 #include <algorithm>
+#include <time.h> 
 
 HINSTANCE hInstance;
 HWND      hWnds[2];
@@ -68,43 +69,16 @@ void f() {
 	int j = value.GetValue();
 }
 
-//class EventManager
-//{
-//public:
-//	EventManager();
-//	virtual ~EventManager();
-//
-//	bool RegisterEventListener(eEVENT EventID, IEventListener* pListener);
-//	bool UnregisterEventListener(eEVENT EventID, IEventListener* pListener);
-//
-//	bool ProcessEvent(EventPtr pEvent);
-//	bool QueueEvent(EventPtr pEvent);
-//	bool ProcessEventQueue();
-//
-//	static EventManager* Get();
-//
-//protected:
-//	std::vector< IEventListener* > m_EventHandlers[NUM_EVENTS];
-//	std::vector< EventPtr > m_EventQueue;
-//
-//	static EventManager* m_spEventManager;
-//};
-
-// event-action association
-// event-emitter
-// event-reciever
-// 
-
 class Event {
 private:
-	unsigned int m_timestamp;
+	time_t m_timestamp;
 	unsigned int m_type;
 public:
-	Event(unsigned int type, unsigned int timestamp) : m_type(type), m_timestamp(timestamp) {};
+	Event(unsigned int type) : m_type(type), m_timestamp(time(NULL)) {};
 	Event(const Event&) = delete;
 	Event(const Event&&) = delete;
 	Event& operator=(const Event&) = delete;
-	unsigned int GetTimestamp() { return m_timestamp; }
+	time_t GetTimestamp() { return m_timestamp; }
 	unsigned int GetType() { return m_type; }
 };
 
@@ -113,20 +87,27 @@ public:
 	virtual void HandleEvent(Event* e) = 0;
 };
 
-class IEventEmitter {
+class EventEmitter;
+
+/* An object used to grant emission privilige to other objects */
+class EmissionToken final {
+	EventEmitter* m_event_manager;
+public:
+	EmissionToken::EmissionToken(EventEmitter* event_manager) : m_event_manager(event_manager) {};
+	void Emit(Event* e);
+};
+
+class EventEmitter {
+	friend EmissionToken;
 private:
 	std::vector<IEventHandler*>* m_event_handlers;
+	EmissionToken*          m_emit_event;
 protected:
-	IEventEmitter(unsigned int type_count) {
-		m_event_handlers = new std::vector<IEventHandler*>[type_count];
-	};
-	virtual ~IEventEmitter() {
-		delete[] m_event_handlers;
-	}
 	void Emit(Event* e) {
 		std::vector<IEventHandler*> handlers = m_event_handlers[e->GetType()];
 		for (IEventHandler* h : handlers) { h->HandleEvent(e); }
 	}
+	EmissionToken* GetEmissionToken() { return m_emit_event; }
 public:
 	class handler_not_found : public std::exception {
 		unsigned int m_type;
@@ -134,12 +115,32 @@ public:
 		handler_not_found(unsigned int type) : m_type(type) {}
 		int GetType() { return m_type; }
 	};
+	EventEmitter(unsigned int type_count) : m_emit_event(new EmissionToken(this)) {
+		m_event_handlers = new std::vector<IEventHandler*>[type_count];
+	};
+	virtual ~EventEmitter() {
+		delete[] m_event_handlers;
+	}
 	void Subscribe(unsigned int type, IEventHandler* handler) {
 		m_event_handlers[type].push_back(handler);
 	}
 	void Unsubscribe(unsigned int type, IEventHandler* handler) {
 		m_event_handlers[type].erase(std::remove(m_event_handlers[type].begin(), m_event_handlers[type].end(), handler), m_event_handlers[type].end());
 	}
+};
+
+void EmissionToken::Emit(Event* e) { m_event_manager->Emit(e); }
+
+class Win32Window : public EventEmitter {
+public:
+	enum EventType { KEY_DOWN, MOUSE_DOWN, KEY_UP, MOUSE_UP, MOUSE_ENTER, MOUSE_LEAVE };
+	enum KeyCode { KC_A = 30 };
+};
+
+class KeyDownEvent : public Event {
+	int m_keycode;
+public:
+	KeyDownEvent(int keycode) : Event(Win32Window::KEY_DOWN), m_keycode(keycode) {};
 };
 
 /* A message handler is a piece of Window behavior */
@@ -156,8 +157,6 @@ public:
 	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) = 0;
 };
 
-/* Typed message handler accepts only specific message */
-
 class handler_misuse : public std::exception {
 		UINT m_expected_type;
 		UINT m_recieved_type;
@@ -168,6 +167,8 @@ class handler_misuse : public std::exception {
 };
 
 class Win32WndProc;
+
+/* Typed message handler accepts only specific message */
 
 template<unsigned int M>
 class Win32TypedMsgHandler: public IWin32MsgHandler {
@@ -288,14 +289,15 @@ class Win32TerminationHandler: public Win32TypedMsgHandler<WM_DESTROY> {
 	}
 };
 
-class Win32MouseMessageHandler : public IWin32MsgHandler {
-	virtual Optional<LRESULT> HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
+class Win32LButtonDownHandler : public Win32TypedMsgHandler<WM_LBUTTONDOWN> {
+	EmissionToken* m_emitter;
+	virtual Optional<LRESULT> HandleTypedMessage(HWND hWnd, WPARAM wParam, LPARAM lParam) override
 	{
+		Event e(1);
+		m_emitter->Emit(&e);
 	}
 public:
-	Win32MouseMessageHandler() {
-
-	}
+	Win32LButtonDownHandler(EmissionToken* emitter) : m_emitter(emitter) {};
 };
 
 class Win32DefWndProc : public IWin32MsgHandler {
