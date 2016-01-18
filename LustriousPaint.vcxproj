@@ -134,9 +134,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dx11.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="Win32Classes.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dx11.h" />
