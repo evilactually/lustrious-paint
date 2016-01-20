@@ -8,8 +8,8 @@ pub type HGDIOBJ = *mut c_void;
 pub type HICON = *mut c_void;
 pub type HCURSOR = *mut c_void;
 pub type HBRUSH = *mut c_void;
-pub type LPCWSTR = *mut c_void;
 pub type HWND = *mut c_void;
+
 pub type UINT = c_uint;
 pub type WORD = c_ushort;
 pub type DWORD = int32_t;
@@ -20,9 +20,12 @@ pub type WPARAM = UINT_PTR;
 pub type LPARAM = LONG_PTR;
 pub type LRESULT = LONG_PTR;
 pub type CHAR = c_schar;
-pub type LPCSTR = *mut CHAR;
-pub type LPTSTR = LPCSTR;
 pub type LPBYTE = *mut c_schar;
+
+pub type LPCSTR = *const CHAR;
+pub type LPSTR = *mut CHAR;
+pub type LPTSTR = LPSTR;
+pub type LPCWSTR = *mut c_void;
 
 pub type WNDPROC = Option<unsafe  extern "system" fn(HWND, UINT, WPARAM, LPARAM) -> LRESULT>;
 
@@ -44,7 +47,7 @@ pub struct WNDCLASSEXW {
 
 impl Clone for WNDCLASSEXW { fn clone(&self) -> WNDCLASSEXW { *self } }
 
-struct STARTUPINFO {
+pub struct STARTUPINFO {
   cd: DWORD,
   lpReserved: LPTSTR,
   lpDesktop: LPTSTR,
@@ -64,5 +67,7 @@ struct STARTUPINFO {
   hStdOutput: HANDLE,
   hStdError: HANDLE
 } 
+
+pub type LPSTARTUPINFO = *mut STARTUPINFO;
 
 //STARTUPINFO, *LPSTARTUPINFO;

@@ -54,17 +54,24 @@ DECLARE_HANDLE!(HWND, HWND__);
 pub type c_uint = u32;
 pub type c_int = i32;
 pub type c_long = i64; // is this correct?
+pub type c_ushort = i16;
 
 pub type UINT = c_uint;
-
+pub type WORD = c_ushort;
+pub type ATOM = WORD;
 pub type UINT_PTR = c_uint;
 pub type LONG_PTR = c_long;
 
 pub type WPARAM = UINT_PTR;
 pub type LPARAM = LONG_PTR;
-type LRESULT = LONG_PTR;
+pub type LRESULT = LONG_PTR;
 
 pub type WNDPROC = Option<unsafe  extern "system" fn(HWND, UINT, WPARAM, LPARAM) -> LRESULT>;
+
+extern "system" {
+    pub fn RegisterClassExW(lpWndClass: *const WNDCLASSEXW) -> ATOM;
+}
+
 
 // type HINSTANCE = *mut HINSTANCE__;
 // type HICON = *mut HICON__;
@@ -75,18 +82,19 @@ pub type WNDPROC = Option<unsafe  extern "system" fn(HWND, UINT, WPARAM, LPARAM)
 #[repr(C)] #[derive(Copy)]
 pub struct WNDCLASSEXW {
     pub cbSize: ::UINT,
-    pub style: ::UINT,
+    //pub style: ::UINT,
 	pub lpfnWndProc: WNDPROC,
-    pub cbClsExtra: ::c_int,
-    pub cbWndExtra: ::c_int,
-    pub hInstance: ::HINSTANCE,
-    pub hIcon: ::HICON,
-    pub hCursor: ::HCURSOR,
-    pub hbrBackground: ::HBRUSH,
-    pub lpszMenuName: ::LPCWSTR,
-    pub lpszClassName: ::LPCWSTR,
-    pub hIconSm: ::HICON,
+    // pub cbClsExtra: ::c_int,
+    // pub cbWndExtra: ::c_int,
+    // pub hInstance: ::HINSTANCE,
+    // pub hIcon: ::HICON,
+    // pub hCursor: ::HCURSOR,
+    // pub hbrBackground: ::HBRUSH,
+    // pub lpszMenuName: ::LPCWSTR,
+    // pub lpszClassName: ::LPCWSTR,
+    // pub hIconSm: ::HICON,
 }
+
 
 impl Clone for WNDCLASSEXW { fn clone(&self) -> WNDCLASSEXW { *self } }
 
@@ -94,6 +102,9 @@ impl Clone for WNDCLASSEXW { fn clone(&self) -> WNDCLASSEXW { *self } }
 
 //}
 
+unsafe extern "system" fn winproc(wnd:HWND, a:UINT, b:WPARAM, c:LPARAM) -> LRESULT {
+    1
+}
 
 struct Complex(f32,f32);
 
@@ -118,6 +129,8 @@ impl std::convert::From<Complex> for Matrix {
         Matrix(f.0,f.0,f.0,f.0)
     }
 }
+
+use std::mem;
 
 fn main() {
     println!("hello world");
@@ -153,7 +166,20 @@ fn main() {
     let aaaaa = u16::from(10u8);
     let uu = 1212usize;
     //let fff : f32 = 10;
+
+
+    let wnd : WNDCLASSEXW = WNDCLASSEXW{cbSize:16,lpfnWndProc:Some(winproc)};
+    unsafe {
+        RegisterClassExW(&wnd);
+    }
+
+    println!("{:?}", std::mem::size_of::<i32>());
+
+    //let a : ATOM = RegisterClassExW();
 }
 
 // df + df + df + df
 //
+
+
+WS_OVERLAPPED | WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | WS_BORDER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
