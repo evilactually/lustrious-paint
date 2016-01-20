@@ -2,9 +2,9 @@
 use types::*;
 use ctypes::*;
 
-pub const IDI_APPLICATION: LPCWSTR = 32512 as LPCWSTR;
+pub const IDI_APPLICATION: LPCSTR = 32512 as LPCSTR;
 
-pub const IDC_ARROW: LPCWSTR = 32512 as LPCWSTR;
+pub const IDC_ARROW: LPCSTR = 32512 as LPCSTR;
 
 pub const CS_VREDRAW: DWORD = 0x0001;
 pub const CS_HREDRAW: DWORD = 0x0002;

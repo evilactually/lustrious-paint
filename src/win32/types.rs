@@ -25,12 +25,12 @@ pub type LPBYTE = *mut c_schar;
 pub type LPCSTR = *const CHAR;
 pub type LPSTR = *mut CHAR;
 pub type LPTSTR = LPSTR;
-pub type LPCWSTR = *mut c_void;
+pub type LPCTSTR = LPCSTR;
 
 pub type WNDPROC = Option<unsafe  extern "system" fn(HWND, UINT, WPARAM, LPARAM) -> LRESULT>;
 
 #[repr(C)] #[derive(Copy)]
-pub struct WNDCLASSEXW {
+pub struct WNDCLASSEX {
     pub cbSize: UINT,
     pub style: UINT,
 	pub lpfnWndProc: WNDPROC,
@@ -40,12 +40,12 @@ pub struct WNDCLASSEXW {
     pub hIcon: HICON,
     pub hCursor: HCURSOR,
     pub hbrBackground: HBRUSH,
-    pub lpszMenuName: LPCWSTR,
-    pub lpszClassName: LPCWSTR,
+    pub lpszMenuName: LPCTSTR,
+    pub lpszClassName: LPCTSTR,
     pub hIconSm: HICON,
 }
 
-impl Clone for WNDCLASSEXW { fn clone(&self) -> WNDCLASSEXW { *self } }
+impl Clone for WNDCLASSEX { fn clone(&self) -> WNDCLASSEX { *self } }
 
 pub struct STARTUPINFO {
   cd: DWORD,

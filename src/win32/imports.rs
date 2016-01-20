@@ -4,8 +4,8 @@ use ctypes::*;
 
 #[link(name = "user32")]
 extern "system" {
-    pub fn RegisterClassExW(lpWndClass: *const WNDCLASSEXW) -> ATOM;
-    pub fn LoadIconA(hInstance: HINSTANCE, lpIconName: LPCSTR);
+    pub fn RegisterClassExA(lpWndClass: *const WNDCLASSEX) -> ATOM;
+    pub fn LoadIconA(hInstance: HINSTANCE, lpIconName: LPCSTR) -> HICON;
 }
 
 #[link(name = "kernel32")]
