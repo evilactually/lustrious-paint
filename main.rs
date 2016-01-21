@@ -26,26 +26,24 @@ fn WinMain(hInstance : HINSTANCE,
         lpfnWndProc: Some(winproc),
         cbClsExtra: 0,
         cbWndExtra: 0,
-        hInstance: unsafe {GetModuleHandleA((0 as LPCSTR))} as HINSTANCE,
-        hIcon: unsafe {LoadIconA(hInstance, IDI_APPLICATION)},
-        hCursor: unsafe {LoadIconA(hInstance, IDC_ARROW)},
-        hbrBackground: unsafe {GetStockObject(BLACK_BRUSH)},
-        lpszMenuName: class.as_ptr(),
-        lpszClassName: 0 as LPCSTR,
-        hIconSm: unsafe {LoadIconA(hInstance, IDI_APPLICATION)}
+        hInstance: hInstance,
+        hIcon: LoadIcon(hInstance, IDI_APPLICATION),
+        hCursor: LoadIcon(hInstance, IDC_ARROW),
+        hbrBackground: GetStockObject(BLACK_BRUSH),
+        lpszMenuName: class.as_ptr() as LPCVOID,
+        lpszClassName: NULL,
+        hIconSm: LoadIcon(hInstance, IDI_APPLICATION)
     };
-    let class_atom : ATOM = unsafe {RegisterClassExA(&wndclassex)};
+    let class_atom : ATOM = RegisterClassEx(&wndclassex);
 
     let mut msg: MSG = MSG::default();
     //GetMessage(&mut msg, NULL, 0, 0);
 }
 
 fn main() {
-    let hInstance = unsafe {GetModuleHandleA(0 as LPCSTR)} as HINSTANCE;
-    let lpCmdLine = unsafe{GetCommandLineA()};
-    let nCmdShow = {let mut inf: STARTUPINFO = STARTUPINFO::default();
-                    unsafe{GetStartupInfoA(&mut inf)};
-                    inf.wShowWindow};
+    let hInstance = GetModuleHandle(NULL);
+    let lpCmdLine = GetCommandLine();
+    let nCmdShow = GetStartupInfo().wShowWindow;
     WinMain(hInstance, lpCmdLine, nCmdShow);
 }
 

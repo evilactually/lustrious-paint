@@ -29,9 +29,10 @@ pub type BOOL = c_int;
 pub type LPBYTE = *mut c_schar;
 pub type SIZE_T = ULONG_PTR;
 pub type LPVOID = *mut c_void;
+pub type LPCVOID = *const c_void;
 
-pub type LPCSTR = *const CHAR;
-pub type LPSTR = *mut CHAR;
+pub type LPCSTR = LPCVOID; //*const CHAR;
+pub type LPSTR = LPVOID;   //*mut CHAR;
 pub type LPTSTR = LPSTR;
 pub type LPCTSTR = LPCSTR;
 

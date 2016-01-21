@@ -7,7 +7,8 @@ extern crate ctypes;
 mod types;
 mod imports;
 mod consts;
+mod wrappers;
 
 pub use consts::*;
 pub use types::*;
-pub use imports::*;
+pub use wrappers::*;
