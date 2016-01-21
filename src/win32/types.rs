@@ -10,6 +10,7 @@ pub type HICON = *mut c_void;
 pub type HCURSOR = *mut c_void;
 pub type HBRUSH = *mut c_void;
 pub type HWND = *mut c_void;
+pub type HMENU = *mut c_void;
 
 pub type UINT = c_uint;
 pub type WORD = c_ushort;
@@ -17,14 +18,17 @@ pub type DWORD = c_int;
 pub type ATOM = WORD;
 pub type UINT_PTR = c_uint;
 pub type LONG_PTR = c_long;
+pub type ULONG_PTR = c_ulong;
 pub type WPARAM = UINT_PTR;
 pub type LPARAM = LONG_PTR;
 pub type LRESULT = LONG_PTR;
 pub type CHAR = c_schar;
-pub type LPBYTE = *mut c_schar;
+pub type LONG = c_long;
 pub type ULONG = c_ulong;
-pub type ULONG_PTR = c_ulong;
+pub type BOOL = c_int;
+pub type LPBYTE = *mut c_schar;
 pub type SIZE_T = ULONG_PTR;
+pub type LPVOID = *mut c_void;
 
 pub type LPCSTR = *const CHAR;
 pub type LPSTR = *mut CHAR;
@@ -53,24 +57,24 @@ impl Clone for WNDCLASSEX { fn clone(&self) -> WNDCLASSEX { *self } }
 
 #[derive(Debug)]
 pub struct STARTUPINFO {
-  pub cd: DWORD,
-  pub lpReserved: LPTSTR,
-  pub lpDesktop: LPTSTR,
-  pub lpTitle: LPTSTR,
-  pub dwX: DWORD,
-  pub dwY: DWORD,
-  pub dwXSize: DWORD,
-  pub dwYSize: DWORD,
-  pub dwXCountChars: DWORD,
-  pub dwYCountChars: DWORD,
-  pub dwFillAttribute: DWORD,
-  pub dwFlags: DWORD,
-  pub wShowWindow: WORD,
-  pub cbReserved2: WORD,
-  pub lpReserved2: LPBYTE,
-  pub hStdInput: HANDLE,
-  pub hStdOutput: HANDLE,
-  pub hStdError: HANDLE
+	pub cd: DWORD,
+	pub lpReserved: LPTSTR,
+	pub lpDesktop: LPTSTR,
+	pub lpTitle: LPTSTR,
+	pub dwX: DWORD,
+	pub dwY: DWORD,
+	pub dwXSize: DWORD,
+	pub dwYSize: DWORD,
+	pub dwXCountChars: DWORD,
+	pub dwYCountChars: DWORD,
+	pub dwFillAttribute: DWORD,
+	pub dwFlags: DWORD,
+	pub wShowWindow: WORD,
+	pub cbReserved2: WORD,
+	pub lpReserved2: LPBYTE,
+	pub hStdInput: HANDLE,
+	pub hStdOutput: HANDLE,
+	pub hStdError: HANDLE
 } 
 
 impl Default for STARTUPINFO {
@@ -81,4 +85,33 @@ impl Default for STARTUPINFO {
 
 pub type LPSTARTUPINFO = *mut STARTUPINFO;
 
-//STARTUPINFO, *LPSTARTUPINFO;
+pub struct MSG {
+	pub hwnd: HWND,
+    pub message: UINT,
+    pub wParam: WPARAM,
+    pub lParam: LPARAM,
+    pub time: DWORD,
+    pub pt: POINT,
+    pub lPrivate: DWORD
+}
+
+impl Default for MSG {
+  fn default () -> MSG {
+  		unsafe {::std::mem::zeroed::<MSG>()}
+  }
+}
+
+pub type LPMSG = *mut MSG;
+
+pub struct POINT {
+	pub x: LONG,
+	pub y: LONG
+}
+
+pub struct RECT
+{
+	pub left: LONG,
+    pub top: LONG,
+    pub right: LONG,
+    pub bottom: LONG
+}

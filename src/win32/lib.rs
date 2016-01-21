@@ -4,6 +4,10 @@
 
 extern crate ctypes;
 
-pub mod types;
-pub mod imports;
-pub mod consts;
+mod types;
+mod imports;
+mod consts;
+
+pub use consts::*;
+pub use types::*;
+pub use imports::*;
