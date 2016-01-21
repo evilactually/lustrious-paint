@@ -11,9 +11,9 @@ extern "system" {
 #[link(name = "kernel32")]
 extern "system" {
 	pub fn GetModuleHandleA(lpModuleName: LPCSTR) -> HMODULE;
-	pub fn GetStartupInfo(lpStartupInfo: LPSTARTUPINFO);
+	pub fn GetStartupInfoA(lpStartupInfo: LPSTARTUPINFO);
+	pub fn GetCommandLineA() -> LPTSTR;
 }
-
 
 #[link(name = "gdi32")]
 extern "system" {

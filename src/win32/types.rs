@@ -1,5 +1,6 @@
 
 use ctypes::*;
+use std::mem::{zeroed};
 
 pub type HINSTANCE = *mut c_void;
 pub type HANDLE =*mut c_void;
@@ -12,7 +13,7 @@ pub type HWND = *mut c_void;
 
 pub type UINT = c_uint;
 pub type WORD = c_ushort;
-pub type DWORD = int32_t;
+pub type DWORD = c_int;
 pub type ATOM = WORD;
 pub type UINT_PTR = c_uint;
 pub type LONG_PTR = c_long;
@@ -21,6 +22,9 @@ pub type LPARAM = LONG_PTR;
 pub type LRESULT = LONG_PTR;
 pub type CHAR = c_schar;
 pub type LPBYTE = *mut c_schar;
+pub type ULONG = c_ulong;
+pub type ULONG_PTR = c_ulong;
+pub type SIZE_T = ULONG_PTR;
 
 pub type LPCSTR = *const CHAR;
 pub type LPSTR = *mut CHAR;
@@ -47,26 +51,33 @@ pub struct WNDCLASSEX {
 
 impl Clone for WNDCLASSEX { fn clone(&self) -> WNDCLASSEX { *self } }
 
+#[derive(Debug)]
 pub struct STARTUPINFO {
-  cd: DWORD,
-  lpReserved: LPTSTR,
-  lpDesktop: LPTSTR,
-  lpTitle: LPTSTR,
-  dwX: DWORD,
-  dwY: DWORD,
-  dwXSize: DWORD,
-  dwYSize: DWORD,
-  dwXCountChars: DWORD,
-  dwYCountChars: DWORD,
-  dwFillAttribute: DWORD,
-  dwFlags: DWORD,
-  wShowWindow: WORD,
-  cbReserved2: WORD,
-  lpReserved2: LPBYTE,
-  hStdInput: HANDLE,
-  hStdOutput: HANDLE,
-  hStdError: HANDLE
+  pub cd: DWORD,
+  pub lpReserved: LPTSTR,
+  pub lpDesktop: LPTSTR,
+  pub lpTitle: LPTSTR,
+  pub dwX: DWORD,
+  pub dwY: DWORD,
+  pub dwXSize: DWORD,
+  pub dwYSize: DWORD,
+  pub dwXCountChars: DWORD,
+  pub dwYCountChars: DWORD,
+  pub dwFillAttribute: DWORD,
+  pub dwFlags: DWORD,
+  pub wShowWindow: WORD,
+  pub cbReserved2: WORD,
+  pub lpReserved2: LPBYTE,
+  pub hStdInput: HANDLE,
+  pub hStdOutput: HANDLE,
+  pub hStdError: HANDLE
 } 
+
+impl Default for STARTUPINFO {
+  fn default () -> STARTUPINFO {
+  		unsafe {::std::mem::zeroed::<STARTUPINFO>()}
+  }
+}
 
 pub type LPSTARTUPINFO = *mut STARTUPINFO;
 
