@@ -16,6 +16,10 @@ unsafe extern "system" fn winproc(wnd:HWND, a:UINT, b:WPARAM, c:LPARAM) -> LRESU
     0
 }
 
+extern "C" {
+    pub fn adder(a:c_int,b:c_int) -> c_int;
+}
+
 fn WinMain(hInstance : HINSTANCE,
            lpCmdLine : LPTSTR,
            nCmdShow : WORD) {
@@ -45,6 +49,7 @@ fn main() {
     let lpCmdLine = GetCommandLine();
     let nCmdShow = GetStartupInfo().wShowWindow;
     WinMain(hInstance, lpCmdLine, nCmdShow);
+    println!("{:?}", unsafe{adder(2,2)});
 }
 
  
