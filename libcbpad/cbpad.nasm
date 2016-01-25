@@ -12,7 +12,7 @@ global _CB_PAD_COUNT
 
 section .bss
 
-%define CB_PAD_COUNT 1024
+%define CB_PAD_COUNT 2
 
 ; _function: RESD N
 ; _data:     RESD N
@@ -47,6 +47,8 @@ section .text
 ;   ret                    ; return to caller
 ; %assign i i+1
 ; %endrep  
+
+; volitile  EAX, ECX, and EDX
 
 %assign i 0
 %rep CB_PAD_COUNT
