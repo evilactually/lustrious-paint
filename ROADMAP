@@ -1,0 +1,21 @@
+
+IN FLIGHT
+---------
+
+* Port windowing code that I had done in C++ over to Rust
+
+STAGED
+-------
+
+* Write a basic DirectX 11 application in Rust
+
+* Write a basic compute shader
+
+* Write a steady state spring mesh simulation
+
+* Experiment, Experiment, Experiment.
+
+LANDED
+------
+
+* Figure out how to make a well-behaved borderless window
