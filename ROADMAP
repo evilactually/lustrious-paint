@@ -4,6 +4,8 @@ IN FLIGHT
 
 * Port windowing code that I had done in C++ over to Rust
 
+* Get rid of game overlay
+
 STAGED
 -------
 
