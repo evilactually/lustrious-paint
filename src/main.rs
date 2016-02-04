@@ -1,3 +1,7 @@
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
 
 extern crate win32;
 extern crate ctypes;
@@ -10,42 +14,42 @@ use win32::*;
 use ctypes::*;
 use std::ffi::{CString};
 
-static glob: i32 = 100i32;
+static GLOB: i32 = 100i32;
 
-unsafe extern "system" fn winproc(wnd:HWND, a:UINT, b:WPARAM, c:LPARAM) -> LRESULT {
-    0
+unsafe extern "system" fn WndProc(wnd:HWND, a:UINT, b:WPARAM, c:LPARAM) -> LRESULT {
+    //println!("{:?}", "+");
+    DefWindowProcA(wnd, a, b, c)
 }
 
 // extern "C" {
 //     pub fn adder(a:c_int,b:c_int) -> c_int;
 // }
 
-
-
 fn WinMain(hInstance : HINSTANCE,
            lpCmdLine : LPTSTR,
-           nCmdShow : WORD) {
+           nCmdShow : c_int) {
     let class = CString::new("WindowClass").unwrap();
 
     let wndclassex = WNDCLASSEX {
         cbSize:size_of::<WNDCLASSEX>() as u32,
         style: (CS_HREDRAW | CS_VREDRAW) as u32,
-        lpfnWndProc: Some(winproc),
+        lpfnWndProc: Some(WndProc),
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: hInstance,
-        hIcon: LoadIcon(hInstance, IDI_APPLICATION),
-        hCursor: LoadIcon(hInstance, IDC_ARROW),
+        hIcon: NULL, //LoadIcon(hInstance, IDI_APPLICATION),
+        hCursor: NULL, //LoadIcon(hInstance, IDC_ARROW),
         hbrBackground: GetStockObject(BLACK_BRUSH),
         lpszMenuName: NULL,//class.as_ptr() as LPCVOID,
         lpszClassName: class.as_ptr() as LPCVOID,
-        hIconSm: LoadIcon(hInstance, IDI_APPLICATION)
+        hIconSm: NULL,// LoadIcon(hInstance, IDI_APPLICATION)
     };
 
     let class_atom : ATOM = RegisterClassEx(&wndclassex);
+    println!("ERROR CODE: {:?}", GetLastError());
     println!("{:?}", wndclassex.style);
-    println!("{:?}", class_atom);
-    let title = CString::new("Lustrious Paint").unwrap();
+    println!("ATOM: {:?}", class_atom);
+    let title = CString::new("L-tile").unwrap();
     let wndstyle = WS_POPUP | 
                    WS_CLIPCHILDREN | 
                    WS_CLIPSIBLINGS | 
@@ -56,10 +60,10 @@ fn WinMain(hInstance : HINSTANCE,
                    WS_MINIMIZEBOX | 
                    WS_MAXIMIZEBOX;
 
-    CreateWindowEx(WS_EX_APPWINDOW,
+    let wnd:HWND = CreateWindowEx(WS_EX_APPWINDOW,
                    class.as_ptr() as LPCTSTR,
                    title.as_ptr() as LPCTSTR,
-                   wndstyle,
+                   WS_OVERLAPPEDWINDOW,
                    100,
                    100,
                    640,
@@ -68,16 +72,25 @@ fn WinMain(hInstance : HINSTANCE,
                    NULL,
                    hInstance,
                    NULL);
-
+    println!("ERROR CODE: {:?}", GetLastError());
+    println!("{:?}", wnd);
     let mut msg: MSG = MSG::default();
-    println!("{:?}", class_atom);
+    println!("cmdshow: {:?}", nCmdShow);
+    ShowWindow(wnd, SW_SHOW);
+
+    while (GetMessage(&mut msg, NULL, 0, 0) > 0) {
+      //println!("{:?}", "*");
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
     //GetMessage(&mut msg, NULL, 0, 0);
 }
 
 fn main() {
     let hInstance = GetModuleHandle(NULL);
     let lpCmdLine = GetCommandLine();
-    let nCmdShow = GetStartupInfo().wShowWindow;
+    let nCmdShow = GetStartupInfo().wShowWindow as c_int;
     WinMain(hInstance, lpCmdLine, nCmdShow);
     //println!("{:?}", hInstance);
     //println!("{:?}", unsafe{adder(2,2)});

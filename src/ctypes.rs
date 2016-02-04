@@ -3,13 +3,17 @@
 //! documentation for all choices of mappings.
 
 #![crate_type = "rlib"]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
 
 #[repr(u8)]
 pub enum c_void {
     // Two dummy variants so the #[repr] attribute can be used.
     #[doc(hidden)]
+    #[allow(non_snake_case)]
     __variant1,
     #[doc(hidden)]
+    #[allow(non_snake_case)]
     __variant2,
 }
 
@@ -31,7 +35,7 @@ pub type c_uint = u32;
 pub type c_float = f32;
 pub type c_double = f64;
 pub type c_longlong = i64;
-pub type c_long = i64;
+pub type c_long = i32;  // was i64. Wrong!
 pub type c_ulong = u64;
 pub type c_ulonglong = u64;
 pub type intmax_t = i64;

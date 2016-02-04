@@ -1,4 +1,6 @@
 
+#![allow(non_snake_case)]
+
 use ::types::*;
 use ::ctypes::*;
 
@@ -43,6 +45,18 @@ pub fn GetMessage(lpMsg: LPMSG, hWnd: HWND, wMsgFilterMin: UINT, wMsgFilterMax: 
 	}
 }
 
+pub fn TranslateMessage(lpMsg: *const MSG) -> BOOL {
+    unsafe {
+		::imports::TranslateMessage(lpMsg)
+	}
+}
+
+pub fn DispatchMessage(lpMsg: *const MSG) -> LRESULT {
+	unsafe {
+		::imports::DispatchMessageA(lpMsg)
+	}
+}
+
 pub fn GetModuleHandle(lpModuleName: LPCSTR) -> HMODULE {
 	unsafe {
 		::imports::GetModuleHandleA(lpModuleName)
@@ -60,6 +74,12 @@ pub fn GetStartupInfo() -> STARTUPINFO {
 pub fn GetCommandLine() -> LPTSTR {
 	unsafe {
 		::imports::GetCommandLineA()
+	}
+}
+
+pub fn GetLastError() -> DWORD {
+	unsafe {
+		::imports::GetLastError()
 	}
 }
 

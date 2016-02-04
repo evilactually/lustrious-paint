@@ -4,10 +4,10 @@ IN FLIGHT
 
 * Port windowing code that I had done in C++ over to Rust
 
-* Get rid of game overlay
-
 STAGED
 -------
+
+* Get rid of game overlay
 
 * Write a basic DirectX 11 application in Rust
 

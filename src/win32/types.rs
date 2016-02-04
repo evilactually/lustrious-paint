@@ -1,6 +1,27 @@
 
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
 use ctypes::*;
 use std::mem::{zeroed};
+
+// #[repr(u8)]
+// pub enum c_void_ {
+//     // Two dummy variants so the #[repr] attribute can be used.
+//     #[doc(hidden)]
+//     __variant1,
+//     #[doc(hidden)]
+//     __variant2,
+// }
+
+// macro_rules! DECLARE_HANDLE {
+//     ($name:ident, $inner:ident) => {
+//         #[repr(C)] #[allow(missing_copy_implementations)] struct $inner { unused: c_void_ }
+//         pub type $name = *mut $inner;
+//     };
+// }
+
+// DECLARE_HANDLE!(HMODULE2, HMODULE2__);
 
 pub type HINSTANCE = *mut c_void;
 pub type HANDLE =*mut c_void;
@@ -42,7 +63,7 @@ pub type WNDPROC = Option<unsafe  extern "system" fn(HWND, UINT, WPARAM, LPARAM)
 pub struct WNDCLASSEX {
     pub cbSize: UINT,
     pub style: UINT,
-	pub lpfnWndProc: WNDPROC,
+	  pub lpfnWndProc: WNDPROC,
     pub cbClsExtra: c_int,
     pub cbWndExtra: c_int,
     pub hInstance: HINSTANCE,
