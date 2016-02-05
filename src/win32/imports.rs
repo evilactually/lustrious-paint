@@ -11,6 +11,7 @@ extern "system" {
 extern "system" {
     pub fn RegisterClassExA(lpWndClass: *const WNDCLASSEX) -> ATOM;
     pub fn LoadIconA(hInstance: HINSTANCE, lpIconName: LPCSTR) -> HICON;
+    pub fn LoadCursorA(hInstance: HINSTANCE, lpCursorName: LPCSTR) -> HICON;
     pub fn CreateWindowExA(dwExStyle: DWORD,
                            lpClassName: LPCTSTR,
                            lpWindowName: LPCTSTR,
