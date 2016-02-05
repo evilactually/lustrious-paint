@@ -8,22 +8,14 @@ extern crate ctypes;
 
 use std::mem::{size_of};
 use win32::*;
-// use win32::consts::*;
-// use win32::types::*;
-// us*;
 use ctypes::*;
 use std::ffi::{CString};
 
 static GLOB: i32 = 100i32;
 
-unsafe extern "system" fn WndProc(wnd:HWND, a:UINT, b:WPARAM, c:LPARAM) -> LRESULT {
-    //println!("{:?}", "+");
-    DefWindowProcA(wnd, a, b, c)
+unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
+    DefWindowProcA(hWnd, uMsg, wParam, lpParam)
 }
-
-// extern "C" {
-//     pub fn adder(a:c_int,b:c_int) -> c_int;
-// }
 
 fn WinMain(hInstance : HINSTANCE,
            lpCmdLine : LPTSTR,
@@ -79,12 +71,9 @@ fn WinMain(hInstance : HINSTANCE,
     ShowWindow(wnd, SW_SHOW);
 
     while (GetMessage(&mut msg, NULL, 0, 0) > 0) {
-      //println!("{:?}", "*");
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-
-    //GetMessage(&mut msg, NULL, 0, 0);
 }
 
 fn main() {
@@ -92,20 +81,4 @@ fn main() {
     let lpCmdLine = GetCommandLine();
     let nCmdShow = GetStartupInfo().wShowWindow as c_int;
     WinMain(hInstance, lpCmdLine, nCmdShow);
-    //println!("{:?}", hInstance);
-    //println!("{:?}", unsafe{adder(2,2)});
 }
-
- 
-
- //    let class_atom : ATOM = unsafe {RegisterClassExA(&wndclassex)};
- //    println!("hello world {:?}", unsafe {GetModuleHandleA((0 as LPCSTR))});
-
- //    let mut startupinf: STARTUPINFO = STARTUPINFO::default();
- //    unsafe{GetStartupInfoA(&mut startupinf)};
- //    //println!("{:?}", startupinf);
- //    let cmdln = unsafe{::std::ffi::CStr::from_ptr(GetCommandLineA())};
- //    println!("{:?}", cmdln);
- //    //let title = unsafe{::std::ffi::CStr::from_ptr(startupinf.lpTitle)};
- //    //println!("{:?}", title);
- //    //WinMain(0 as HINSTANCE, "...", 0);
