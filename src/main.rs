@@ -11,8 +11,6 @@ use win32::*;
 use ctypes::*;
 use std::ffi::{CString};
 
-static GLOB: i32 = 100i32;
-
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
     DefWindowProcA(hWnd, uMsg, wParam, lpParam)
 }

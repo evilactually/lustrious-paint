@@ -1,0 +1,4 @@
+
+#define ICO_LUSTRIOUS_PAINT 1
+
+ICO_LUSTRIOUS_PAINT ICON "icon.ico"
