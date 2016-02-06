@@ -28,6 +28,7 @@ extern "system" {
     pub fn GetMessageA(lpMsg: LPMSG, hWnd: HWND, wMsgFilterMin: UINT, wMsgFilterMax: UINT) -> BOOL;
     pub fn TranslateMessage(lpMsg: *const MSG) -> BOOL;
     pub fn DispatchMessageA(lpMsg: *const MSG) -> LRESULT;
+    pub fn GetWindowRect(hWnd: HWND, rect: *mut RECT);
 }
 
 #[link(name = "kernel32")]

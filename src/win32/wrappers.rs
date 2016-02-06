@@ -63,6 +63,14 @@ pub fn DispatchMessage(lpMsg: *const MSG) -> LRESULT {
     }
 }
 
+pub fn GetWindowRect(hWnd: HWND) -> RECT {
+    unsafe {
+        let mut rect: RECT = RECT::default();
+        ::imports::GetWindowRect(hWnd, &mut rect);
+        rect
+    }
+}
+
 pub fn GetModuleHandle(lpModuleName: LPCSTR) -> HMODULE {
     unsafe {
         ::imports::GetModuleHandleA(lpModuleName)

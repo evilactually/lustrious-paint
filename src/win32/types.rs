@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 
 use ctypes::*;
-use std::mem::{zeroed};
+//use std::mem::{zeroed};
 
 // #[repr(u8)]
 // pub enum c_void_ {
@@ -78,6 +78,7 @@ pub struct WNDCLASSEX {
 impl Clone for WNDCLASSEX { fn clone(&self) -> WNDCLASSEX { *self } }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct STARTUPINFO {
 	pub cd: DWORD,
 	pub lpReserved: LPTSTR,
@@ -107,6 +108,7 @@ impl Default for STARTUPINFO {
 
 pub type LPSTARTUPINFO = *mut STARTUPINFO;
 
+#[repr(C)]
 pub struct MSG {
 	pub hwnd: HWND,
     pub message: UINT,
@@ -125,15 +127,23 @@ impl Default for MSG {
 
 pub type LPMSG = *mut MSG;
 
+#[repr(C)] 
 pub struct POINT {
 	pub x: LONG,
 	pub y: LONG
 }
 
+#[repr(C)] 
 pub struct RECT
 {
 	pub left: LONG,
     pub top: LONG,
     pub right: LONG,
     pub bottom: LONG
+}
+
+impl Default for RECT {
+  fn default () -> RECT {
+      unsafe {::std::mem::zeroed::<RECT>()}
+  }
 }

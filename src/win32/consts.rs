@@ -1,4 +1,6 @@
 
+#![allow(overflowing_literals)] 
+
 use types::*;
 use ctypes::*;
 
@@ -32,4 +34,24 @@ pub const SW_MINIMIZE: c_int = 6;
 pub const SW_RESTORE: c_int = 6;
 pub const SW_SHOW: c_int = 5;
 
+pub const WM_NCHITTEST: c_uint = 0x0084;
 
+pub const HTNOWHERE: c_int =      0;
+pub const HTCLIENT: c_int =       1;
+pub const HTCAPTION: c_int =      2;
+// pub const HTSYSMENU               3;
+// pub const HTGROWBOX               4;
+// pub const HTMENU                  5;
+// pub const HTHSCROLL               6;
+// pub const HTVSCROLL               7;
+// pub const HTMINBUTTON             8;
+// pub const HTMAXBUTTON             9;
+pub const HTLEFT: c_int =         10;
+pub const HTRIGHT: c_int =        11;
+pub const HTTOP: c_int =          12;
+pub const HTTOPLEFT: c_int =      13;
+pub const HTTOPRIGHT: c_int =     14;
+pub const HTBOTTOM: c_int =       15;
+pub const HTBOTTOMLEFT: c_int =   16;
+pub const HTBOTTOMRIGHT: c_int =  17;
+//pub const HTBORDER            18

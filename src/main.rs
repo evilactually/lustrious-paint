@@ -11,8 +11,62 @@ use win32::*;
 use ctypes::*;
 use std::ffi::{CString};
 
+pub const BORDER_WIDTH: DWORD = 15;
+
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
-    DefWindowProcA(hWnd, uMsg, wParam, lpParam)
+    match uMsg {
+        WM_NCHITTEST => {
+            let wnd_rect = GetWindowRect(hWnd);
+            let x = get_x_lparam(lpParam);
+            let y = get_y_lparam(lpParam);
+            //bottom left corner
+            if x >= wnd_rect.left && x < wnd_rect.left + BORDER_WIDTH &&
+               y < wnd_rect.bottom && y >= wnd_rect.bottom - BORDER_WIDTH
+            {
+                return HTBOTTOMLEFT;
+            }
+            //bottom right corner
+            if x < wnd_rect.right && x >= wnd_rect.right - BORDER_WIDTH &&
+               y < wnd_rect.bottom && y >= wnd_rect.bottom - BORDER_WIDTH
+            {
+                return HTBOTTOMRIGHT;
+            }
+            //top left corner
+            if x >= wnd_rect.left && x < wnd_rect.left + BORDER_WIDTH &&
+               y >= wnd_rect.top && y < wnd_rect.top + BORDER_WIDTH
+            {
+                return HTTOPLEFT;
+            }
+            //top right corner
+            if x < wnd_rect.right && x >= wnd_rect.right - BORDER_WIDTH &&
+               y >= wnd_rect.top && y < wnd_rect.top + BORDER_WIDTH
+            {
+                return HTTOPRIGHT;
+            }
+            //left border
+            if x >= wnd_rect.left && x < wnd_rect.left + BORDER_WIDTH
+            {
+                return HTLEFT;
+            }
+            //right border
+            if x < wnd_rect.right && x >= wnd_rect.right - BORDER_WIDTH
+            {
+                return HTRIGHT;
+            }
+            //bottom border
+            if y < wnd_rect.bottom && y >= wnd_rect.bottom - BORDER_WIDTH
+            {
+                return HTBOTTOM;
+            }
+            //top border
+            if y >= wnd_rect.top && y < wnd_rect.top + BORDER_WIDTH
+            {
+                return HTTOP;
+            }
+            HTCLIENT
+          },
+        _ => DefWindowProcA(hWnd, uMsg, wParam, lpParam),
+    }
 }
 
 fn WinMain(hInstance : HINSTANCE,
@@ -29,7 +83,7 @@ fn WinMain(hInstance : HINSTANCE,
         cbWndExtra: 0,
         hInstance: hInstance,
         hIcon: LoadIcon(hInstance, app_ico.as_ptr() as LPCVOID),
-        hCursor: LoadCursor(hInstance, 32513 as LPVOID),
+        hCursor: LoadCursor(hInstance, 32512 as LPVOID),
         hbrBackground: GetStockObject(BLACK_BRUSH),
         lpszMenuName: NULL,
         lpszClassName: class.as_ptr() as LPCTSTR,
@@ -40,20 +94,20 @@ fn WinMain(hInstance : HINSTANCE,
     assert!(class_atom > 0);
 
     let title = CString::new("Lustrious Paint").unwrap();
-    let wndstyle = WS_POPUP | 
-                   WS_CLIPCHILDREN | 
-                   WS_CLIPSIBLINGS | 
-                   WS_SYSMENU | 
-                   WS_THICKFRAME | 
-                   WS_GROUP | /*WS_TABSTOP |*/ 
-                   WS_BORDER | 
-                   WS_MINIMIZEBOX | 
-                   WS_MAXIMIZEBOX;
+    let wnd_style = WS_POPUP | 
+                    WS_CLIPCHILDREN | 
+                    WS_CLIPSIBLINGS | 
+                    WS_SYSMENU | 
+                    WS_THICKFRAME | 
+                    WS_GROUP | /*WS_TABSTOP |*/ 
+                    WS_BORDER | 
+                    WS_MINIMIZEBOX | 
+                    WS_MAXIMIZEBOX;
 
     let wnd:HWND = CreateWindowEx(WS_EX_APPWINDOW,
                    class_atom as LPCVOID,
                    title.as_ptr() as LPCTSTR,
-                   WS_OVERLAPPEDWINDOW,
+                   wnd_style,
                    100,
                    100,
                    640,
