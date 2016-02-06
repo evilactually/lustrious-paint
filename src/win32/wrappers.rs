@@ -71,6 +71,12 @@ pub fn GetWindowRect(hWnd: HWND) -> RECT {
     }
 }
 
+pub fn PostQuitMessage(nExitCode: c_int) {
+    unsafe {
+        ::imports::PostQuitMessage(nExitCode)
+    }
+}
+
 pub fn GetModuleHandle(lpModuleName: LPCSTR) -> HMODULE {
     unsafe {
         ::imports::GetModuleHandleA(lpModuleName)

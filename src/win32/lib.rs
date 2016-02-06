@@ -1,3 +1,4 @@
+// BUG: using constants for masks like 0x0000ffff is not portable to 64-bit architectures
 
 #![crate_name = "win32"]
 #![crate_type = "rlib"]

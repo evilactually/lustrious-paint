@@ -1,3 +1,6 @@
+// BUG: nCmdShow == 0 when starting from terminal
+// BUG: Windows spawns a game overlay over my window for unknown reason
+
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(unused_variables)]
@@ -11,14 +14,17 @@ use win32::*;
 use ctypes::*;
 use std::ffi::{CString};
 
-pub const BORDER_WIDTH: DWORD = 15;
+pub const BORDER_WIDTH: DWORD = 8;
+pub const CAPTION_HEGHT: DWORD = 40;
 
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
     match uMsg {
+        // caption and border
         WM_NCHITTEST => {
             let wnd_rect = GetWindowRect(hWnd);
             let x = get_x_lparam(lpParam);
             let y = get_y_lparam(lpParam);
+
             //bottom left corner
             if x >= wnd_rect.left && x < wnd_rect.left + BORDER_WIDTH &&
                y < wnd_rect.bottom && y >= wnd_rect.bottom - BORDER_WIDTH
@@ -63,8 +69,25 @@ unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpPara
             {
                 return HTTOP;
             }
+            //caption
+            if y >= wnd_rect.top && y < wnd_rect.top + CAPTION_HEGHT
+            {
+                return HTCAPTION;
+            }
+
             HTCLIENT
-          },
+        },
+        // overdraw
+        WM_NCCALCSIZE => {
+            if wParam > 0 {
+                return 0;
+            }
+            DefWindowProcA(hWnd, uMsg, wParam, lpParam)
+        },
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            0
+        },
         _ => DefWindowProcA(hWnd, uMsg, wParam, lpParam),
     }
 }
@@ -82,8 +105,8 @@ fn WinMain(hInstance : HINSTANCE,
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: hInstance,
-        hIcon: LoadIcon(hInstance, app_ico.as_ptr() as LPCVOID),
-        hCursor: LoadCursor(hInstance, 32512 as LPVOID),
+        hIcon: LoadIcon(hInstance, app_ico.as_ptr() as LPCSTR),
+        hCursor: LoadCursor(NULL, IDC_CROSS), // Use NULL for built-in icons
         hbrBackground: GetStockObject(BLACK_BRUSH),
         lpszMenuName: NULL,
         lpszClassName: class.as_ptr() as LPCTSTR,

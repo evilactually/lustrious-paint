@@ -2,10 +2,6 @@
 use types::*;
 use ctypes::*;
 
-extern "system" {
-    pub fn DefWindowProcA(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT;
-}
-
 #[link(name = "user32")]
 #[allow(non_snake_case)]
 extern "system" {
@@ -29,6 +25,8 @@ extern "system" {
     pub fn TranslateMessage(lpMsg: *const MSG) -> BOOL;
     pub fn DispatchMessageA(lpMsg: *const MSG) -> LRESULT;
     pub fn GetWindowRect(hWnd: HWND, rect: *mut RECT);
+    pub fn DefWindowProcA(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT;
+    pub fn PostQuitMessage(nExitCode: c_int);
 }
 
 #[link(name = "kernel32")]
