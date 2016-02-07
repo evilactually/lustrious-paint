@@ -7,6 +7,7 @@
 #![allow(dead_code)]
 
 extern crate win32;
+extern crate dx11;
 extern crate ctypes;
 
 use std::mem::{size_of};
@@ -154,5 +155,9 @@ fn main() {
     let hInstance = GetModuleHandle(NULL);
     let lpCmdLine = GetCommandLine();
     let nCmdShow = GetStartupInfo().wShowWindow as c_int;
+
+    let d = unsafe {dx11::GetDevice()};
+    println!("{:?}", unsafe {((*d).square)(2)});
+
     WinMain(hInstance, lpCmdLine, nCmdShow);
 }
