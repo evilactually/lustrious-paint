@@ -174,3 +174,16 @@ pub enum DXGI_SWAP_EFFECT
     DXGI_SWAP_EFFECT_SEQUENTIAL      = 1,
     DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL = 3
 }
+
+pub const DXGI_CPU_ACCESS_NONE: u32            = 0;
+pub const DXGI_CPU_ACCESS_DYNAMIC: u32         = 1;
+pub const DXGI_CPU_ACCESS_READ_WRITE: u32      = 2;
+pub const DXGI_CPU_ACCESS_SCRATCH: u32         = 3;
+pub const DXGI_CPU_ACCESS_FIELD: u32           = 15;
+pub const DXGI_USAGE_SHADER_INPUT: u32         = 1u32 << (0 + 4); 
+pub const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 1u32 << (1 + 4); 
+pub const DXGI_USAGE_BACK_BUFFER: u32          = 1u32 << (2 + 4);
+pub const DXGI_USAGE_SHARED: u32               = 1u32 << (3 + 4);
+pub const DXGI_USAGE_READ_ONLY: u32            = 1u32 << (4 + 4);
+pub const DXGI_USAGE_DISCARD_ON_PRESENT: u32   = 1u32 << (5 + 4);
+pub const DXGI_USAGE_UNORDERED_ACCESS: u32     = 1u32 << (6 + 4);
