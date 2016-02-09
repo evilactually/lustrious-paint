@@ -2,6 +2,7 @@
 #![crate_type = "rlib"]
 
 extern crate win32;
+extern crate ctypes;
 
 mod types;
 mod imports;

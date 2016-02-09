@@ -19,10 +19,10 @@ $(BIN_DIR)/LustriousPaint.exe: $(SRC_DIR)/main.rs \
 $(LIB_DIR)/libctypes.rlib: $(SRC_DIR)/ctypes.rs | $(LIB_DIR)
 	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
 
-$(LIB_DIR)/libwin32.rlib: $(SRC_DIR)/win32/lib.rs $(SRC_DIR)/win32/*.rs | $(LIB_DIR)
+$(LIB_DIR)/libwin32.rlib: $(SRC_DIR)/win32/lib.rs $(SRC_DIR)/win32/*.rs $(LIB_DIR)/libctypes.rlib | $(LIB_DIR)
 	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
 
-$(LIB_DIR)/libdx11.rlib: $(SRC_DIR)/dx11/lib.rs $(SRC_DIR)/dx11/*.rs $(LIB_DIR)/libwin32.rlib | $(LIB_DIR)
+$(LIB_DIR)/libdx11.rlib: $(SRC_DIR)/dx11/lib.rs $(SRC_DIR)/dx11/*.rs $(LIB_DIR)/libwin32.rlib $(LIB_DIR)/libctypes.rlib | $(LIB_DIR)
 	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
 
 $(RES_DIR)/icon.res: $(RESOURCES_DIR)/icon.rc $(RESOURCES_DIR)/icon.ico | $(RES_DIR)
