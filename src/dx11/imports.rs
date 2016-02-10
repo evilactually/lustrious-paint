@@ -8,16 +8,16 @@ use ::win32::{HRESULT, HMODULE, UINT};
 
 #[allow(non_snake_case)]
 extern "system" {
-	pub fn GetDevice() -> *const ID3D11DeviceVtbl;
-	pub fn D3D11CreateDeviceAndSwapChain(pAdapter: *const IDXGIAdapter, 
-		                                 DriverType: D3D_DRIVER_TYPE,
-		                                 Software: HMODULE,
-		                                 Flags: UINT,
-		                                 pFeatureLevels: *const D3D_FEATURE_LEVEL,
-		                                 FeatureLevels: UINT,
-		                                 SDKVersion: UINT,
-		                                 pSwapChainDesc: *const DXGI_SWAP_CHAIN_DESC,
-		                                 ppDevice: *mut *const ID3D11Device,
-		                                 pFeatureLevel: *mut *const D3D_FEATURE_LEVEL,
-		                                 ppImmediateContext: *mut *const ID3D11DeviceContext) -> HRESULT;
+    pub fn GetDevice() -> *const ID3D11DeviceVtbl;
+    pub fn D3D11CreateDeviceAndSwapChain(pAdapter: *const IDXGIAdapter, 
+                                         DriverType: D3D_DRIVER_TYPE,
+                                         Software: HMODULE,
+                                         Flags: UINT,
+                                         pFeatureLevels: *const D3D_FEATURE_LEVEL,
+                                         FeatureLevels: UINT,
+                                         SDKVersion: UINT,
+                                         pSwapChainDesc: *const DXGI_SWAP_CHAIN_DESC,
+                                         ppDevice: *mut *const ID3D11Device,
+                                         pFeatureLevel: *mut *const D3D_FEATURE_LEVEL,
+                                         ppImmediateContext: *mut *const ID3D11DeviceContext) -> HRESULT;
 }

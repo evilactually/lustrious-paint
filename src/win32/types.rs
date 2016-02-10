@@ -23,8 +23,8 @@ use ctypes::*;
 
 // DECLARE_HANDLE!(HMODULE2, HMODULE2__);
 
-pub type HINSTANCE = *mut c_void;
-pub type HANDLE =*mut c_void;
+pub type HINSTANCE = *mut c_void;        // ISSUE: Do I really need handles to be pointers? Would proper number type do?
+pub type HANDLE =*mut c_void;            // Pointer is something that can be dereferenced. You never dereference a handle!
 pub type HMODULE = *mut c_void;
 pub type HGDIOBJ = *mut c_void;
 pub type HICON = *mut c_void;

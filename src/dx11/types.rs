@@ -23,7 +23,7 @@ pub struct IDXGIObjectVtbl {
 
 #[repr(C)]
 pub struct IDXGIAdapter {
-    lpVtbl: *const IDXGIObjectVtbl
+    pub lpVtbl: *const IDXGIObjectVtbl
 }
 
 #[repr(C)]
@@ -33,46 +33,46 @@ pub struct ID3D11DeviceContextVtbl {
 
 #[repr(C)]
 pub struct ID3D11DeviceContext {
-    lpVtbl: *const ID3D11DeviceContextVtbl
+    pub lpVtbl: *const ID3D11DeviceContextVtbl
 }
 
 #[repr(C)]
 pub struct DXGI_RATIONAL
 {
-    Numerator: UINT,
-    Denominator: UINT
+    pub Numerator: UINT,
+    pub Denominator: UINT
 }
 
 #[repr(C)]
 pub struct DXGI_MODE_DESC
 {
-    Width: UINT,
-    Height: UINT,
-    RefreshRate: DXGI_RATIONAL,
-    Format: DXGI_FORMAT,
-    ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER,
-    Scaling: DXGI_MODE_SCALING
+    pub Width: UINT,
+    pub Height: UINT,
+    pub RefreshRate: DXGI_RATIONAL,
+    pub Format: DXGI_FORMAT,
+    pub ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER,
+    pub Scaling: DXGI_MODE_SCALING
 }
 
 #[repr(C)]
 pub struct DXGI_SAMPLE_DESC
 {
-    Count: UINT,
-    Quality: UINT
+    pub Count: UINT,
+    pub Quality: UINT
 }
 
 pub type DXGI_USAGE = UINT;
 
 #[repr(C)]
 pub struct DXGI_SWAP_CHAIN_DESC {
-    BufferDesc: DXGI_MODE_DESC,
-    SampleDesc: DXGI_SAMPLE_DESC,
-    BufferUsage: DXGI_USAGE,
-    BufferCount: UINT,
-    OutputWindow: HWND,
-    Windowed: BOOL,
-    SwapEffect: DXGI_SWAP_EFFECT,
-    Flags: UINT
+    pub BufferDesc: DXGI_MODE_DESC,
+    pub SampleDesc: DXGI_SAMPLE_DESC,
+    pub BufferUsage: DXGI_USAGE,
+    pub BufferCount: UINT,
+    pub OutputWindow: HWND,
+    pub Windowed: BOOL,
+    pub SwapEffect: DXGI_SWAP_EFFECT,
+    pub Flags: UINT
 }
 
 

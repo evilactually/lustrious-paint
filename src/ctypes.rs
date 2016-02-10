@@ -47,4 +47,12 @@ pub type intptr_t = isize;
 pub type uintptr_t = usize;
 pub type ssize_t = isize;
 
-pub const NULL: *mut c_void = 0 as *mut c_void;
+#[macro_export]
+macro_rules! NULL {
+    () => {std::ptr::null_mut()}
+}
+
+#[macro_export]
+macro_rules! CNULL {
+    () => {std::ptr::null()}
+}

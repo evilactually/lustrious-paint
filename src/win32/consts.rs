@@ -131,3 +131,6 @@ pub const HTBOTTOM: c_int =       15;
 pub const HTBOTTOMLEFT: c_int =   16;
 pub const HTBOTTOMRIGHT: c_int =  17;
 //pub const HTBORDER            18
+
+pub const TRUE: BOOL  = 1;
+pub const FALSE: BOOL = 0;

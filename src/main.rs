@@ -8,15 +8,19 @@
 
 extern crate win32;
 extern crate dx11;
+#[macro_use]
 extern crate ctypes;
 
 use std::mem::{size_of};
 use win32::*;
 use ctypes::*;
 use std::ffi::{CString};
+use dx11::*;
 
 pub const BORDER_WIDTH: DWORD = 8;
 pub const CAPTION_HEGHT: DWORD = 40;
+pub const WINDOW_WIDTH: c_int = 640;
+pub const WINDOW_HEIGHT: c_int = 480;
 
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
     match uMsg {
@@ -93,9 +97,12 @@ unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpPara
     }
 }
 
+
+
 fn WinMain(hInstance : HINSTANCE,
            lpCmdLine : LPTSTR,
            nCmdShow : c_int) {
+
     let class = CString::new("WindowClass").unwrap();
     let app_ico = CString::new("LUSTRIOUS_PAINT").unwrap();
 
@@ -107,9 +114,9 @@ fn WinMain(hInstance : HINSTANCE,
         cbWndExtra: 0,
         hInstance: hInstance,
         hIcon: LoadIcon(hInstance, app_ico.as_ptr() as LPCSTR),
-        hCursor: LoadCursor(NULL, IDC_CROSS), // Use NULL for built-in icons
+        hCursor: LoadCursor(NULL!(), IDC_CROSS), // Use NULL for built-in icons
         hbrBackground: GetStockObject(BLACK_BRUSH),
-        lpszMenuName: NULL,
+        lpszMenuName: CNULL!(),
         lpszClassName: class.as_ptr() as LPCTSTR,
         hIconSm: LoadIcon(hInstance, app_ico.as_ptr() as LPCVOID)
     };
@@ -134,25 +141,72 @@ fn WinMain(hInstance : HINSTANCE,
                    wnd_style,
                    100,
                    100,
-                   640,
-                   480,
-                   NULL,
-                   NULL,
+                   WINDOW_WIDTH,
+                   WINDOW_HEIGHT,
+                   NULL!(),
+                   NULL!(),
                    hInstance,
-                   NULL);
+                   NULL!());
 
-    assert!(wnd != NULL);
+    assert!(!wnd.is_null());
     ShowWindow(wnd, if nCmdShow > 0 {nCmdShow} else {SW_SHOW});
-    let mut msg: MSG = MSG::default();
 
-    while GetMessage(&mut msg, NULL, 0, 0) > 0 {
+    let pFeatureLevels: [D3D_FEATURE_LEVEL; 2] = [D3D_FEATURE_LEVEL::DX_11_0, D3D_FEATURE_LEVEL::DX_11_1];
+    //let p: *const D3D_FEATURE_LEVEL = &pFeatureLevels as *const D3D_FEATURE_LEVEL;
+    
+    let swap_chain_desc = DXGI_SWAP_CHAIN_DESC {
+        BufferDesc: DXGI_MODE_DESC
+        {
+            Width: WINDOW_WIDTH as UINT,
+            Height: WINDOW_HEIGHT as UINT,
+            RefreshRate: DXGI_RATIONAL {
+                Numerator: 0,
+                Denominator: 0,
+            },
+            Format: DXGI_FORMAT::UNKNOWN, // FIXME: Don't know format yet
+            ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER::UNSPECIFIED,
+            Scaling: DXGI_MODE_SCALING::STRETCHED
+        },
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0 
+        },
+        BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+        BufferCount: 2,
+        OutputWindow: wnd,
+        Windowed: TRUE,
+        SwapEffect: DXGI_SWAP_EFFECT::DISCARD,
+        Flags: 0
+    };
+
+   let pDevice: *const ID3D11Device = std::ptr::null();
+
+   // let hresult = D3D11CreateDeviceAndSwapChain(NULL, 
+   //                                             D3D_DRIVER_TYPE_HARDWARE,
+   //                                             NULL,
+   //                                             0,
+   //                                             &pFeatureLevels as *const D3D_FEATURE_LEVEL,
+   //                                             pFeatureLevels.len(),
+   //                                             D3D11_SDK_VERSION,
+   //                                             pSwapChainDesc: *const DXGI_SWAP_CHAIN_DESC,
+   //                                             ppDevice: *mut *const ID3D11Device,
+   //                                             pFeatureLevel: *mut *const D3D_FEATURE_LEVEL,
+   //                                             ppImmediateContext: *mut *const ID3D11DeviceContext)
+
+    let mut msg: MSG = MSG::default();
+    while GetMessage(&mut msg, NULL!(), 0, 0) > 0 {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
 }
 
+macro_rules! three {
+    () => { 3 }
+}
+
+
 fn main() {
-    let hInstance = GetModuleHandle(NULL);
+    let hInstance = GetModuleHandle(NULL!());
     let lpCmdLine = GetCommandLine();
     let nCmdShow = GetStartupInfo().wShowWindow as c_int;
 
