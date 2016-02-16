@@ -75,6 +75,10 @@ pub struct DXGI_SWAP_CHAIN_DESC {
     pub Flags: UINT
 }
 
+#[repr(C)]
+pub struct IDXGISwapChain {
+    pub _unused: UINT
+}
 
 
 /*

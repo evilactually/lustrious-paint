@@ -179,19 +179,25 @@ fn WinMain(hInstance : HINSTANCE,
         Flags: 0
     };
 
-   let pDevice: *const ID3D11Device = std::ptr::null();
+   let mut pDevice: *const ID3D11Device = std::ptr::null();
+   let mut feature_level: *const D3D_FEATURE_LEVEL = std::ptr::null();
+   let mut pImmediateContext: *const ID3D11DeviceContext = std::ptr::null();
+   let mut p_swap_chain: *const IDXGISwapChain = std::ptr::null();
 
-   // let hresult = D3D11CreateDeviceAndSwapChain(NULL, 
-   //                                             D3D_DRIVER_TYPE_HARDWARE,
-   //                                             NULL,
-   //                                             0,
-   //                                             &pFeatureLevels as *const D3D_FEATURE_LEVEL,
-   //                                             pFeatureLevels.len(),
-   //                                             D3D11_SDK_VERSION,
-   //                                             pSwapChainDesc: *const DXGI_SWAP_CHAIN_DESC,
-   //                                             ppDevice: *mut *const ID3D11Device,
-   //                                             pFeatureLevel: *mut *const D3D_FEATURE_LEVEL,
-   //                                             ppImmediateContext: *mut *const ID3D11DeviceContext)
+   unsafe {
+   let hresult = D3D11CreateDeviceAndSwapChain(NULL!(), 
+                                               D3D_DRIVER_TYPE::HARDWARE,
+                                               NULL!(),
+                                               0,
+                                               &pFeatureLevels as *const D3D_FEATURE_LEVEL,
+                                               pFeatureLevels.len() as u32,
+                                               D3D11_SDK_VERSION,
+                                               &swap_chain_desc as *const DXGI_SWAP_CHAIN_DESC,
+                                               &mut p_swap_chain as *mut *const IDXGISwapChain,
+                                               &mut pDevice as *mut *const ID3D11Device,
+                                               &mut feature_level as *mut *const D3D_FEATURE_LEVEL,
+                                               &mut pImmediateContext as *mut *const ID3D11DeviceContext);
+    };
 
     let mut msg: MSG = MSG::default();
     while GetMessage(&mut msg, NULL!(), 0, 0) > 0 {

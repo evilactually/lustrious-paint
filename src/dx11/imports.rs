@@ -7,6 +7,7 @@ use ::consts::*;
 use ::win32::{HRESULT, HMODULE, UINT};
 
 #[allow(non_snake_case)]
+#[link(name = "D3D11")]
 extern "system" {
     pub fn GetDevice() -> *const ID3D11DeviceVtbl;
     pub fn D3D11CreateDeviceAndSwapChain(pAdapter: *const IDXGIAdapter, 
@@ -17,6 +18,7 @@ extern "system" {
                                          FeatureLevels: UINT,
                                          SDKVersion: UINT,
                                          pSwapChainDesc: *const DXGI_SWAP_CHAIN_DESC,
+                                         ppSwapChain: *mut *const IDXGISwapChain,
                                          ppDevice: *mut *const ID3D11Device,
                                          pFeatureLevel: *mut *const D3D_FEATURE_LEVEL,
                                          ppImmediateContext: *mut *const ID3D11DeviceContext) -> HRESULT;

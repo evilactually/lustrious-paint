@@ -25,7 +25,13 @@ pub enum D3D_FEATURE_LEVEL {
     DX_11_1  = 0xb100
 }
 
-pub const D3D11_SDK_VERSION: c_int = 7;
+impl Default for D3D_FEATURE_LEVEL {
+  fn default () -> D3D_FEATURE_LEVEL {
+        unsafe {::std::mem::zeroed::<D3D_FEATURE_LEVEL>()}
+  }
+}
+
+pub const D3D11_SDK_VERSION: c_uint = 7;
 
 #[repr(C)]
 pub enum DXGI_FORMAT
