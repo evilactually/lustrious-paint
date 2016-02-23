@@ -185,7 +185,7 @@ fn WinMain(hInstance : HINSTANCE,
    let mut p_swap_chain: *const IDXGISwapChain = std::ptr::null();
 
    unsafe {
-   let hresult = D3D11CreateDeviceAndSwapChain(NULL!(), 
+   let hresult = D3D11CreateDeviceAndSwapChain(NULL!(),
                                                D3D_DRIVER_TYPE::HARDWARE,
                                                NULL!(),
                                                0,
@@ -197,7 +197,10 @@ fn WinMain(hInstance : HINSTANCE,
                                                &mut pDevice as *mut *const ID3D11Device,
                                                &mut feature_level as *mut *const D3D_FEATURE_LEVEL,
                                                &mut pImmediateContext as *mut *const ID3D11DeviceContext);
+    println!("{:x}", hresult);
     };
+
+
 
     let mut msg: MSG = MSG::default();
     while GetMessage(&mut msg, NULL!(), 0, 0) > 0 {
