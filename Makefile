@@ -12,7 +12,7 @@ $(BIN_DIR)/LustriousPaint.exe: $(SRC_DIR)/main.rs \
 	                           $(RES_DIR)/icon.res \
 	                           $(RES_DIR)/version.res \
 	                           | $(BIN_DIR)
-	rustc $< -L $(LIB_DIR) -C link_args="-Wl,--subsystem,windows build/res/icon.res build/res/version.res libtest.o" -L ./ -o $@
+	rustc $< -L $(LIB_DIR) -C link_args="-Wl,--subsystem,windows build/res/icon.res build/res/version.res " -L ./ -o $@
 
 # -lD3D11.lib
 

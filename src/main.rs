@@ -219,8 +219,8 @@ fn main() {
     let lpCmdLine = GetCommandLine();
     let nCmdShow = GetStartupInfo().wShowWindow as c_int;
 
-    let d = unsafe {dx11::GetDevice()};
-    println!("{:?}", unsafe {((*d).square)(2)});
+    //let d = unsafe {dx11::GetDevice()};
+    //println!("{:?}", unsafe {((*d).square)(2)});
 
     WinMain(hInstance, lpCmdLine, nCmdShow);
 }
