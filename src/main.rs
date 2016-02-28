@@ -22,6 +22,15 @@ pub const CAPTION_HEGHT: DWORD = 40;
 pub const WINDOW_WIDTH: c_int = 640;
 pub const WINDOW_HEIGHT: c_int = 480;
 
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn scalarprod(Point { x: x1, y: y1 }: Point) -> i32 {
+    x1 + y1
+}
+
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
     match uMsg {
         // caption and border
@@ -221,6 +230,8 @@ fn main() {
 
     //let d = unsafe {dx11::GetDevice()};
     //println!("{:?}", unsafe {((*d).square)(2)});
+    
+    scalarprod(Point{x:10, y:1});
 
     WinMain(hInstance, lpCmdLine, nCmdShow);
 }
