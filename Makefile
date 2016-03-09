@@ -5,14 +5,18 @@ RES_DIR=./build/res
 RESOURCES_DIR=./resources
 SRC_DIR=./src
 
-$(BIN_DIR)/LustriousPaint.exe: $(SRC_DIR)/main.rs \
-	                           $(LIB_DIR)/libctypes.rlib \
-	                           $(LIB_DIR)/libwin32.rlib \
-	                           $(LIB_DIR)/libdx11.rlib \
-	                           $(RES_DIR)/icon.res \
-	                           $(RES_DIR)/version.res \
-	                           | $(BIN_DIR)
-	rustc $< -L $(LIB_DIR) -C link_args="-Wl,--subsystem,windows build/res/icon.res build/res/version.res " -L ./ -o $@
+$(BIN_DIR)/LustriousPaint.exe: $(SRC_DIR)/main.c | $(BIN_DIR)
+	gcc $< -std=c99 -o $@
+
+# $(BIN_DIR)/LustriousPaint.exe: $(SRC_DIR)/main.rs \
+# 	                           $(LIB_DIR)/libctypes.rlib \
+# 	                           $(LIB_DIR)/libwin32.rlib \
+# 	                           $(LIB_DIR)/libdx11.rlib \
+# 	                           $(RES_DIR)/icon.res \
+# 	                           $(RES_DIR)/version.res \
+# 	                           $(LIB_DIR)/libvk.rlib \
+# 	                           | $(BIN_DIR)
+# 	rustc $< -L $(LIB_DIR) -C link_args="-Wl,--subsystem,windows build/res/icon.res build/res/version.res -L $(VK_LIB)" -L ./ -o $@
 
 # -lD3D11.lib
 
@@ -20,6 +24,9 @@ $(LIB_DIR)/libctypes.rlib: $(SRC_DIR)/ctypes.rs | $(LIB_DIR)
 	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
 
 $(LIB_DIR)/libwin32.rlib: $(SRC_DIR)/win32.rs $(LIB_DIR)/libctypes.rlib | $(LIB_DIR)
+	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
+
+$(LIB_DIR)/libvk.rlib: $(SRC_DIR)/vk.rs $(LIB_DIR)/libwin32.rlib $(LIB_DIR)/libctypes.rlib | $(LIB_DIR)
 	rustc $< -L $(LIB_DIR) --out-dir=$(LIB_DIR)
 
 $(LIB_DIR)/libdx11.rlib: $(SRC_DIR)/dx11/lib.rs $(SRC_DIR)/dx11/*.rs $(LIB_DIR)/libwin32.rlib $(LIB_DIR)/libctypes.rlib | $(LIB_DIR)
