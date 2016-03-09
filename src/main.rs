@@ -7,29 +7,20 @@
 #![allow(dead_code)]
 
 extern crate win32;
-extern crate dx11;
 #[macro_use]
 extern crate ctypes;
+extern crate vk;
 
 use std::mem::{size_of};
 use win32::*;
 use ctypes::*;
+use vk::*;
 use std::ffi::{CString};
-use dx11::*;
 
 pub const BORDER_WIDTH: DWORD = 8;
 pub const CAPTION_HEGHT: DWORD = 40;
 pub const WINDOW_WIDTH: c_int = 640;
 pub const WINDOW_HEIGHT: c_int = 480;
-
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-fn scalarprod(Point { x: x1, y: y1 }: Point) -> i32 {
-    x1 + y1
-}
 
 unsafe extern "system" fn WndProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lpParam: LPARAM) -> LRESULT {
     match uMsg {
@@ -160,57 +151,6 @@ fn WinMain(hInstance : HINSTANCE,
     assert!(!wnd.is_null());
     ShowWindow(wnd, if nCmdShow > 0 {nCmdShow} else {SW_SHOW});
 
-    let pFeatureLevels: [D3D_FEATURE_LEVEL; 2] = [D3D_FEATURE_LEVEL::DX_11_0, D3D_FEATURE_LEVEL::DX_11_1];
-    //let p: *const D3D_FEATURE_LEVEL = &pFeatureLevels as *const D3D_FEATURE_LEVEL;
-    
-    let swap_chain_desc = DXGI_SWAP_CHAIN_DESC {
-        BufferDesc: DXGI_MODE_DESC
-        {
-            Width: WINDOW_WIDTH as UINT,
-            Height: WINDOW_HEIGHT as UINT,
-            RefreshRate: DXGI_RATIONAL {
-                Numerator: 0,
-                Denominator: 0,
-            },
-            Format: DXGI_FORMAT::UNKNOWN, // FIXME: Don't know format yet
-            ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER::UNSPECIFIED,
-            Scaling: DXGI_MODE_SCALING::STRETCHED
-        },
-        SampleDesc: DXGI_SAMPLE_DESC {
-            Count: 1,
-            Quality: 0 
-        },
-        BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-        BufferCount: 2,
-        OutputWindow: wnd,
-        Windowed: TRUE,
-        SwapEffect: DXGI_SWAP_EFFECT::DISCARD,
-        Flags: 0
-    };
-
-   let mut pDevice: *const ID3D11Device = std::ptr::null();
-   let mut feature_level: *const D3D_FEATURE_LEVEL = std::ptr::null();
-   let mut pImmediateContext: *const ID3D11DeviceContext = std::ptr::null();
-   let mut p_swap_chain: *const IDXGISwapChain = std::ptr::null();
-
-   unsafe {
-   let hresult = D3D11CreateDeviceAndSwapChain(NULL!(),
-                                               D3D_DRIVER_TYPE::HARDWARE,
-                                               NULL!(),
-                                               0,
-                                               &pFeatureLevels as *const D3D_FEATURE_LEVEL,
-                                               pFeatureLevels.len() as u32,
-                                               D3D11_SDK_VERSION,
-                                               &swap_chain_desc as *const DXGI_SWAP_CHAIN_DESC,
-                                               &mut p_swap_chain as *mut *const IDXGISwapChain,
-                                               &mut pDevice as *mut *const ID3D11Device,
-                                               &mut feature_level as *mut *const D3D_FEATURE_LEVEL,
-                                               &mut pImmediateContext as *mut *const ID3D11DeviceContext);
-    println!("{:x}", hresult);
-    };
-
-
-
     let mut msg: MSG = MSG::default();
     while GetMessage(&mut msg, NULL!(), 0, 0) > 0 {
         TranslateMessage(&msg);
@@ -231,7 +171,5 @@ fn main() {
     //let d = unsafe {dx11::GetDevice()};
     //println!("{:?}", unsafe {((*d).square)(2)});
     
-    scalarprod(Point{x:10, y:1});
-
     WinMain(hInstance, lpCmdLine, nCmdShow);
 }
