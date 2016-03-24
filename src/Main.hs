@@ -56,6 +56,7 @@ data WNDCLASSEX = WNDCLASSEX { wcSize :: CUInt,
 
 type PWNDCLASSEX = Ptr WNDCLASSEX
 
+#if ARCH == ARCH_x86
 instance Storable WNDCLASSEX where
         alignment _ = 4
         sizeOf _    = 48
@@ -85,6 +86,7 @@ instance Storable WNDCLASSEX where
             pokeByteOff ptr 36 (wcMenuName poked)
             pokeByteOff ptr 40 (wcClassName poked)
             pokeByteOff ptr 44 (wcIconSmall poked)
+#endif
 
 
 newtype ClassStyle = ClassStyle CUInt
