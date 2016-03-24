@@ -33,7 +33,7 @@ type LPCTSTR = CString
 
 type HGDIOBJ = HANDLE
 
-type LONG_PTR = CLong
+type LONG_PTR = LONG
 
 type LRESULT = LONG_PTR
 
@@ -41,13 +41,19 @@ type LPARAM = LONG_PTR
 
 type WPARAM = LONG_PTR
 
+type LONG = CLong
+
+type INT = CInt
+
+type UINT = CUInt
+
 type BOOL = CInt
 
-data WNDCLASSEX = WNDCLASSEX { wcSize :: CUInt,
+data WNDCLASSEX = WNDCLASSEX { wcSize :: UINT,
                                wcStyle :: ClassStyle,
                                wcWindowProcedure :: FunPtr (WindowProcedure), 
-                               wcClassExtra :: CInt,
-                               wcWindowExtra :: CInt,
+                               wcClassExtra :: INT,
+                               wcWindowExtra :: INT,
                                wcInstance :: HINSTANCE,
                                wcIcon :: HICON,
                                wcCursor :: HCURSOR,
@@ -63,18 +69,18 @@ instance Storable WNDCLASSEX where
         alignment _ = 4
         sizeOf _    = 48
         peek ptr    = WNDCLASSEX
-            <$> peekByteOff ptr 0  -- wcSize :: CUInt
-            <*> peekByteOff ptr 4  -- wcStyle :: CUInt
-            <*> peekByteOff ptr 8  -- wcWindowProcedure :: FunPtr (Ptr Void)
-            <*> peekByteOff ptr 12 -- wcClassExtra :: CInt 
-            <*> peekByteOff ptr 16 -- wcWindowExtra :: CInt
-            <*> peekByteOff ptr 20 -- wcInstance :: CInt
-            <*> peekByteOff ptr 24 -- wcIcon :: CInt
-            <*> peekByteOff ptr 28 -- wcCursor :: CInt
-            <*> peekByteOff ptr 32 -- wcBackground :: CInt
-            <*> peekByteOff ptr 36 -- wcMenuName :: CInt
-            <*> peekByteOff ptr 40 -- wcClassName :: CInt
-            <*> peekByteOff ptr 44 -- wcIconSmall :: CInt
+            <$> peekByteOff ptr 0  -- wcSize :: UINT
+            <*> peekByteOff ptr 4  -- wcStyle :: ClassStyle
+            <*> peekByteOff ptr 8  -- wcWindowProcedure :: FunPtr (Ptr WindowProcedure)
+            <*> peekByteOff ptr 12 -- wcClassExtra :: INT
+            <*> peekByteOff ptr 16 -- wcWindowExtra :: INT
+            <*> peekByteOff ptr 20 -- wcInstance :: HINSTANCE
+            <*> peekByteOff ptr 24 -- wcIcon :: HCURSOR
+            <*> peekByteOff ptr 28 -- wcCursor :: HCURSOR
+            <*> peekByteOff ptr 32 -- wcBackground :: HBRUSH
+            <*> peekByteOff ptr 36 -- wcMenuName :: LPCTSTR
+            <*> peekByteOff ptr 40 -- wcClassName :: LPCTSTR
+            <*> peekByteOff ptr 44 -- wcIconSmall :: HICON
         poke ptr poked = do
             pokeByteOff ptr 0  (wcSize poked)
             pokeByteOff ptr 4  (wcStyle poked)
@@ -90,20 +96,20 @@ instance Storable WNDCLASSEX where
             pokeByteOff ptr 44 (wcIconSmall poked)
 #endif
 
-data Rectangle = Rectangle { reLeft   :: CLong,
-                             reTop    :: CLong,
-                             reRight  :: CLong,
-                             reBottom :: CLong }
+data Rectangle = Rectangle { reLeft   :: LONG,
+                             reTop    :: LONG,
+                             reRight  :: LONG,
+                             reBottom :: LONG }
 
 #if ARCH == ARCH_x86
 instance Storable Rectangle where
   alignment _ = 4
   sizeOf _    = 16
   peek ptr    = Rectangle
-    <$> peekByteOff ptr 0   -- reLeft   :: CLong
-    <*> peekByteOff ptr 4   -- reTop    :: CLong
-    <*> peekByteOff ptr 8   -- reRight  :: CLong
-    <*> peekByteOff ptr 12  -- reBottom :: CLong
+    <$> peekByteOff ptr 0   -- reLeft   :: LONG
+    <*> peekByteOff ptr 4   -- reTop    :: LONG
+    <*> peekByteOff ptr 8   -- reRight  :: LONG
+    <*> peekByteOff ptr 12  -- reBottom :: LONG
   poke ptr poked = do
     pokeByteOff ptr 0  (reLeft poked)
     pokeByteOff ptr 4  (reTop poked)
@@ -111,18 +117,18 @@ instance Storable Rectangle where
     pokeByteOff ptr 12 (reBottom poked)
 #endif
 
-newtype ClassStyle = ClassStyle CUInt
+newtype ClassStyle = ClassStyle UINT
   deriving (Eq, Storable, Bits, Show)
 
 pattern CS_HREDRAW = ClassStyle 0x0002
 pattern CS_VREDRAW = ClassStyle 0x0001
 
-newtype IconId = IconId CInt
+newtype IconId = IconId INT
   deriving (Eq, Storable, Show)
 
 pattern IDI_APPLICATION = IconId 32512
 
-newtype CursorId = CursorId CInt
+newtype CursorId = CursorId INT
   deriving (Eq, Storable, Show)
 
 pattern IDC_ARROW = CursorId 32512
@@ -130,7 +136,7 @@ pattern IDC_ARROW = CursorId 32512
 -- GDI Stock Objects
 pattern BLACK_BRUSH = 4
 
-newtype WindowMessage = WindowMessage CUInt
+newtype WindowMessage = WindowMessage UINT
   deriving (Eq, Storable, Show)
 
 pattern WM_NCHITTEST = WindowMessage 0x0084
@@ -140,7 +146,7 @@ pattern WM_DESTROY = WindowMessage 0x0002
 class ReturnValue v where
     toLResult :: v -> LRESULT
 
-newtype HitTestResult = HitTestResult CLong
+newtype HitTestResult = HitTestResult LONG
 
 pattern HTBORDER      = HitTestResult 18
 pattern HTBOTTOM      = HitTestResult 15
@@ -192,7 +198,7 @@ foreign import stdcall "GetModuleHandleA"
   c_GetModuleHandleA :: CString -> IO(HMODULE)
 
 foreign import stdcall "GetStockObject"
-  c_GetStockObject :: CInt -> HGDIOBJ
+  c_GetStockObject :: INT -> HGDIOBJ
 
 foreign import stdcall "DefWindowProcA"
   c_DefWindowProcA :: WindowProcedure
@@ -216,7 +222,7 @@ splitWord32 word = (fromIntegral $ (word .&. hi_mask) `shiftR` mask_width, fromI
     lo_mask = mkMask mask_width
     hi_mask = lo_mask `shiftL` mask_width
 
-getXLParam :: LPARAM -> CLong
+getXLParam :: LPARAM -> LONG
 getXLParam p = fromIntegral x
   where
     (_,x) = split $ fromIntegral p
@@ -226,7 +232,7 @@ getXLParam p = fromIntegral x
     split = splitWord64
 #endif
 
-getYLParam :: LPARAM -> CLong
+getYLParam :: LPARAM -> LONG
 getYLParam p = fromIntegral y
   where
     (y,_) = split $ fromIntegral p
