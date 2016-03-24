@@ -41,6 +41,8 @@ type LPARAM = LONG_PTR
 
 type WPARAM = LONG_PTR
 
+type BOOL = CInt
+
 data WNDCLASSEX = WNDCLASSEX { wcSize :: CUInt,
                                wcStyle :: ClassStyle,
                                wcWindowProcedure :: FunPtr (WindowProcedure), 
@@ -194,6 +196,9 @@ foreign import stdcall "GetStockObject"
 
 foreign import stdcall "DefWindowProcA"
   c_DefWindowProcA :: WindowProcedure
+
+foreign import stdcall "GetWindowRect"
+ c_GetWindowRect :: HWND -> Ptr(Rectangle) -> BOOL
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
