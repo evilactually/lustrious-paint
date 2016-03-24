@@ -14,6 +14,7 @@ import Foreign.Storable
 import Data.Bits((.|.), (.&.), shiftL, shiftR, Bits)
 import Data.Int(Int32)
 import Data.Word
+import Foreign.Marshal.Alloc(alloca)
 
 type HANDLE = Ptr Void
 
@@ -204,7 +205,14 @@ foreign import stdcall "DefWindowProcA"
   c_DefWindowProcA :: WindowProcedure
 
 foreign import stdcall "GetWindowRect"
- c_GetWindowRect :: HWND -> Ptr(Rectangle) -> BOOL
+ c_GetWindowRect :: HWND -> Ptr(Rectangle) -> IO(BOOL)
+
+getWindowRectangle :: HWND -> IO(Maybe(Rectangle))
+getWindowRectangle hwnd = alloca $ \ptr -> do 
+  success <- c_GetWindowRect hwnd ptr
+  case success of
+    0 -> return Nothing
+    _ -> Just <$> peek ptr
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
