@@ -7,6 +7,7 @@ resolver: lts-5.8
 # Local packages, usually specified by relative directory name
 packages:
 - '.'
+
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps: []
 
@@ -33,3 +34,19 @@ extra-package-dbs: []
 
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
+
+# Vulkan dependency
+
+# This pulls from Hackage
+
+# extra-deps: 
+#   - vector-sized-0.2.0.0
+
+# Vulkan bindings need ghc 8.0, and they are 64-bit only.
+# Consider forking it on git and making corrections.
+
+# packages:
+# - location:
+#     git: 'https://github.com/expipiplus1/vulkan.git'
+#     commit: 'a16c81e51e87aaa410d95f011ae8a59392133857'
+
