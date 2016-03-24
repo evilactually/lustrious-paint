@@ -106,7 +106,49 @@ pattern IDC_ARROW = CursorId 32512
 -- GDI Stock Objects
 pattern BLACK_BRUSH = 4
 
---type Compare = Int -> Int -> Bool
+newtype WindowMessage = WindowMessage CUInt
+  deriving (Eq, Storable, Show)
+
+pattern WM_NCHITTEST = WindowMessage 0x0084
+pattern WM_NCCALCSIZE = WindowMessage 0x0083
+pattern WM_DESTROY = WindowMessage 0x0002
+
+class ReturnValue v where
+    toLResult :: v -> LRESULT
+
+newtype HitTestResult = HitTestResult CLong
+
+pattern HTBORDER      = HitTestResult 18
+pattern HTBOTTOM      = HitTestResult 15
+pattern HTBOTTOMLEFT  = HitTestResult 16
+pattern HTBOTTOMRIGHT = HitTestResult 17
+pattern HTCAPTION     = HitTestResult 2
+pattern HTCLIENT      = HitTestResult 1
+pattern HTCLOSE       = HitTestResult 20
+pattern HTERROR       = HitTestResult (-2)
+pattern HTGROWBOX     = HitTestResult 4
+pattern HTHELP        = HitTestResult 21
+pattern HTHSCROLL     = HitTestResult 6
+pattern HTLEFT        = HitTestResult 10
+pattern HTMENU        = HitTestResult 5
+pattern HTMAXBUTTON   = HitTestResult 9
+pattern HTMINBUTTON   = HitTestResult 8
+pattern HTNOWHERE     = HitTestResult 0
+pattern HTREDUCE      = HitTestResult 8
+pattern HTRIGHT       = HitTestResult 11
+pattern HTSIZE        = HitTestResult 4
+pattern HTSYSMENU     = HitTestResult 3
+pattern HTTOP         = HitTestResult 12
+pattern HTTOPLEFT     = HitTestResult 13
+pattern HTTOPRIGHT    = HitTestResult 14
+pattern HTTRANSPARENT = HitTestResult (-1)
+pattern HTVSCROLL     = HitTestResult 7
+pattern HTZOOM        = HitTestResult 9
+
+instance ReturnValue HitTestResult where
+  toLResult (HitTestResult v) = v
+
+-- type Compare = Int -> Int -> Bool
 --foreign import ccall "wrapper"
 --  mkCompare :: Compare -> IO (FunPtr Compare)
 
@@ -150,24 +192,27 @@ splitWord32 word = (fromIntegral $ (word .&. hi_mask) `shiftR` mask_width, fromI
 getXLParam :: LPARAM -> CLong
 getXLParam p = fromIntegral x
   where
+    (_,x) = split $ fromIntegral p
 #if ARCH == ARCH_x86
-    (_,x) = splitWord32 $ fromIntegral p
+    split = splitWord32
 #else
-    (_,x) = splitWord64 $ fromIntegral p
+    split = splitWord64
 #endif
 
 getYLParam :: LPARAM -> CLong
 getYLParam p = fromIntegral y
   where
+    (y,_) = split $ fromIntegral p
 #if ARCH == ARCH_x86
-    (y,_) = splitWord32 $ fromIntegral p
+    split = splitWord32
 #else
-    (y,_) = splitWord64 $ fromIntegral p
+    split = splitWord64
 #endif
 
-type WindowProcedure = HWND -> CUInt -> WPARAM -> LPARAM -> IO(LRESULT)
+type WindowProcedure = HWND -> WindowMessage -> WPARAM -> LPARAM -> IO(LRESULT)
 
 windowProcedure :: WindowProcedure
+windowProcedure hwnd WM_NCHITTEST wparam lparam = return $ toLResult HTCLIENT
 windowProcedure hwnd msg wparam lparam = c_DefWindowProcA hwnd msg wparam lparam
 
 foreign import ccall "wrapper" mkWindowProcedurePtr :: WindowProcedure -> IO (FunPtr (WindowProcedure))
