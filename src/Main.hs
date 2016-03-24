@@ -88,6 +88,26 @@ instance Storable WNDCLASSEX where
             pokeByteOff ptr 44 (wcIconSmall poked)
 #endif
 
+data Rectangle = Rectangle { reLeft   :: CLong,
+                             reTop    :: CLong,
+                             reRight  :: CLong,
+                             reBottom :: CLong }
+
+#if ARCH == ARCH_x86
+instance Storable Rectangle where
+  alignment _ = 4
+  sizeOf _    = 16
+  peek ptr    = Rectangle
+    <$> peekByteOff ptr 0   -- reLeft   :: CLong
+    <*> peekByteOff ptr 4   -- reTop    :: CLong
+    <*> peekByteOff ptr 8   -- reRight  :: CLong
+    <*> peekByteOff ptr 12  -- reBottom :: CLong
+  poke ptr poked = do
+    pokeByteOff ptr 0  (reLeft poked)
+    pokeByteOff ptr 4  (reTop poked)
+    pokeByteOff ptr 8  (reRight poked)
+    pokeByteOff ptr 12 (reBottom poked)
+#endif
 
 newtype ClassStyle = ClassStyle CUInt
   deriving (Eq, Storable, Bits, Show)
