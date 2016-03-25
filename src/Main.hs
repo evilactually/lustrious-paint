@@ -15,6 +15,7 @@ import Data.Bits((.|.), (.&.), shiftL, shiftR, Bits)
 import Data.Int(Int32)
 import Data.Word
 import Foreign.Marshal.Alloc(alloca)
+import Data.List(find)
 
 type HANDLE = Ptr Void
 
@@ -189,6 +190,9 @@ foreign import stdcall "GetStockObject"
 foreign import stdcall "DefWindowProcA"
   c_DefWindowProcA :: WindowProcedure
 
+foreign import stdcall "PostQuitMessage"
+  c_PostQuitMessage :: INT -> IO()
+
 foreign import stdcall "GetWindowRect"
  c_GetWindowRect :: HWND -> Ptr(Rectangle) -> IO(BOOL)
 
@@ -237,8 +241,32 @@ getYLParam p = fromIntegral y
 
 type WindowProcedure = HWND -> WindowMessage -> WPARAM -> LPARAM -> IO(LRESULT)
 
+inRectangle :: (LONG, LONG) -> Rectangle -> Bool
+inRectangle (x,y) (Rectangle l t r b) = (x >= l && x <= r) && (y >= b && y <= t)
+
+border_width = 8
+caption_height = 40
+initial_width = 640
+initial_height = 480
+
 windowProcedure :: WindowProcedure
-windowProcedure hwnd WM_NCHITTEST wparam lparam = return $ toLResult HTCLIENT
+windowProcedure hwnd WM_NCHITTEST wparam lparam = do
+  (Just (Rectangle left top right bottom)) <- getWindowRectangle hwnd
+  regions <- compute_regions
+  let mouse_position = (getXLParam(lparam), getYLParam(lparam))
+      inRegion point (region, _) = inRectangle point region
+      Just (_, result) = find (inRegion mouse_position) regions
+  return $ toLResult result
+  where
+    compute_regions = do
+      Just (Rectangle left top right bottom) <- getWindowRectangle hwnd
+      return [(Rectangle left top (left + border_width) bottom,     HTLEFT),
+              (Rectangle (right - border_width) top right bottom,   HTRIGHT),
+              (Rectangle left top right (top - border_width),       HTTOP),
+              (Rectangle left (bottom + border_width) right bottom, HTBOTTOM),
+              (Rectangle left top right (top - caption_height),     HTCAPTION),
+              (Rectangle left top right bottom,                     HTCLIENT)]
+windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0
 windowProcedure hwnd msg wparam lparam = c_DefWindowProcA hwnd msg wparam lparam
 
 foreign import ccall "wrapper" mkWindowProcedurePtr :: WindowProcedure -> IO (FunPtr (WindowProcedure))
