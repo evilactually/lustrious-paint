@@ -155,26 +155,11 @@ pattern HTBOTTOMLEFT  = HitTestResult 16
 pattern HTBOTTOMRIGHT = HitTestResult 17
 pattern HTCAPTION     = HitTestResult 2
 pattern HTCLIENT      = HitTestResult 1
-pattern HTCLOSE       = HitTestResult 20
-pattern HTERROR       = HitTestResult (-2)
-pattern HTGROWBOX     = HitTestResult 4
-pattern HTHELP        = HitTestResult 21
-pattern HTHSCROLL     = HitTestResult 6
 pattern HTLEFT        = HitTestResult 10
-pattern HTMENU        = HitTestResult 5
-pattern HTMAXBUTTON   = HitTestResult 9
-pattern HTMINBUTTON   = HitTestResult 8
-pattern HTNOWHERE     = HitTestResult 0
-pattern HTREDUCE      = HitTestResult 8
 pattern HTRIGHT       = HitTestResult 11
-pattern HTSIZE        = HitTestResult 4
-pattern HTSYSMENU     = HitTestResult 3
 pattern HTTOP         = HitTestResult 12
 pattern HTTOPLEFT     = HitTestResult 13
 pattern HTTOPRIGHT    = HitTestResult 14
-pattern HTTRANSPARENT = HitTestResult (-1)
-pattern HTVSCROLL     = HitTestResult 7
-pattern HTZOOM        = HitTestResult 9
 
 instance ReturnValue HitTestResult where
   toLResult (HitTestResult v) = v
