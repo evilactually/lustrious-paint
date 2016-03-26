@@ -184,6 +184,11 @@ pattern WS_BORDER       = WindowStyle 0x00800000
 pattern WS_MINIMIZEBOX  = WindowStyle 0x00020000
 pattern WS_MAXIMIZEBOX  = WindowStyle 0x00010000
 
+newtype WindowExtendedStyle = WindowExtendedStyle DWORD
+  deriving (Eq, Storable, Bits, Show)
+
+pattern WS_EX_ACCEPTFILES = WindowExtendedStyle 0x00000010
+
 -- type Compare = Int -> Int -> Bool
 --foreign import ccall "wrapper"
 --  mkCompare :: Compare -> IO (FunPtr Compare)
