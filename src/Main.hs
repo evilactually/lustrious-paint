@@ -53,6 +53,8 @@ type BOOL = CInt
 
 type WORD = CUShort
 
+type DWORD = CULong
+
 type ATOM = WORD
 
 data WNDCLASSEX = WNDCLASSEX { wcSize :: UINT,
@@ -168,6 +170,19 @@ pattern HTTOPRIGHT    = HitTestResult 14
 
 instance ReturnValue HitTestResult where
   toLResult (HitTestResult v) = v
+
+newtype WindowStyle = WindowStyle DWORD
+  deriving (Eq, Storable, Bits, Show)
+
+pattern WS_POPUP        = WindowStyle 0x80000000
+pattern WS_CLIPCHILDREN = WindowStyle 0x02000000
+pattern WS_CLIPSIBLINGS = WindowStyle 0x04000000
+pattern WS_SYSMENU      = WindowStyle 0x00080000
+pattern WS_THICKFRAME   = WindowStyle 0x00040000
+pattern WS_GROUP        = WindowStyle 0x00020000
+pattern WS_BORDER       = WindowStyle 0x00800000
+pattern WS_MINIMIZEBOX  = WindowStyle 0x00020000
+pattern WS_MAXIMIZEBOX  = WindowStyle 0x00010000
 
 -- type Compare = Int -> Int -> Bool
 --foreign import ccall "wrapper"
