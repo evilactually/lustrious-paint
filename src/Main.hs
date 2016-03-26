@@ -17,7 +17,7 @@ import Data.Word
 import Foreign.Marshal.Alloc(alloca)
 import Data.List(find)
 
-type HANDLE = Ptr Void
+type HANDLE = LPVOID
 
 type HINSTANCE = HANDLE
 
