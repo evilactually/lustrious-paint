@@ -29,6 +29,8 @@ type HICON = HANDLE
 
 type HCURSOR = HICON
 
+type HMENU = HANDLE
+
 type HBRUSH = HANDLE
 
 type LPCTSTR = CString
@@ -56,6 +58,8 @@ type WORD = CUShort
 type DWORD = CULong
 
 type ATOM = WORD
+
+type LPVOID = Ptr ()
 
 data WNDCLASSEX = WNDCLASSEX { wcSize :: UINT,
                                wcStyle :: ClassStyle,
@@ -238,6 +242,9 @@ getWindowRectangle hwnd = alloca $ \ptr -> do
   case success of
     0 -> return Nothing
     _ -> Just <$> peek ptr
+
+foreign import stdcall "CreateWindowExA"
+  c_CreateWindowEx :: WindowExtendedStyle -> LPCTSTR -> LPCTSTR -> WindowStyle -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
