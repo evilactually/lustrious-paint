@@ -178,6 +178,7 @@ instance ReturnValue HitTestResult where
 newtype WindowStyle = WindowStyle DWORD
   deriving (Eq, Storable, Bits, Show)
 
+pattern WS_NONE         = WindowStyle 0x00000000
 pattern WS_POPUP        = WindowStyle 0x80000000
 pattern WS_CLIPCHILDREN = WindowStyle 0x02000000
 pattern WS_CLIPSIBLINGS = WindowStyle 0x04000000
@@ -191,6 +192,7 @@ pattern WS_MAXIMIZEBOX  = WindowStyle 0x00010000
 newtype WindowExtendedStyle = WindowExtendedStyle DWORD
   deriving (Eq, Storable, Bits, Show)
 
+pattern WS_EX_NONE =        WindowExtendedStyle 0x00000000
 pattern WS_EX_ACCEPTFILES = WindowExtendedStyle 0x00000010
 
 -- type Compare = Int -> Int -> Bool
