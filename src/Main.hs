@@ -313,6 +313,8 @@ border_width = 8
 caption_height = 40
 initial_width = 640
 initial_height = 480
+initial_x = 100
+initial_y = 100
 
 windowProcedure :: WindowProcedure
 windowProcedure hwnd WM_NCHITTEST wparam lparam = do
