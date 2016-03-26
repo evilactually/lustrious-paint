@@ -195,6 +195,23 @@ newtype WindowExtendedStyle = WindowExtendedStyle DWORD
 pattern WS_EX_NONE =        WindowExtendedStyle 0x00000000
 pattern WS_EX_ACCEPTFILES = WindowExtendedStyle 0x00000010
 
+newtype ShowWindow = ShowWindow DWORD
+  deriving (Eq, Storable, Show)
+
+pattern SW_FORCEMINIMIZE   = ShowWindow 11
+pattern SW_HIDE            = ShowWindow  0
+pattern SW_MAXIMIZE        = ShowWindow  3
+pattern SW_MINIMIZE        = ShowWindow  6
+pattern SW_RESTORE         = ShowWindow  9
+pattern SW_SHOW            = ShowWindow  5
+pattern SW_SHOWDEFAULT     = ShowWindow 10
+pattern SW_SHOWMAXIMIZED   = ShowWindow  3
+pattern SW_SHOWMINIMIZED   = ShowWindow  2
+pattern SW_SHOWMINNOACTIVE = ShowWindow  7
+pattern SW_SHOWNA          = ShowWindow  8
+pattern SW_SHOWNOACTIVATE  = ShowWindow  4
+pattern SW_SHOWNORMAL      = ShowWindow  1
+
 -- type Compare = Int -> Int -> Bool
 --foreign import ccall "wrapper"
 --  mkCompare :: Compare -> IO (FunPtr Compare)
@@ -247,6 +264,9 @@ getWindowRectangle hwnd = alloca $ \ptr -> do
 
 foreign import stdcall "CreateWindowExA"
   c_CreateWindowEx :: WindowExtendedStyle -> LPCTSTR -> LPCTSTR -> WindowStyle -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
+
+foreign import stdcall "ShowWindow"
+  c_ShowWindow :: HWND -> ShowWindow -> IO(BOOL)
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
