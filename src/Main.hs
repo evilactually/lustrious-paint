@@ -184,6 +184,9 @@ foreign import stdcall "LoadCursorA"
 foreign import stdcall "GetModuleHandleA"
   c_GetModuleHandleA :: CString -> IO(HMODULE)
 
+thisModuleHandle :: IO(HMODULE)
+thisModuleHandle = c_GetModuleHandleA nullPtr
+
 foreign import stdcall "GetStockObject"
   c_GetStockObject :: INT -> HGDIOBJ
 
