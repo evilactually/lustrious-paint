@@ -51,6 +51,10 @@ type UINT = CUInt
 
 type BOOL = CInt
 
+type WORD = CUShort
+
+type ATOM = WORD
+
 data WNDCLASSEX = WNDCLASSEX { wcSize :: UINT,
                                wcStyle :: ClassStyle,
                                wcWindowProcedure :: FunPtr (WindowProcedure), 
@@ -195,6 +199,15 @@ foreign import stdcall "DefWindowProcA"
 
 foreign import stdcall "PostQuitMessage"
   c_PostQuitMessage :: INT -> IO()
+
+foreign import stdcall "RegisterClassExA"
+  c_RegisterClassEx :: Ptr WNDCLASSEX -> IO(ATOM)
+
+registerClass :: WNDCLASSEX -> IO(ATOM)
+registerClass wndclass = 
+  alloca $ \wndclass_ptr -> do
+    poke wndclass_ptr wndclass
+    c_RegisterClassEx wndclass_ptr
 
 foreign import stdcall "GetWindowRect"
  c_GetWindowRect :: HWND -> Ptr(Rectangle) -> IO(BOOL)
