@@ -267,11 +267,17 @@ getWindowRectangle hwnd = alloca $ \ptr -> do
 foreign import stdcall "CreateWindowExA"
   c_CreateWindowEx :: WindowExtendedStyle -> LPCTSTR -> LPCTSTR -> WindowStyle -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
 
+-- TODO: WS_EX_NONE is non-idiomatic in Haskell, use Maybe, besides it doesn't exist in windows api
+-- createWindowEx :: Maybe(WindowExtendedStyle) -> LPCTSTR -> LPCTSTR -> Maybe(WindowStyle) -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
+
 foreign import stdcall "ShowWindow"
   c_ShowWindow :: HWND -> ShowWindow -> IO(BOOL)
 
 foreign import stdcall "GetMessageA"
   c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO()
+
+-- TODO: same
+-- getMessage :: Ptr(MSG) -> HWND -> Maybe(WindowMessage) -> Maybe(WindowMessage) -> IO()
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
