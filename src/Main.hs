@@ -334,6 +334,7 @@ windowProcedure hwnd WM_NCHITTEST wparam lparam = do
               (Rectangle left top right (top - caption_height),     HTCAPTION),
               (Rectangle left top right bottom,                     HTCLIENT)]
 windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0
+windowProcedure hwnd WM_NCCALCSIZE wparam lparam | wparam > 0 = return 0
 windowProcedure hwnd msg wparam lparam = c_DefWindowProcA hwnd msg wparam lparam
 
 foreign import ccall "wrapper" mkWindowProcedurePtr :: WindowProcedure -> IO (FunPtr (WindowProcedure))
