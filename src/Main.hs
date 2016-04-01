@@ -108,6 +108,8 @@ instance Storable WNDCLASSEX where
             pokeByteOff ptr 44 (wcIconSmall poked)
 #endif
 
+data MSG
+
 data Rectangle = Rectangle { reLeft   :: LONG,
                              reTop    :: LONG,
                              reRight  :: LONG,
@@ -267,6 +269,9 @@ foreign import stdcall "CreateWindowExA"
 
 foreign import stdcall "ShowWindow"
   c_ShowWindow :: HWND -> ShowWindow -> IO(BOOL)
+
+foreign import stdcall "GetMessageA"
+  c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO()
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
