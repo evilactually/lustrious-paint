@@ -16,6 +16,7 @@ import Data.Int(Int32)
 import Data.Word
 import Foreign.Marshal.Alloc(alloca)
 import Data.List(find)
+import Data.Maybe(fromMaybe)
 
 type HANDLE = LPVOID
 
@@ -180,7 +181,6 @@ instance ReturnValue HitTestResult where
 newtype WindowStyle = WindowStyle DWORD
   deriving (Eq, Storable, Bits, Show)
 
-pattern WS_NONE         = WindowStyle 0x00000000
 pattern WS_POPUP        = WindowStyle 0x80000000
 pattern WS_CLIPCHILDREN = WindowStyle 0x02000000
 pattern WS_CLIPSIBLINGS = WindowStyle 0x04000000
@@ -194,7 +194,6 @@ pattern WS_MAXIMIZEBOX  = WindowStyle 0x00010000
 newtype WindowExtendedStyle = WindowExtendedStyle DWORD
   deriving (Eq, Storable, Bits, Show)
 
-pattern WS_EX_NONE =        WindowExtendedStyle 0x00000000
 pattern WS_EX_ACCEPTFILES = WindowExtendedStyle 0x00000010
 
 newtype ShowWindow = ShowWindow DWORD
@@ -267,8 +266,9 @@ getWindowRectangle hwnd = alloca $ \ptr -> do
 foreign import stdcall "CreateWindowExA"
   c_CreateWindowEx :: WindowExtendedStyle -> LPCTSTR -> LPCTSTR -> WindowStyle -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
 
--- TODO: WS_EX_NONE is non-idiomatic in Haskell, use Maybe, besides it doesn't exist in windows api
--- createWindowEx :: Maybe(WindowExtendedStyle) -> LPCTSTR -> LPCTSTR -> Maybe(WindowStyle) -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
+createWindowEx :: Maybe(WindowExtendedStyle) -> LPCTSTR -> LPCTSTR -> Maybe(WindowStyle) -> INT -> INT -> INT -> INT -> HWND -> HMENU -> HINSTANCE -> LPVOID -> IO(HWND)
+createWindowEx exstyle class' title style x y width height parent menu instance' param = 
+  c_CreateWindowEx (fromMaybe (WindowExtendedStyle 0) exstyle) class' title (fromMaybe (WindowStyle 0) style) x y width height parent menu instance' param
 
 foreign import stdcall "ShowWindow"
   c_ShowWindow :: HWND -> ShowWindow -> IO(BOOL)
@@ -276,8 +276,8 @@ foreign import stdcall "ShowWindow"
 foreign import stdcall "GetMessageA"
   c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO()
 
--- TODO: same
--- getMessage :: Ptr(MSG) -> HWND -> Maybe(WindowMessage) -> Maybe(WindowMessage) -> IO()
+getMessage :: Ptr(MSG) -> HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO()
+getMessage msg hwnd filter@(from,to) = c_GetMessage msg hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
