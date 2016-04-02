@@ -313,13 +313,14 @@ foreign import stdcall "ShowWindow"
   c_ShowWindow :: HWND -> ShowWindow -> IO(BOOL)
 
 foreign import stdcall "GetMessageA"
-  c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO()
+  c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO(BOOL)
 
-getMessage :: HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO(MSG)
+getMessage :: HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO((BOOL,MSG))
 getMessage hwnd filter@(from,to) = 
     alloca $ \msg_ptr -> do
-    c_GetMessage msg_ptr hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
-    peek msg_ptr
+    not_quit <- c_GetMessage msg_ptr hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
+    msg <- peek msg_ptr
+    return (not_quit, msg)
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
