@@ -109,7 +109,46 @@ instance Storable WNDCLASSEX where
             pokeByteOff ptr 44 (wcIconSmall poked)
 #endif
 
-data MSG
+data POINT = POINT LONG LONG
+
+#if ARCH == ARCH_x86
+instance Storable POINT where
+  alignment _ = 4
+  sizeOf _    = 16
+  peek ptr    = POINT
+    <$> peekByteOff ptr 0
+    <*> peekByteOff ptr 4
+  poke ptr (POINT x y) = do
+    pokeByteOff ptr 0 x
+    pokeByteOff ptr 4 y
+#endif
+
+data MSG = MSG { msgHwnd    :: HWND,
+                 msgMessage :: WindowMessage,
+                 msgWParam  :: WPARAM,
+                 msgLParam  :: LPARAM,
+                 msgTime    :: DWORD,
+                 msgPoint   :: POINT }
+
+#if ARCH == ARCH_x86
+instance Storable MSG where
+  alignment _ = 4
+  sizeOf _    = 16
+  peek ptr    = MSG
+    <$> peekByteOff ptr 0
+    <*> peekByteOff ptr 4
+    <*> peekByteOff ptr 8
+    <*> peekByteOff ptr 12
+    <*> peekByteOff ptr 16
+    <*> peekByteOff ptr 20
+  poke ptr poked = do
+    pokeByteOff ptr 0  (msgHwnd poked)
+    pokeByteOff ptr 4  (msgMessage poked)
+    pokeByteOff ptr 8  (msgWParam poked)
+    pokeByteOff ptr 12 (msgLParam poked)
+    pokeByteOff ptr 16 (msgTime poked)
+    pokeByteOff ptr 20 (msgPoint poked)
+#endif
 
 data Rectangle = Rectangle { reLeft   :: LONG,
                              reTop    :: LONG,
@@ -276,8 +315,11 @@ foreign import stdcall "ShowWindow"
 foreign import stdcall "GetMessageA"
   c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO()
 
-getMessage :: Ptr(MSG) -> HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO()
-getMessage msg hwnd filter@(from,to) = c_GetMessage msg hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
+getMessage :: HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO(MSG)
+getMessage hwnd filter@(from,to) = 
+    alloca $ \msg_ptr -> do
+    c_GetMessage msg_ptr hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
+    peek msg_ptr
 
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
