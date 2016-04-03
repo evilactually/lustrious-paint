@@ -400,7 +400,16 @@ windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0
 windowProcedure hwnd WM_NCCALCSIZE wparam lparam | wparam > 0 = return 0
 windowProcedure hwnd msg wparam lparam = c_DefWindowProcA hwnd msg wparam lparam
 
-foreign import ccall "wrapper" mkWindowProcedurePtr :: WindowProcedure -> IO (FunPtr (WindowProcedure))
+foreign import stdcall "wrapper" mkWindowProcedurePtr :: WindowProcedure -> IO (FunPtr (WindowProcedure))
+
+-- | A loop variant that has a separate iterator action who's result is passed to body while predicate holds
+forLoopM_ :: Monad m => (a -> Bool) -> m a -> (a -> m b) -> m ()
+forLoopM_ predicate iterator body =
+  let loop = do
+              next <- iterator
+              if predicate next 
+                then body next >> loop
+                else return () in loop
 
 main = do
   instance_handle <- c_GetModuleHandleA nullPtr
