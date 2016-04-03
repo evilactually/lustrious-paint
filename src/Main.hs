@@ -322,6 +322,15 @@ getMessage hwnd filter@(from,to) =
     msg <- peek msg_ptr
     return (not_quit, msg)
 
+foreign import stdcall "DispatchMessageA"
+  c_DispatchMessage :: Ptr(MSG) -> IO(LRESULT)
+
+dispatchMessage :: MSG -> IO(LRESULT)
+dispatchMessage msg = 
+  alloca $ \msg_ptr -> do
+  poke msg_ptr msg
+  c_DispatchMessage msg_ptr
+
 mkMask mask_width = (0x1 `shiftL` mask_width) - 1
 
 splitWord64 :: Word64 -> (Word32, Word32)
