@@ -113,6 +113,7 @@ instance Storable WNDCLASSEX where
 #endif
 
 data POINT = POINT LONG LONG
+  deriving(Show)
 
 #if ARCH == ARCH_x86
 instance Storable POINT where
@@ -132,6 +133,7 @@ data MSG = MSG { msgHwnd    :: HWND,
                  msgLParam  :: LPARAM,
                  msgTime    :: DWORD,
                  msgPoint   :: POINT }
+  deriving(Show)
 
 #if ARCH == ARCH_x86
 instance Storable MSG where
@@ -320,10 +322,10 @@ foreign import stdcall "ShowWindow"
 foreign import stdcall "GetMessageA"
   c_GetMessage :: Ptr(MSG) -> HWND -> WindowMessage -> WindowMessage -> IO(BOOL)
 
-getMessage :: HWND -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO((BOOL,MSG))
+getMessage :: Maybe(HWND) -> (Maybe(WindowMessage), Maybe(WindowMessage)) -> IO((BOOL,MSG))
 getMessage hwnd filter@(from,to) = 
     alloca $ \msg_ptr -> do
-    not_quit <- c_GetMessage msg_ptr hwnd (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
+    not_quit <- c_GetMessage msg_ptr (fromMaybe nullPtr hwnd) (fromMaybe (WindowMessage 0) from) (fromMaybe (WindowMessage 0) to)
     msg <- peek msg_ptr
     return (not_quit, msg)
 
@@ -458,4 +460,4 @@ main = do
   title <- newCString "Lustrious Paint"
   hwnd <- createWindowEx Nothing clsn title (Just wndstyle) initial_x initial_y initial_width initial_height nullPtr nullPtr insthdl nullPtr
   c_ShowWindow hwnd SW_SHOWNORMAL
-  forLoopM_ (toBool.fst) (getMessage hwnd (Nothing, Nothing)) (dispatchMessage.snd)
+  forLoopM_ (toBool.fst) (getMessage Nothing (Nothing, Nothing)) (dispatchMessage.snd)
