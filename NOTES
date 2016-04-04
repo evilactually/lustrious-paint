@@ -1,0 +1,8 @@
+  
+For some reason this causes a space leak:
+
+  let msgs = (map snd) <$> unfoldWhileM (toBool.fst) (getMessage hwnd (Nothing, Nothing))
+  msgs >>= sequence_.(map dispatchMessage)
+
+
+hSetBuffering stdout NoBuffering

@@ -17,6 +17,9 @@ import Data.Word
 import Foreign.Marshal.Alloc(alloca)
 import Data.List(find)
 import Data.Maybe(fromMaybe)
+import Foreign.Marshal.Utils(toBool)
+
+import Debug.Trace
 
 type HANDLE = LPVOID
 
@@ -154,6 +157,7 @@ data Rectangle = Rectangle { reLeft   :: LONG,
                              reTop    :: LONG,
                              reRight  :: LONG,
                              reBottom :: LONG }
+  deriving (Show)
 
 #if ARCH == ARCH_x86
 instance Storable Rectangle where
@@ -201,6 +205,7 @@ class ReturnValue v where
     toLResult :: v -> LRESULT
 
 newtype HitTestResult = HitTestResult LONG
+  deriving (Show)
 
 pattern HTBORDER      = HitTestResult 18
 pattern HTBOTTOM      = HitTestResult 15
@@ -348,29 +353,33 @@ splitWord32 word = (fromIntegral $ (word .&. hi_mask) `shiftR` mask_width, fromI
     hi_mask = lo_mask `shiftL` mask_width
 
 getXLParam :: LPARAM -> LONG
-getXLParam p = fromIntegral x
+getXLParam p = fromIntegral x_signed
   where
     (_,x) = split $ fromIntegral p
 #if ARCH == ARCH_x86
     split = splitWord32
+    x_signed = fromIntegral x :: CShort
 #else
     split = splitWord64
+    x_signed = fromIntegral x :: CInt
 #endif
 
 getYLParam :: LPARAM -> LONG
-getYLParam p = fromIntegral y
+getYLParam p = fromIntegral y_signed
   where
     (y,_) = split $ fromIntegral p
 #if ARCH == ARCH_x86
     split = splitWord32
+    y_signed = fromIntegral y :: CShort
 #else
     split = splitWord64
+    y_signed = fromIntegral y :: CInt
 #endif
 
 type WindowProcedure = HWND -> WindowMessage -> WPARAM -> LPARAM -> IO(LRESULT)
 
 inRectangle :: (LONG, LONG) -> Rectangle -> Bool
-inRectangle (x,y) (Rectangle l t r b) = (x >= l && x <= r) && (y >= b && y <= t)
+inRectangle (x,y) (Rectangle l t r b) = (x >= l && x <= r) && (y <= b && y >= t)
 
 border_width = 8
 caption_height = 40
@@ -380,21 +389,26 @@ initial_x = 100
 initial_y = 100
 
 windowProcedure :: WindowProcedure
-windowProcedure hwnd WM_NCHITTEST wparam lparam = do
+windowProcedure hwnd msg@WM_NCHITTEST wparam lparam = do
   (Just (Rectangle left top right bottom)) <- getWindowRectangle hwnd
   regions <- compute_regions
   let mouse_position = (getXLParam(lparam), getYLParam(lparam))
       inRegion point (region, _) = inRectangle point region
-      Just (_, result) = find (inRegion mouse_position) regions
-  return $ toLResult result
+  case find (inRegion mouse_position) regions of
+    Just (_, result) -> return $ toLResult result
+    Nothing -> c_DefWindowProcA hwnd msg wparam lparam
   where
     compute_regions = do
       Just (Rectangle left top right bottom) <- getWindowRectangle hwnd
-      return [(Rectangle left top (left + border_width) bottom,     HTLEFT),
+      return [(Rectangle left top (left + border_width) (top + border_width),         HTTOPLEFT),
+              (Rectangle (right - border_width) top right (top + border_width),       HTTOPRIGHT),
+              (Rectangle (right - border_width) (bottom - border_width) right bottom, HTBOTTOMRIGHT),
+              (Rectangle left (bottom - border_width) (left + border_width) bottom,   HTBOTTOMLEFT),
+              (Rectangle left top (left + border_width) bottom,     HTLEFT),
               (Rectangle (right - border_width) top right bottom,   HTRIGHT),
-              (Rectangle left top right (top - border_width),       HTTOP),
-              (Rectangle left (bottom + border_width) right bottom, HTBOTTOM),
-              (Rectangle left top right (top - caption_height),     HTCAPTION),
+              (Rectangle left top right (top + border_width),       HTTOP),
+              (Rectangle left (bottom - border_width) right bottom, HTBOTTOM),
+              (Rectangle left top right (top + caption_height),     HTCAPTION),
               (Rectangle left top right bottom,                     HTCLIENT)]
 windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0
 windowProcedure hwnd WM_NCCALCSIZE wparam lparam | wparam > 0 = return 0
@@ -412,26 +426,36 @@ forLoopM_ predicate iterator body =
                 else return () in loop
 
 main = do
-  instance_handle <- c_GetModuleHandleA nullPtr
-  icon <- c_LoadIconById instance_handle IDI_APPLICATION
-  cursor <- c_LoadCursorById instance_handle IDC_ARROW
-  class_name <- newCString "WindowClass"
-  proc <- mkWindowProcedurePtr windowProcedure
+  insthdl <- thisModuleHandle
+  ico <- c_LoadIconById insthdl IDI_APPLICATION
+  cur <- c_LoadCursorById insthdl IDC_ARROW
+  clsn <- newCString "WindowClass"
+  wndproc <- mkWindowProcedurePtr windowProcedure
   let wndclass = WNDCLASSEX {
     wcSize = fromIntegral $ sizeOf wndclass,
     wcStyle = CS_HREDRAW .|. CS_VREDRAW,
-    wcWindowProcedure = proc,
+    wcWindowProcedure = wndproc,
     wcClassExtra = 0,
     wcWindowExtra = 0,
-    wcInstance = instance_handle,
-    wcIcon = icon,
-    wcCursor = cursor,
+    wcInstance = insthdl,
+    wcIcon = ico,
+    wcCursor = cur,
     wcBackground = c_GetStockObject BLACK_BRUSH,
     wcMenuName = nullPtr,
-    wcClassName = class_name,
-    wcIconSmall = icon
+    wcClassName = clsn,
+    wcIconSmall = ico
   }
-  putStrLn $ show CS_HREDRAW
-  putStrLn $ show (0xdeaff001, 0x12345678)
-  putStrLn $ show $ wcStyle wndclass
-  -- interact (unlines . filter (elem 'a') . lines)
+  clsa <- registerClass(wndclass)
+  let wndstyle = WS_POPUP .|. 
+                 WS_CLIPCHILDREN .|.
+                 WS_CLIPSIBLINGS .|.
+                 WS_SYSMENU .|.
+                 WS_THICKFRAME .|. 
+                 WS_GROUP .|.
+                 WS_BORDER .|. 
+                 WS_MINIMIZEBOX .|. 
+                 WS_MAXIMIZEBOX
+  title <- newCString "Lustrious Paint"
+  hwnd <- createWindowEx Nothing clsn title (Just wndstyle) initial_x initial_y initial_width initial_height nullPtr nullPtr insthdl nullPtr
+  c_ShowWindow hwnd SW_SHOWNORMAL
+  forLoopM_ (toBool.fst) (getMessage hwnd (Nothing, Nothing)) (dispatchMessage.snd)
