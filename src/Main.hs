@@ -19,6 +19,7 @@ import Data.List(find)
 import Data.Maybe(fromMaybe)
 import Foreign.Marshal.Utils(toBool)
 
+import System.IO(BufferMode(..),stdout,hSetBuffering)
 import Debug.Trace
 
 type HANDLE = LPVOID
@@ -428,6 +429,7 @@ forLoopM_ predicate iterator body =
                 else return () in loop
 
 main = do
+  hSetBuffering stdout NoBuffering
   insthdl <- thisModuleHandle
   ico <- c_LoadIconById insthdl IDI_APPLICATION
   cur <- c_LoadCursorById insthdl IDC_ARROW
