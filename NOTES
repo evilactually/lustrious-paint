@@ -6,3 +6,106 @@ For some reason this causes a space leak:
 
 
 hSetBuffering stdout NoBuffering
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mkWindow :: ... -> IO(Window)
+setCaption :: String -> IO()
+setBorderWidth
+setCaptionHeight :: Int -> IO()
+setCaptionHitTest :: Window -> ((Int,Int) -> Bool)
+setIcon :: String -> IO()
+setTitle :: Window -> String -> IO()
+pumpMessages :: MessagePumpMode -> IO()
+data MessagePumpMode =  Blocking | NonBlocking
+
+
+
+Some controls have special roles: minimize, maximize, caption. It's useful on Windows, 
+
+
+Key Press
+
+data Key = A | B | C
+
+data Event = 
+  KeyPress Key
+  KeyRelease Key
+  MouseButtonDown Button
+  MouseButtonUp Button
+  MouseMove Point
+  Exit
+
+apUpdate :: Application -> Event -> Application -- analog of recieve
+
+
+uiUpdate :: Application -> IO [Event]
+-- take the hit test function from Application domain
+-- in fact all the things you'd expect window to have should be set in here
+-- mark things that have changed, so that proper IO action is performed (or just compare)
+
+
+
+run :: Application -> [Event] -> IO ()
+run ap [] = do
+  events <- uiUpdate ap
+  run ap events
+run _ (Exit:_) = 
+  return ()
+run ap (e:es) = 
+  run (apUpdate ap e) es
+
+--| (assuming all actors speak same language)
+type Message = Value 
+type Response = Value
+
+data List = Cons Value List | Nil
+data Value = VString String | VInteger Integer | VCons 
+
+--| Different actors implement different recieve functions.
+--  Recieve may potentially need to send messages to other actors, so it return ActorIO monad(has nothing to do with IO monad, but similar idea)
+class Actor a where
+  recieve :: a -> Message -> ActorIO(Actor)
+
+
+--| Maybe actor accepts given pattern, if so it should return that function
+-- Pattern is 
+
+recieve :: a -> Message -> ActorIO(Actor)
+
+recieve actor (VString "CapitilizeWindowTitle")= do
+  (VString title) <- send (VString "GetWindowTitle") (ActorId 2)
+  send (VString "SetWindowTitle")
+  return (incrementProcessed actor)
+
+
+
+
+send :: Message -> ActorId -> Computation(Response)
+
+
+run :: [Actor] -> [Event] -> IO ()
+
+
+-- react :: (Actor s) => s -> Event -> ActorIO [s] s
+-- emit :: 
