@@ -18,6 +18,7 @@ import Foreign.Marshal.Alloc(alloca)
 import Data.List(find)
 import Data.Maybe(fromMaybe)
 import Foreign.Marshal.Utils(toBool)
+import Data.IORef
 
 import System.IO(BufferMode(..),stdout,hSetBuffering)
 import Debug.Trace
@@ -391,6 +392,8 @@ initial_height = 480
 initial_x = 100
 initial_y = 100
 
+captionHitTest = newIORef  -- :: IORef
+
 windowProcedure :: WindowProcedure
 windowProcedure hwnd msg@WM_NCHITTEST wparam lparam = do
   (Just (Rectangle left top right bottom)) <- getWindowRectangle hwnd
@@ -411,9 +414,9 @@ windowProcedure hwnd msg@WM_NCHITTEST wparam lparam = do
               (Rectangle (right - border_width) top right bottom,   HTRIGHT),
               (Rectangle left top right (top + border_width),       HTTOP),
               (Rectangle left (bottom - border_width) right bottom, HTBOTTOM),
-              (Rectangle left top right (top + caption_height),     HTCAPTION),
-              (Rectangle left top right bottom,                     HTCLIENT)]
-windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0
+              (Rectangle left top right (top + caption_height),     HTCAPTION), -- <- I need something here to tell this function where caption really is
+              (Rectangle left top right bottom,                     HTCLIENT)]  --    It must be a function in IORef, replaced from outside, since it can't take
+windowProcedure hwnd WM_DESTROY wparam lparam = c_PostQuitMessage 0 >> return 0 --    additional parameters. Or store list of rigions somewhere.
 windowProcedure hwnd WM_NCCALCSIZE wparam lparam | wparam > 0 = return 0
 windowProcedure hwnd msg wparam lparam = c_DefWindowProcA hwnd msg wparam lparam
 
