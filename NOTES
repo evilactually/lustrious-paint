@@ -7,7 +7,9 @@ For some reason this causes a space leak:
 
 hSetBuffering stdout NoBuffering
 
-
+Vulkan extensions rely on external symbols to be defined. My solution to the problem is to to use "type" aliases for such types and
+always defined them in terms of Foreign.C.Types and Foreign.Ptr types, which is inevitable since those are always native types. Structs
+are never passed by value in the APIs, only by pointer, and Haskell doesn't support by-value passing anyway.
 
 
 
