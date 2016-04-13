@@ -11,7 +11,28 @@ Vulkan extensions rely on external symbols to be defined. My solution to the pro
 always defined them in terms of Foreign.C.Types and Foreign.Ptr types, which is inevitable since those are always native types. Structs
 are never passed by value in the APIs, only by pointer, and Haskell doesn't support by-value passing anyway.
 
+MonadIO class generalizes IO
 
+Build Requirements:
+
+- vulkan.lib
+- glslangValidator.exe
+
+Solution #1: Define LUNARG_SDK variable to find it and it's tools
+Problem: I can't read environment variables from cabal
+
+Solution #2: 
+  Use extra-lib-dirs to specify path to Vulkan SDK, this seems to the normal practise.
+  The only requirement is to install SDK into default location.
+
+  if os(mingw32)
+    extra-lib-dirs: C:\VulkanSDK\1.0.8.0\Bin32
+    extra-libraries:     vulkan-1
+  else
+    extra-libraries:     vulkan
+  
+  System.Info.os always reports mingw32, and not windows.
+  
 
 
 
