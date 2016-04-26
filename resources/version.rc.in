@@ -1,0 +1,28 @@
+
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  @VERSION_MAJOR@,@VERSION_MINOR@,@VERSION_REVISION@,@VERSION_BUILD@
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904E4"
+    BEGIN
+      VALUE "CompanyName", "Lustrious Labs Ltd"
+      VALUE "FileDescription", "Lustrious Paint"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "InternalName", "LustriousPaint"
+      VALUE "LegalCopyright", "Copyright (C) 2015-2016 Vladislav Shcherbakov"
+      VALUE "OriginalFilename", "LustriousPaint.exe"
+      VALUE "ProductName", "Lustrious Paint"
+      VALUE "ProductVersion", "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}.${VERSION_BUILD}"
+      VALUE "FudgeFactor", "1.0*10^-16"
+    END
+  END
+
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1252
+  END
+END
+
+
