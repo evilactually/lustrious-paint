@@ -2,8 +2,8 @@ cmake_minimum_required (VERSION 3.5.2)
 project (LustriousPaint)
 
 # Build numbers
-set (VERSION_BUILD_x86 8563)
-set (VERSION_BUILD_x86_64 7563)
+set (VERSION_BUILD_x86 1)
+set (VERSION_BUILD_x86_64 1)
 
 # The version number.
 set (VERSION_MAJOR 0)
@@ -21,6 +21,7 @@ configure_file (
   "${PROJECT_BINARY_DIR}/resources/version.rc"
   )
 
+# Glob all project source files
 file(GLOB_RECURSE SOURCE_FILES
     "src/*.h"
     "src/*.cpp"
@@ -28,4 +29,8 @@ file(GLOB_RECURSE SOURCE_FILES
 	"resources/*.rc"
 )
 
+# Use LunarG's SDK
+find_library(VULKAN_LIB NAMES vulkan-1
+             HINTS "C:/VulkanSDK/" )
+             
 add_executable(LustriousPaint WIN32 ${SOURCE_FILES} )
