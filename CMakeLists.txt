@@ -1,6 +1,9 @@
 cmake_minimum_required (VERSION 3.5.2)
 project (LustriousPaint)
 
+# Custom modules
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+
 # Build numbers
 set (VERSION_BUILD_x86 1)
 set (VERSION_BUILD_x86_64 1)
@@ -29,8 +32,14 @@ file(GLOB_RECURSE SOURCE_FILES
 	"resources/*.rc"
 )
 
-# Use LunarG's SDK
-find_library(VULKAN_LIB NAMES vulkan-1
-             HINTS "C:/VulkanSDK/" )
-             
-add_executable(LustriousPaint WIN32 ${SOURCE_FILES} )
+# Find Vulkan SDK
+find_package(Vulkan)
+if(VULKAN_FOUND)
+	include_directories(${VULKAN_INCLUDE_DIR})
+	message(${VULKAN_LIBRARY})
+else()
+	message(FATAL_ERROR "Vulkan SDK not found")
+endif()
+
+add_executable(LustriousPaint WIN32 ${SOURCE_FILES})
+target_link_libraries (LustriousPaint ${VULKAN_LIBRARY})
