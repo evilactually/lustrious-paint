@@ -51,6 +51,9 @@ file(GLOB_RECURSE SOURCE_FILES
 	"resources/*.rc"
 )
 
+# Definitions
+add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+
 # Find Vulkan SDK
 find_package(Vulkan)
 if(VULKAN_FOUND)
