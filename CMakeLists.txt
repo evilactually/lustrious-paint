@@ -40,14 +40,17 @@ configure_file (
   "${PROJECT_BINARY_DIR}/src/Version.h"
   )
 
-include_directories("${PROJECT_BINARY_DIR}/src/")
+# Dowload C++ Vulkan wrapper
+file(DOWNLOAD "https://raw.githubusercontent.com/nvpro-pipeline/vkcpp/c5bcc9410c9da0f9e73114e44e611fa07e1d5ea0/vulkan/vk_cpp.hpp" "${PROJECT_BINARY_DIR}/include/vulkan/vk_cpp.hpp")
 
 # Glob all project source files
 file(GLOB_RECURSE SOURCE_FILES
     "src/*.h"
     "src/*.cpp"
+	"src/*.hpp"
 	"${PROJECT_BINARY_DIR}/resources/*.rc"
 	"${PROJECT_BINARY_DIR}/src/*.h"
+	"${PROJECT_BINARY_DIR}/src/*.hpp"
 	"resources/*.rc"
 )
 
@@ -62,6 +65,10 @@ if(VULKAN_FOUND)
 else()
 	message(FATAL_ERROR "Vulkan SDK not found")
 endif()
+
+# Include generated & downloaded headers
+include_directories("${PROJECT_BINARY_DIR}/src/")
+include_directories("${PROJECT_BINARY_DIR}/include/")
 
 add_executable(LustriousPaint WIN32 ${SOURCE_FILES})
 target_link_libraries (LustriousPaint ${VULKAN_LIBRARY})
