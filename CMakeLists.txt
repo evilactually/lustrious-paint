@@ -41,7 +41,7 @@ configure_file (
   )
 
 # Dowload C++ Vulkan wrapper
-file(DOWNLOAD "https://raw.githubusercontent.com/nvpro-pipeline/vkcpp/c5bcc9410c9da0f9e73114e44e611fa07e1d5ea0/vulkan/vk_cpp.hpp" "${PROJECT_BINARY_DIR}/include/vulkan/vk_cpp.hpp")
+file(DOWNLOAD "https://raw.githubusercontent.com/nvpro-pipeline/vkcpp/b81f8ec376047f488b90182a7f291a2664fe6779/vulkan/vk_cpp.hpp" "${PROJECT_BINARY_DIR}/include/vulkan/vk_cpp.hpp")
 
 # Glob all project source files
 file(GLOB_RECURSE SOURCE_FILES

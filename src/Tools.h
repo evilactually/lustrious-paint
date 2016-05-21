@@ -28,7 +28,7 @@ namespace Tools {
 			vk::FormatProperties formatProps;
 			physicalDevice.getFormatProperties(format, &formatProps);
 			// Format must support depth stencil attachment for optimal tiling
-			if (formatProps.optimalTilingFeatures() & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+			if (formatProps.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
 			{
 				*depthFormat = format;
 				return true;
