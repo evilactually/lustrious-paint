@@ -12,11 +12,15 @@ namespace Ls {
         }
 
         bool RegKeyExist(_In_     HKEY    hKey,
-                     _In_opt_ LPCTSTR lpSubKey) {
-        HKEY key;
-        bool exists = RegOpenKeyEx(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS;
-        RegCloseKey(key);
-        return exists;
-    }
+                         _In_opt_ LPCTSTR lpSubKey) {
+            HKEY key;
+            bool exists = RegOpenKeyEx(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS;
+            RegCloseKey(key);
+            return exists;
+        }
+
+        bool CheckBit(int bits, int bit) {
+            return (bits & bit) == bit;
+        }
     }
 }

@@ -1,14 +1,13 @@
 #pragma once
 
-#include "Flags.h"
 #include "Utils.h"
 
 namespace Ls {
-    enum class WindowMode
+    enum WindowMode
     {
-        Normal    = SW_SHOW,
-        Minimized = SW_MINIMIZE,
-        Maximized = SW_MAXIMIZE
+        WINDOW_MODE_NORMAL    = SW_SHOW,
+        WINDOW_MODE_MINIMIZED = SW_MINIMIZE,
+        WINDOW_MODE_MAXIMIZED = SW_MAXIMIZE
     };
 
     struct WindowState {
@@ -19,21 +18,16 @@ namespace Ls {
         WindowMode mode;
     };
 
-    enum class WindowStateUpdateFlagBits
+    enum WindowStateUpdateFlagBits
     {
-        X      = 1,
-        Y      = 2,
-        Width  = 4,
-        Height = 16,
-        Mode   = 32
+        WINDOW_STATE_UPDATE_X_FLAG      = 1,
+        WINDOW_STATE_UPDATE_Y_FLAG      = 2,
+        WINDOW_STATE_UPDATE_WIDTH_FLAG  = 4,
+        WINDOW_STATE_UPDATE_HEIGHT_FLAG = 16,
+        WINDOW_STATE_UPDATE_MODE_FLAG   = 32
     };
 
-    using WindowStateUpdateFlags = Flags<WindowStateUpdateFlagBits, int>;
-
-    inline WindowStateUpdateFlags operator|(WindowStateUpdateFlagBits a, WindowStateUpdateFlagBits b)
-    {
-        return WindowStateUpdateFlags(a) | b;
-    }
+    typedef int WindowStateUpdateFlags;
 
     void StoreWindowState(WindowState state, WindowStateUpdateFlags stateUpdateMask) {
         if(!Utils::RegKeyExist(HKEY_CURRENT_USER, "Software\\Lustrious Paint")){
@@ -60,27 +54,27 @@ namespace Ls {
                                  &key);
         assert(error == ERROR_SUCCESS);
 
-        if(CheckBit(stateUpdateMask, WindowStateUpdateFlagBits::X)) {
+        if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_X_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "X", REG_DWORD, &state.x, 4);
             assert(error == ERROR_SUCCESS);
         }
 
-        if(CheckBit(stateUpdateMask, WindowStateUpdateFlagBits::Y)) {
+        if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_Y_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Y", REG_DWORD, &state.y, 4);
             assert(error == ERROR_SUCCESS);
         }
 
-        if(CheckBit(stateUpdateMask, WindowStateUpdateFlagBits::Width)) {
+        if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_WIDTH_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Width", REG_DWORD, &state.width, 4);
             assert(error == ERROR_SUCCESS);
         }
 
-        if(CheckBit(stateUpdateMask, WindowStateUpdateFlagBits::Height)) {
+        if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_HEIGHT_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Height", REG_DWORD, &state.height, 4);
             assert(error == ERROR_SUCCESS);
         }
 
-        if(CheckBit(stateUpdateMask, WindowStateUpdateFlagBits::Mode)) {
+        if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_MODE_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Mode", REG_DWORD, &state.mode, 4);
             assert(error == ERROR_SUCCESS);
         }

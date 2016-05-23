@@ -1,3 +1,4 @@
+#include <vulkan/vulkan.h>
 #include <windows.h>
 #include <windowsx.h>
 #include <assert.h>
@@ -8,8 +9,8 @@ namespace Ls {
 
     // WS_CAPTION is needed to make maximizing behave properly
     int const WS_BORDERLESS = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS
-                          | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | /*WS_TABSTOP |*/ WS_BORDER
-    | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_CAPTION;
+                              | WS_SYSMENU | WS_THICKFRAME | WS_GROUP | /*WS_TABSTOP |*/ WS_BORDER
+                              | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_CAPTION;
     int const BORDER_WIDTH = 8;
     int const CAPTION_HEIGHT = 50;
 
@@ -93,28 +94,28 @@ namespace Ls {
             if(!IsIconic(hWnd)) { // Do not update position while minimized
                 long x = GET_X_LPARAM(lParam);
                 long y = GET_Y_LPARAM(lParam);
-                StoreWindowState({x,y,0,0}, WindowStateUpdateFlagBits::X | WindowStateUpdateFlagBits::Y);
+                StoreWindowState({x,y,0,0}, WINDOW_STATE_UPDATE_X_FLAG | WINDOW_STATE_UPDATE_Y_FLAG);
             }
             break;
             case WM_SIZE:
             if (wParam == SIZE_MAXIMIZED)
             {
                 WindowState state;
-                state.mode = WindowMode::Maximized;
-                StoreWindowState(state, WindowStateUpdateFlagBits::Mode);
+                state.mode = WINDOW_MODE_MAXIMIZED;
+                StoreWindowState(state, WINDOW_STATE_UPDATE_MODE_FLAG);
             }
             else if (wParam == SIZE_MINIMIZED)
             {
                 WindowState state;
-                state.mode = WindowMode::Minimized;
-                StoreWindowState(state, WindowStateUpdateFlagBits::Mode);
+                state.mode = WINDOW_MODE_MINIMIZED;
+                StoreWindowState(state, WINDOW_STATE_UPDATE_MODE_FLAG);
             } else if (wParam == SIZE_RESTORED)
             {
                 WORD width = LOWORD(lParam);
                 WORD height = HIWORD(lParam);
-                StoreWindowState({0,0,width,height,WindowMode::Normal}, WindowStateUpdateFlagBits::Width 
-                    | WindowStateUpdateFlagBits::Height
-                    | WindowStateUpdateFlagBits::Mode);    
+                StoreWindowState({0,0,width,height,WINDOW_MODE_NORMAL}, WINDOW_STATE_UPDATE_WIDTH_FLAG 
+                                                                        | WINDOW_STATE_UPDATE_HEIGHT_FLAG 
+                                                                        | WINDOW_STATE_UPDATE_MODE_FLAG );
             }
             break;
             case WM_GETMINMAXINFO: {
@@ -147,7 +148,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
         windowState.y = 100;
         windowState.width = 640;
         windowState.height = 480;
-        windowState.mode = WindowMode::Normal;
+        windowState.mode = WINDOW_MODE_NORMAL;
     }
     WNDCLASSEX windowClass = { 0 };
     windowClass.cbSize = sizeof(WNDCLASSEX);
