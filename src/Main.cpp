@@ -175,14 +175,24 @@ LRESULT CALLBACK WndProc(
 
         // this struct holds Windows event messages
         MSG msg;
+        bool done = false;
 
         // wait for the next message in the queue, store the result in 'msg'
-        while (GetMessage(&msg, NULL, 0, 0))
+        while (!done)
         {
-        // translate keystroke messages into the right format
-            TranslateMessage(&msg);
+            PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
+            if (msg.message == WM_QUIT)
+            {
+                done = true;
+            } else {
+                // translate keystroke messages into the right format
+                TranslateMessage(&msg);
+                // send the message to the WindowProc function
+                DispatchMessage(&msg);
+            }
 
-        // send the message to the WindowProc function
-            DispatchMessage(&msg);
+            RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
         }
+
+        return msg.wParam;
     }
