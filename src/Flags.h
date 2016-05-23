@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+namespace Ls {
+
 template <typename BitType, typename MaskType = int>
 class Flags
 {
@@ -116,4 +118,6 @@ Flags<BitType> operator^(BitType bit, Flags<BitType> const& flags)
 template <typename BitType, typename MaskType>
 bool CheckBit(Flags<BitType, MaskType> bits, BitType bit) {
     return (bits & bit) == bit;
+}
+
 }
