@@ -4,7 +4,7 @@
 
 enum class WindowMode
 {
-    Normal    = SW_RESTORE,
+    Normal    = SW_SHOW,
     Minimized = SW_MINIMIZE,
     Maximized = SW_MAXIMIZE
 };

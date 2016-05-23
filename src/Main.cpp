@@ -86,8 +86,8 @@ LRESULT CALLBACK WndProc(
             break;
         case WM_DESTROY:
             // close the application entirely
-        PostQuitMessage(0);
-        break;
+            PostQuitMessage(0);
+            break;
         case WM_MOVE: 
             if(!IsIconic(hWnd)) { // Do not update position while minimized
                 long x = GET_X_LPARAM(lParam);
@@ -118,7 +118,7 @@ LRESULT CALLBACK WndProc(
             break;
             case WM_GETMINMAXINFO: {
                 HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONULL);
-                assert(monitor);
+                if(!monitor) break; // window may be iconified
                 MONITORINFO monitorInfo;
                 monitorInfo.cbSize = sizeof(MONITORINFO);
                 int result = GetMonitorInfo(monitor, &monitorInfo);
@@ -129,12 +129,11 @@ LRESULT CALLBACK WndProc(
             }
             break;
             case WM_LBUTTONDOWN:
-            ShowWindow(hWnd, SW_MINIMIZE);
-            break;
+                ShowWindow(hWnd, SW_MINIMIZE);
+                break;
             default:
-            return DefWindowProc(hWnd, uMsg, wParam, lParam);
+                return DefWindowProc(hWnd, uMsg, wParam, lParam);
         }
-        //return DefWindowProc(hWnd, uMsg, wParam, lParam);
     }
 
     int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) {
