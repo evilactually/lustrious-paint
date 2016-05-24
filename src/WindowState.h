@@ -27,7 +27,7 @@ namespace Ls {
         WINDOW_STATE_UPDATE_MODE_FLAG   = 32
     };
 
-    typedef int WindowStateUpdateFlags;
+    using WindowStateUpdateFlags = int;
 
     void StoreWindowState(WindowState state, WindowStateUpdateFlags stateUpdateMask) {
         if(!Utils::RegKeyExist(HKEY_CURRENT_USER, "Software\\Lustrious Paint")){
@@ -41,9 +41,9 @@ namespace Ls {
                            nullptr,
                            &key,
                            nullptr);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegCreateKeyEx");
             error = RegCloseKey(key);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegCloseKey");
         }
 
         HKEY key;
@@ -52,35 +52,35 @@ namespace Ls {
                                  0,
                                  KEY_SET_VALUE,
                                  &key);
-        assert(error == ERROR_SUCCESS);
+        Assert(error == ERROR_SUCCESS, "RegOpenKeyEx");
 
         if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_X_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "X", REG_DWORD, &state.x, 4);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegSetKeyValue");
         }
 
         if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_Y_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Y", REG_DWORD, &state.y, 4);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegSetKeyValue");
         }
 
         if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_WIDTH_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Width", REG_DWORD, &state.width, 4);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegSetKeyValue");
         }
 
         if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_HEIGHT_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Height", REG_DWORD, &state.height, 4);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegSetKeyValue");
         }
 
         if(Utils::CheckBit(stateUpdateMask, WINDOW_STATE_UPDATE_MODE_FLAG)) {
             error = RegSetKeyValue(key, nullptr, "Mode", REG_DWORD, &state.mode, 4);
-            assert(error == ERROR_SUCCESS);
+            Assert(error == ERROR_SUCCESS, "RegSetKeyValue");
         }
 
         error = RegCloseKey(key);
-        assert(error == ERROR_SUCCESS);
+        Assert(error == ERROR_SUCCESS, "RegCloseKey");
     }
 
     bool LoadWindowState(WindowState* state) {
@@ -109,7 +109,7 @@ namespace Ls {
         if(error != ERROR_SUCCESS) {
             return false;
         }
-        assert(size == 4);
+        Assert(size == 4, "RegGetValue");
 
         error = RegGetValue(key,
                     nullptr,
@@ -121,7 +121,7 @@ namespace Ls {
         if(error != ERROR_SUCCESS) {
             return false;
         }
-        assert(size == 4);
+        Assert(size == 4, "RegGetValue");
 
         error = RegGetValue(key,
                     nullptr,
@@ -133,7 +133,7 @@ namespace Ls {
         if(error != ERROR_SUCCESS) {
             return false;
         }
-        assert(size == 4);
+        Assert(size == 4, "RegGetValue");
 
         error = RegGetValue(key,
                     nullptr,
@@ -145,7 +145,7 @@ namespace Ls {
         if(error != ERROR_SUCCESS) {
             return false;
         }
-        assert(size == 4);
+        Assert(size == 4, "RegGetValue");
 
         error = RegGetValue(key,
                     nullptr,
@@ -157,10 +157,10 @@ namespace Ls {
         if(error != ERROR_SUCCESS) {
             return false;
         }
-        assert(size == 4);
+        Assert(size == 4, "RegGetValue");
 
         RegCloseKey(key);
-        assert(error == ERROR_SUCCESS);
+        Assert(error == ERROR_SUCCESS, "RegCloseKey");
         return true;
     }
 }

@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "WindowState.h"
 #include "Utils.h"
+#include "Vulkan.h"
 
 namespace Ls {
 
@@ -124,7 +125,7 @@ namespace Ls {
                 MONITORINFO monitorInfo;
                 monitorInfo.cbSize = sizeof(MONITORINFO);
                 int result = GetMonitorInfo(monitor, &monitorInfo);
-                assert(result);
+                Assert(result,"GetMonitorInfo");
                 MINMAXINFO* minmaxinfo = (MINMAXINFO*)lParam;
                 minmaxinfo->ptMaxSize.y = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
                 return 0;
@@ -181,7 +182,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
     // this struct holds Windows event messages
     MSG msg;
     bool done = false;
-
     // wait for the next message in the queue, store the result in 'msg'
     while (!done)
     {

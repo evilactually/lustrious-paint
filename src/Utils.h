@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <string>
+#include <assert.h>
 
 namespace Ls {
     namespace Utils {
@@ -24,3 +25,11 @@ namespace Ls {
         }
     }
 }
+
+#define Assert(flag, msg)\
+    if((msg) && !(flag)) {\
+        OutputDebugStringA("ASSERT: ");\
+        OutputDebugStringA(msg);\
+        OutputDebugStringA("\n");\
+    }\
+    assert(flag);
