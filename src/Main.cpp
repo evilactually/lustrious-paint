@@ -177,6 +177,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
     hInstance,
     NULL);
 
+    Vulkan::Initialize();
+
     ShowWindow(hwnd, static_cast<int>(windowState.mode));
 
     // this struct holds Windows event messages
