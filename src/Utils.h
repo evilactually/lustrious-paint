@@ -33,3 +33,6 @@ namespace Ls {
         OutputDebugStringA("\n");\
     }\
     assert(flag);
+
+#define CheckVulkanResult(result, msg)\
+    Assert((result) == VK_SUCCESS, msg)

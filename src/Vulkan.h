@@ -50,7 +50,7 @@ namespace Ls {
             instanceInfo.ppEnabledExtensionNames = NULL;
 
             result = vkCreateInstance(&instanceInfo, NULL, &context.instance);
-            Assert(!result, "vkCreateInstance");
+            CheckVulkanResult(result, "vkCreateInstance");
 
         }
 
