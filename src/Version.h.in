@@ -1,0 +1,19 @@
+#pragma once 
+
+namespace Ls {
+    namespace Version {
+        const int VERSION_MAJOR = @VERSION_MAJOR@;
+        const int VERSION_MINOR = @VERSION_MINOR@;
+        const int VERSION_REVISION = @VERSION_REVISION@;
+        const int VERSION_BUILD = @VERSION_BUILD@;
+        const int VERSION = (VERSION_BUILD << 24) | (VERSION_REVISION << 16) | (VERSION_MINOR << 8) | VERSION_MAJOR | 0x00000000;
+        const char* COMPANY_NAME = "@COMPANY_NAME@";
+        const char* FILE_DESCRIPTION = "@FILE_DESCRIPTION@";
+        const char* FILE_VERSION = "@FILE_VERSION@";
+        const char* INTERNAL_NAME = "@INTERNAL_NAME@";
+        const char* LEGAL_COPYRIGHT = "@LEGAL_COPYRIGHT@";
+        const char* ORIGINAL_FILENAME = "@ORIGINAL_FILENAME@";
+        const char* PRODUCT_NAME = "@PRODUCT_NAME@";
+        const char* PRODUCT_VERSION = "@PRODUCT_VERSION@";
+    }
+}
