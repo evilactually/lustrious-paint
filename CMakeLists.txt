@@ -48,6 +48,7 @@ file(GLOB_RECURSE SOURCE_FILES
     "src/*.h"
     "src/*.cpp"
 	"src/*.hpp"
+	"src/*.inl"
 	"${PROJECT_BINARY_DIR}/resources/*.rc"
 	"${PROJECT_BINARY_DIR}/src/*.h"
 	"${PROJECT_BINARY_DIR}/src/*.hpp"
