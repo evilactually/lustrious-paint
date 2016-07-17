@@ -1,58 +1,27 @@
-// Copyright 2016 Intel Corporation All Rights Reserved
-// 
-// Intel makes no representations about the suitability of this software for any purpose.
-// THIS SOFTWARE IS PROVIDED ""AS IS."" INTEL SPECIFICALLY DISCLAIMS ALL WARRANTIES,
-// EXPRESS OR IMPLIED, AND ALL LIABILITY, INCLUDING CONSEQUENTIAL AND OTHER INDIRECT DAMAGES,
-// FOR THE USE OF THIS SOFTWARE, INCLUDING LIABILITY FOR INFRINGEMENT OF ANY PROPRIETARY
-// RIGHTS, AND INCLUDING THE WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
-// Intel does not assume any responsibility for any errors which may appear in this software
-// nor any responsibility to update it.
-
-// ************************************************************ //
-// Exported functions                                           //
-//                                                              //
-// These functions are always exposed by vulkan libraries.      //
-// ************************************************************ //
-
 #if !defined(VK_EXPORTED_FUNCTION)
 #define VK_EXPORTED_FUNCTION( fun )
 #endif
-
-VK_EXPORTED_FUNCTION( vkGetInstanceProcAddr )
-
-#undef VK_EXPORTED_FUNCTION
-
-
-// ************************************************************ //
-// Global level functions                                       //
-//                                                              //
-// They allow checking what instance extensions are available   //
-// and allow creation of a Vulkan Instance.                     //
-// ************************************************************ //
 
 #if !defined(VK_GLOBAL_LEVEL_FUNCTION)
 #define VK_GLOBAL_LEVEL_FUNCTION( fun )
 #endif
 
-VK_GLOBAL_LEVEL_FUNCTION( vkCreateInstance )
-VK_GLOBAL_LEVEL_FUNCTION( vkEnumerateInstanceExtensionProperties )
-VK_GLOBAL_LEVEL_FUNCTION( vkEnumerateInstanceLayerProperties )
-
-#undef VK_GLOBAL_LEVEL_FUNCTION
-
-
-// ************************************************************ //
-// Instance level functions                                     //
-//                                                              //
-// These functions allow for device queries and creation.       //
-// They help choose which device is well suited for our needs.  //
-// ************************************************************ //
-
 #if !defined(VK_INSTANCE_LEVEL_FUNCTION)
 #define VK_INSTANCE_LEVEL_FUNCTION( fun )
 #endif
 
-// Tutorial 01
+#if !defined(VK_DEVICE_LEVEL_FUNCTION)
+#define VK_DEVICE_LEVEL_FUNCTION( fun )
+#endif
+
+#ifdef VK_USE_CORE
+
+VK_EXPORTED_FUNCTION( vkGetInstanceProcAddr )
+
+VK_GLOBAL_LEVEL_FUNCTION( vkCreateInstance )
+VK_GLOBAL_LEVEL_FUNCTION( vkEnumerateInstanceExtensionProperties )
+VK_GLOBAL_LEVEL_FUNCTION( vkEnumerateInstanceLayerProperties )
+
 VK_INSTANCE_LEVEL_FUNCTION( vkEnumeratePhysicalDevices )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceProperties )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceFeatures )
@@ -67,80 +36,14 @@ VK_INSTANCE_LEVEL_FUNCTION(vkGetPhysicalDeviceImageFormatProperties)
 VK_INSTANCE_LEVEL_FUNCTION(vkEnumerateDeviceLayerProperties)
 VK_INSTANCE_LEVEL_FUNCTION(vkGetPhysicalDeviceSparseImageFormatProperties)
 
-// Tutorial 02
 VK_INSTANCE_LEVEL_FUNCTION( vkEnumerateDeviceExtensionProperties )
-#if defined(USE_SWAPCHAIN_EXTENSIONS)
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceSupportKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceCapabilitiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkDestroySurfaceKHR )
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateWin32SurfaceKHR )
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateXcbSurfaceKHR )
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateXlibSurfaceKHR )
-#endif
-#endif
 
-// Tutorial 04
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceMemoryProperties )
 
-#ifdef USE_KHR_SWAPCHAIN_EXTENSION
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateSwapchainKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkDestroySwapchainKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetSwapchainImagesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkAcquireNextImageKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkQueuePresentKHR )
-#endif
-
-#ifdef USE_KHR_DISPLAY_EXTENSION
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceDisplayPropertiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceDisplayPlanePropertiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayPlaneSupportedDisplaysKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayModePropertiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateDisplayModeKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayPlaneCapabilitiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateDisplayPlaneSurfaceKHR )
-#endif
-
-#ifdef USE_KHR_SURFACE_EXTENSION
-VK_INSTANCE_LEVEL_FUNCTION( vkDestroySurfaceKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceSupportKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceCapabilitiesKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
-#endif
-
-#ifdef USE_KHR_WIN32_SURFACE_EXTENSION
-VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceWin32PresentationSupportKHR )
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateWin32SurfaceKHR )
-#endif
-
-#ifdef USE_KHR_DISPLAY_SWAPCHAIN_EXTENSION
-VK_INSTANCE_LEVEL_FUNCTION( vkCreateSharedSwapchainsKHR )
-#endif
-
-#undef VK_INSTANCE_LEVEL_FUNCTION
-
-
-// ************************************************************ //
-// Device level functions                                       //
-//                                                              //
-// These functions are used mainly for drawing                  //
-// ************************************************************ //
-
-#if !defined(VK_DEVICE_LEVEL_FUNCTION)
-#define VK_DEVICE_LEVEL_FUNCTION( fun )
-#endif
-
-// Tutorial 01
 VK_DEVICE_LEVEL_FUNCTION( vkGetDeviceQueue )
 VK_DEVICE_LEVEL_FUNCTION( vkDeviceWaitIdle )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyDevice )
 
-// Tutorial 02
 VK_DEVICE_LEVEL_FUNCTION( vkCreateSemaphore )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateCommandPool )
 VK_DEVICE_LEVEL_FUNCTION( vkAllocateCommandBuffers )
@@ -154,7 +57,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkDestroyCommandPool )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroySemaphore )
 
 
-// Tutorial 03
 VK_DEVICE_LEVEL_FUNCTION( vkCreateImageView )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateRenderPass )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateFramebuffer )
@@ -172,7 +74,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkDestroyRenderPass )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyFramebuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyImageView )
 
-// Tutorial 04
 VK_DEVICE_LEVEL_FUNCTION( vkCreateFence )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkGetBufferMemoryRequirements )
@@ -190,10 +91,8 @@ VK_DEVICE_LEVEL_FUNCTION( vkFreeMemory )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyFence )
 
-// Tutorial 05
 VK_DEVICE_LEVEL_FUNCTION( vkCmdCopyBuffer )
 
-// Tutorial 06
 VK_DEVICE_LEVEL_FUNCTION( vkCreateImage )
 VK_DEVICE_LEVEL_FUNCTION( vkGetImageMemoryRequirements )
 VK_DEVICE_LEVEL_FUNCTION( vkBindImageMemory )
@@ -209,7 +108,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkDestroyDescriptorSetLayout )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroySampler )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyImage )
 
-// vk_cpp missing
 VK_DEVICE_LEVEL_FUNCTION( vkResetCommandBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdSetLineWidth )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdSetDepthBias )
@@ -270,14 +168,51 @@ VK_DEVICE_LEVEL_FUNCTION( vkFreeDescriptorSets )
 VK_DEVICE_LEVEL_FUNCTION( vkGetRenderAreaGranularity )
 VK_DEVICE_LEVEL_FUNCTION( vkResetCommandPool )
 
-#ifdef USE_EXT_DEBUG_REPORT_EXTENSION
-VK_DEVICE_LEVEL_FUNCTION( vkCreateDebugReportCallbackEXT )
-VK_DEVICE_LEVEL_FUNCTION( vkDestroyDebugReportCallbackEXT )
-VK_DEVICE_LEVEL_FUNCTION( vkDebugReportMessageEXT )
+#endif // #ifdef VK_USE_CORE
+
+#ifdef VK_USE_KHR_DISPLAY
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceDisplayPropertiesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceDisplayPlanePropertiesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayPlaneSupportedDisplaysKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayModePropertiesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkCreateDisplayModeKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetDisplayPlaneCapabilitiesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkCreateDisplayPlaneSurfaceKHR )
+#endif
+
+#ifdef VK_USE_KHR_SURFACE
+VK_INSTANCE_LEVEL_FUNCTION( vkDestroySurfaceKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceSupportKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceCapabilitiesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
+#endif
+
+#ifdef VK_USE_KHR_WIN32_SURFACE
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceWin32PresentationSupportKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkCreateWin32SurfaceKHR )
+#endif
+
+#ifdef VK_USE_EXT_DEBUG_REPORT
+VK_INSTANCE_LEVEL_FUNCTION( vkCreateDebugReportCallbackEXT )
+VK_INSTANCE_LEVEL_FUNCTION( vkDestroyDebugReportCallbackEXT )
+VK_INSTANCE_LEVEL_FUNCTION( vkDebugReportMessageEXT )
+#endif
+
+#ifdef VK_USE_KHR_DISPLAY_SWAPCHAIN
+VK_DEVICE_LEVEL_FUNCTION( vkCreateSharedSwapchainsKHR )
+#endif
+
+#ifdef VK_USE_KHR_SWAPCHAIN
+VK_DEVICE_LEVEL_FUNCTION( vkCreateSwapchainKHR )
+VK_DEVICE_LEVEL_FUNCTION( vkDestroySwapchainKHR )
+VK_DEVICE_LEVEL_FUNCTION( vkGetSwapchainImagesKHR )
+VK_DEVICE_LEVEL_FUNCTION( vkAcquireNextImageKHR )
+VK_DEVICE_LEVEL_FUNCTION( vkQueuePresentKHR )
 #endif
 
 
+#undef VK_EXPORTED_FUNCTION
+#undef VK_GLOBAL_LEVEL_FUNCTION
+#undef VK_INSTANCE_LEVEL_FUNCTION
 #undef VK_DEVICE_LEVEL_FUNCTION
-
-
-

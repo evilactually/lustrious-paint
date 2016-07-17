@@ -16,15 +16,21 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::Application::hInstance = hInstance;
     Ls::Application::width = 800;
     Ls::Application::height = 600;
+
     Ls::Application::CreateMainWindow();
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
     Ls::Application::CreateInstance();
-    vk::LoadInstanceLevelEntryPoints(Ls::Application::instance);
+    vk::LoadInstanceLevelEntryPoints(Ls::Application::instance, Ls::Application::extensions);
     Ls::Application::CreateDevice();
-    vk::LoadDeviceLevelEntryPoints(Ls::Application::device);
+    vk::LoadDeviceLevelEntryPoints(Ls::Application::device, Ls::Application::extensions);
+    
     while (Ls::Application::Update()) {};
     return Ls::Application::msg.wParam;
+
+    Ls::Application::FreeDevice();
+    Ls::Application::FreeInstance();
+    vk::UnloadVulkanLibrary();
 }
 

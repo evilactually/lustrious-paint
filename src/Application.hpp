@@ -15,6 +15,11 @@ namespace Ls {
         HWND windowHandle;
         vk::Device device;
         uint32_t queue_family_index;
+        vk::Queue queue;
+        std::vector<const char*> extensions = {
+            VK_KHR_SURFACE_EXTENSION_NAME,
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+        };
 
         LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             switch (uMsg) {
@@ -71,14 +76,52 @@ namespace Ls {
             return running;
         }
     
+        bool CheckExtensionAvailability( const char *extension_name, const std::vector<vk::ExtensionProperties> &available_extensions ) {
+            for( size_t i = 0; i < available_extensions.size(); ++i ) {
+                if( strcmp( available_extensions[i].extensionName, extension_name ) == 0 ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         void CreateInstance() {
+            uint32_t extensions_count = 0;
+            if( (vk::enumerateInstanceExtensionProperties( nullptr, &extensions_count, nullptr ) != vk::Result::eSuccess) ||
+                (extensions_count == 0) ) {
+                std::cout << "Error occurred during instance extensions enumeration!" << std::endl;
+                abort();
+            }
+
+            std::vector<vk::ExtensionProperties> available_extensions( extensions_count );
+            if( vk::enumerateInstanceExtensionProperties( nullptr, &extensions_count, &available_extensions[0] ) != vk::Result::eSuccess ) {
+                std::cout << "Error occurred during instance extensions enumeration!" << std::endl;
+                abort();
+            }
+
+            for( size_t i = 0; i < extensions.size(); ++i ) {
+                if( !CheckExtensionAvailability( extensions[i], available_extensions ) ) {
+                    std::cout << "Could not find instance extension named \"" << extensions[i] << "\"!" << std::endl;
+                    abort();
+                }
+            }
+
             vk::ApplicationInfo appliactionInfo(Ls::Info::PRODUCT_NAME,
                                                 Ls::Info::VERSION,
-                                                NULL, 
+                                                NULL,
                                                 NULL,
                                                 VK_API_VERSION_1_0);
-            vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(), &appliactionInfo, 0, NULL, 0, NULL);
+            vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(),
+                                                      &appliactionInfo,
+                                                      0,
+                                                      NULL,
+                                                      static_cast<uint32_t>(extensions.size()),
+                                                      &extensions[0]);
             instance = createInstance(instanceCreateInfo);
+        }
+
+        void CreatePresentationSurface() {
+            
         }
 
         bool CheckPhysicalDeviceProperties( vk::PhysicalDevice physical_device, uint32_t &queue_family_index ) {
@@ -166,6 +209,23 @@ namespace Ls {
             }
 
             Ls::Application::queue_family_index = selected_queue_family_index;
+        }
+
+        void GetQueue() {
+            device.getQueue( queue_family_index, 0, &queue );
+        }
+
+        void FreeDevice() {
+            if( device ) {
+                device.waitIdle();
+                device.destroy( nullptr );
+            }
+        }
+
+        void FreeInstance() {
+            if( instance ) {
+                instance.destroy( nullptr );    
+            }
         }
     }
 }
