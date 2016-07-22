@@ -29,21 +29,16 @@ VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceQueueFamilyProperties )
 VK_INSTANCE_LEVEL_FUNCTION( vkCreateDevice )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetDeviceProcAddr )
 VK_INSTANCE_LEVEL_FUNCTION( vkDestroyInstance )
-
-
 VK_INSTANCE_LEVEL_FUNCTION(vkGetPhysicalDeviceFormatProperties)
 VK_INSTANCE_LEVEL_FUNCTION(vkGetPhysicalDeviceImageFormatProperties)
 VK_INSTANCE_LEVEL_FUNCTION(vkEnumerateDeviceLayerProperties)
 VK_INSTANCE_LEVEL_FUNCTION(vkGetPhysicalDeviceSparseImageFormatProperties)
-
 VK_INSTANCE_LEVEL_FUNCTION( vkEnumerateDeviceExtensionProperties )
-
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceMemoryProperties )
 
 VK_DEVICE_LEVEL_FUNCTION( vkGetDeviceQueue )
 VK_DEVICE_LEVEL_FUNCTION( vkDeviceWaitIdle )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyDevice )
-
 VK_DEVICE_LEVEL_FUNCTION( vkCreateSemaphore )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateCommandPool )
 VK_DEVICE_LEVEL_FUNCTION( vkAllocateCommandBuffers )
@@ -55,8 +50,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkQueueSubmit )
 VK_DEVICE_LEVEL_FUNCTION( vkFreeCommandBuffers )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyCommandPool )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroySemaphore )
-
-
 VK_DEVICE_LEVEL_FUNCTION( vkCreateImageView )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateRenderPass )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateFramebuffer )
@@ -73,7 +66,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkDestroyPipeline )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyRenderPass )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyFramebuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyImageView )
-
 VK_DEVICE_LEVEL_FUNCTION( vkCreateFence )
 VK_DEVICE_LEVEL_FUNCTION( vkCreateBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkGetBufferMemoryRequirements )
@@ -90,9 +82,7 @@ VK_DEVICE_LEVEL_FUNCTION( vkResetFences )
 VK_DEVICE_LEVEL_FUNCTION( vkFreeMemory )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyFence )
-
 VK_DEVICE_LEVEL_FUNCTION( vkCmdCopyBuffer )
-
 VK_DEVICE_LEVEL_FUNCTION( vkCreateImage )
 VK_DEVICE_LEVEL_FUNCTION( vkGetImageMemoryRequirements )
 VK_DEVICE_LEVEL_FUNCTION( vkBindImageMemory )
@@ -107,7 +97,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkDestroyDescriptorPool )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyDescriptorSetLayout )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroySampler )
 VK_DEVICE_LEVEL_FUNCTION( vkDestroyImage )
-
 VK_DEVICE_LEVEL_FUNCTION( vkResetCommandBuffer )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdSetLineWidth )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdSetDepthBias )
@@ -210,7 +199,6 @@ VK_DEVICE_LEVEL_FUNCTION( vkGetSwapchainImagesKHR )
 VK_DEVICE_LEVEL_FUNCTION( vkAcquireNextImageKHR )
 VK_DEVICE_LEVEL_FUNCTION( vkQueuePresentKHR )
 #endif
-
 
 #undef VK_EXPORTED_FUNCTION
 #undef VK_GLOBAL_LEVEL_FUNCTION
