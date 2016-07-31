@@ -232,6 +232,20 @@ namespace vk
         #include "VulkanFunctions.inl"
         #undef VK_USE_EXT_DEBUG_REPORT
 
+        #define VK_USE_KHR_DISPLAY_SWAPCHAIN
+        #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
+           if ( KHR_DISPLAY_SWAPCHAIN )                                                        \
+                LOAD_FUNCTION(fun)
+        #include "VulkanFunctions.inl"
+        #undef VK_USE_KHR_DISPLAY_SWAPCHAIN
+
+        #define VK_USE_KHR_SWAPCHAIN
+        #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
+           if ( KHR_SWAPCHAIN )                                                        \
+                LOAD_FUNCTION(fun)
+        #include "VulkanFunctions.inl"
+        #undef VK_USE_SWAPCHAIN
+
         #undef LOAD_FUNCTION
     }
 }

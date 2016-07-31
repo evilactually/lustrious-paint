@@ -39,7 +39,7 @@ namespace Ls {
     vk::Semaphore rendering_finished_semaphore;
     vk::PhysicalDevice physical_device;
     vk::SwapchainKHR swapchain;
-    bool canRender = false;
+    bool can_render = false;
 
     void Abort(std::string& msg) {
         MessageBox(windowHandle,
@@ -344,14 +344,31 @@ namespace Ls {
         }
     }
 
-    uint32_t GetSwapChainNumImages( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
-        // Set of images defined in a swap chain may not always be available for application to render to:
-        // One may be displayed and one may wait in a queue to be presented
-        // If application wants to use more images at the same time it must ask for more images
-        uint32_t image_count = surface_capabilities.minImageCount + 1;
-        if( (surface_capabilities.maxImageCount > 0) &&
-            (image_count > surface_capabilities.maxImageCount) ) {
-          image_count = surface_capabilities.maxImageCount;
+    uint32_t GetSwapChainNumImages( vk::SurfaceCapabilitiesKHR &surface_capabilities, vk::PresentModeKHR chosen_present_mode) {
+        uint32_t image_count;
+
+        // select desired image cound based on present mode
+        switch (chosen_present_mode) {
+            case vk::PresentModeKHR::eMailbox:
+                image_count = 3;
+                break;
+            case vk::PresentModeKHR::eFifo:
+                image_count = 3;
+                break;
+            case vk::PresentModeKHR::eFifoRelaxed:
+                image_count = 3;
+                break;
+            case vk::PresentModeKHR::eImmediate:
+                image_count = 2;
+                break;
+        }
+
+        // clamp image count to fit surface capabilites
+        if (image_count < surface_capabilities.minImageCount) {
+            image_count = surface_capabilities.minImageCount;
+        } else if ( surface_capabilities.maxImageCount != 0 && 
+                    image_count > surface_capabilities.maxImageCount ) {
+            image_count = surface_capabilities.maxImageCount;
         }
         return image_count;
     }
@@ -404,12 +421,13 @@ namespace Ls {
     }
 
     Optional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
-        // Color attachment flag must always be supported, don't have to check
-        // We can define other usage flags but we always need to check if they are supported
-        if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) {
-            return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
-        }
-        return Optional<vk::ImageUsageFlags>();
+        //// Color attachment flag must always be supported, don't have to check
+        //// We can define other usage flags but we always need to check if they are supported
+        //if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) {
+        //    return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
+        //}
+	    //return Optional<vk::ImageUsageFlags>();
+		return vk::ImageUsageFlagBits::eColorAttachment;
     }
 
     vk::SurfaceTransformFlagBitsKHR GetSwapChainTransform( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
@@ -437,7 +455,7 @@ namespace Ls {
     }
 
     void CreateSwapChain() {
-        canRender = false;
+        can_render = false;
         device.waitIdle();
 
         vk::SurfaceCapabilitiesKHR surface_capabilities;
@@ -467,7 +485,6 @@ namespace Ls {
             Abort("Error occurred during presentation surface present modes enumeration!");
         }
 
-        uint32_t                        desired_number_of_images = GetSwapChainNumImages( surface_capabilities );
         vk::SurfaceFormatKHR            desired_format = GetSwapChainFormat( surface_formats );
         Optional<vk::Extent2D>          desired_extent = GetSwapChainExtent( surface_capabilities );
         Optional<vk::ImageUsageFlags>   desired_usage = GetSwapChainUsageFlags( surface_capabilities );
@@ -482,8 +499,10 @@ namespace Ls {
             Abort("Surface does not support any suitable present modes!");
         }
 
+        uint32_t desired_number_of_images = GetSwapChainNumImages( surface_capabilities, desired_present_mode );
+
         if( !desired_extent ) {
-            // Current surface size is (0, 0) so we can't create a swap chain and render anything (CanRender == false)
+            // Current surface size is (0, 0) so we can't create a swap chain and render anything (can_render == false)
             // But we don't wont to kill the application as this situation may occur i.e. when window gets minimized
             return;
         }
@@ -511,14 +530,12 @@ namespace Ls {
             Abort("Could not create swap chain!");
         }
 
-        if( !old_swapchain ) {
+        if( old_swapchain ) {
             device.destroySwapchainKHR( old_swapchain, nullptr );
         }
-        canRender = true;
+        can_render = true;
     }
 }
-
-
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     Ls::hInstance = hInstance;
@@ -535,6 +552,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::device_extensions);
 	Ls::GetQueues();
     Ls::CreatePresentationSurface();
+	Ls::CreateSwapChain();
     
     while (Ls::Update()) {};
     return Ls::msg.wParam;
@@ -543,4 +561,3 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::FreeInstance();
     vk::UnloadVulkanLibrary();
 }
-
