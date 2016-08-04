@@ -30,6 +30,8 @@
 #undef VK_USE_KHR_DISPLAY_SWAPCHAIN
 #undef VK_USE_KHR_SWAPCHAIN
 
+#define VKCPP_DISABLE_ENHANCED_MODE
+#include <vector>
 #include "vulkan/vk_cpp.hpp"
 
 extern HMODULE VulkanLibrary;

@@ -2,6 +2,7 @@
 #include "Vk.hpp"
 #include "Version.h"
 #include "Optional.hpp"
+#include "win32_console.hpp"
 
 //#include "Application.hpp"
 
@@ -23,22 +24,24 @@ namespace Ls {
     MSG msg;
     HWND windowHandle;
     vk::Device device;
-    uint32_t graphics_queue_family_index;
-    uint32_t present_queue_family_index;
-    vk::Queue graphics_queue;
-	vk::Queue present_queue;
-    std::vector<const char*> instance_extensions = {
+    uint32_t graphicsQueueFamilyIndex;
+    uint32_t presentQueueFamilyIndex;
+    vk::Queue graphicsQueue;
+	vk::Queue presentQueue;
+    std::vector<const char*> instanceExtensions = {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME
     };
-    std::vector<const char*> device_extensions = {
+    std::vector<const char*> deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
-    vk::SurfaceKHR presentation_surface;
-    vk::Semaphore image_available_semaphore;
-    vk::Semaphore rendering_finished_semaphore;
-    vk::PhysicalDevice physical_device;
-    vk::SwapchainKHR swapchain;
+    vk::SurfaceKHR presentationSurface;
+    vk::Semaphore imageAvailableSemaphore;
+    vk::Semaphore renderingFinishedSemaphore;
+    vk::PhysicalDevice physicalDevice;
+    vk::SwapchainKHR swapChain;
+    vk::CommandPool presentQueueCmdPool;
+    std::vector<vk::CommandBuffer> presentQueueCmdBuffers;
     bool can_render = false;
 
     void Abort(std::string& msg) {
@@ -57,45 +60,8 @@ namespace Ls {
         exit(1);
     }
 
-    LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-        switch (uMsg) {
-        case WM_CLOSE: {
-            PostQuitMessage(0);
-            break;
-        }
-        case WM_PAINT: {
-            break;
-        }
-        default: {
-            break;
-        }
-        }
-
-        // a pass-through for now. We will return to this callback
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
-    }
-
-    void CreateMainWindow() {
-        WNDCLASSEX windowClass = {};
-        windowClass.cbSize = sizeof(WNDCLASSEX);
-        windowClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
-        windowClass.lpfnWndProc = WindowProc;
-        windowClass.hInstance = hInstance;
-        windowClass.lpszClassName = "LsMainWindow";
-        RegisterClassEx(&windowClass);
-
-        windowHandle = CreateWindowEx(NULL,
-            "LsMainWindow",
-            "Lustrious Paint",
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            100,
-            100,
-            width,
-            height,
-            NULL,
-            NULL,
-            hInstance,
-            NULL);
+    void Error() {
+        Abort(std::string("Error occurred, view log for details."));   
     }
 
     bool Update() {
@@ -125,18 +91,20 @@ namespace Ls {
         uint32_t instance_extensions_count = 0;
         if( (vk::enumerateInstanceExtensionProperties( nullptr, &instance_extensions_count, nullptr ) != vk::Result::eSuccess) ||
             (instance_extensions_count == 0) ) {
-            Abort("Error occurred during instance instance_extensions enumeration!");
+            std::cout << "Error occurred during instance instanceExtensions enumeration!" << std::endl;
+            Error();
         }
 
         std::vector<vk::ExtensionProperties> available_instance_extensions( instance_extensions_count );
         if( vk::enumerateInstanceExtensionProperties( nullptr, &instance_extensions_count, &available_instance_extensions[0] ) != vk::Result::eSuccess ) {
-            Abort("Error occurred during instance instance_extensions enumeration!");
+            std::cout << "Error occurred during instance instanceExtensions enumeration!" << std::endl;
+            Error();
         }
 
-        for( size_t i = 0; i < instance_extensions.size(); ++i ) {
-            if( !CheckExtensionAvailability( instance_extensions[i], available_instance_extensions ) ) {
+        for( size_t i = 0; i < instanceExtensions.size(); ++i ) {
+            if( !CheckExtensionAvailability( instanceExtensions[i], available_instance_extensions ) ) {
                 Abort(std::string("Could not find instance extension named \"") + 
-                      std::string(instance_extensions[i]) + 
+                      std::string(instanceExtensions[i]) + 
                       std::string("\"!"));
             }
         }
@@ -150,9 +118,9 @@ namespace Ls {
                                                   &appliactionInfo,
                                                   0,
                                                   NULL,
-                                                  static_cast<uint32_t>(instance_extensions.size()),
-                                                  &instance_extensions[0]);
-        instance = createInstance(instanceCreateInfo);
+                                                  static_cast<uint32_t>(instanceExtensions.size()),
+                                                  &instanceExtensions[0]);
+        createInstance(&instanceCreateInfo, nullptr, &instance);
     }
 
     void CreatePresentationSurface() {
@@ -162,14 +130,15 @@ namespace Ls {
             windowHandle                                      // HWND                             hwnd
         );
 
-        if( instance.createWin32SurfaceKHR( &surface_create_info, nullptr, &presentation_surface ) != vk::Result::eSuccess ) {
-            Abort("Could not create presentation surface!");
+        if( instance.createWin32SurfaceKHR( &surface_create_info, nullptr, &presentationSurface ) != vk::Result::eSuccess ) {
+            std::cout << "Could not create presentation surface!" << std::endl;
+            Error();
         }
     }
 
-    bool FindQueueFamilies(vk::PhysicalDevice physical_device, uint32_t* selected_graphics_queue_family_index, uint32_t* selected_present_queue_family_index) {
+    bool FindQueueFamilies(vk::PhysicalDevice physicalDevice, uint32_t* selected_graphics_queue_family_index, uint32_t* selected_present_queue_family_index) {
         uint32_t queue_families_count = 0;
-        physical_device.getQueueFamilyProperties( &queue_families_count, nullptr );
+        physicalDevice.getQueueFamilyProperties( &queue_families_count, nullptr );
         if( queue_families_count == 0 ) {
             return false;
         }
@@ -177,25 +146,27 @@ namespace Ls {
         std::vector<vk::QueueFamilyProperties> queue_family_properties( queue_families_count );
         std::vector<VkBool32>                  queue_present_support( queue_families_count );
 
-        physical_device.getQueueFamilyProperties( &queue_families_count, &queue_family_properties[0] );
+        physicalDevice.getQueueFamilyProperties( &queue_families_count, &queue_family_properties[0] );
 
-        uint32_t graphics_queue_family_index = UINT32_MAX;
-        uint32_t present_queue_family_index = UINT32_MAX;
+        uint32_t graphicsQueueFamilyIndex = UINT32_MAX;
+        uint32_t presentQueueFamilyIndex = UINT32_MAX;
 
         for( uint32_t i = 0; i < queue_families_count; ++i ) {
-            physical_device.getSurfaceSupportKHR( i, presentation_surface, &queue_present_support[i] );
+            physicalDevice.getSurfaceSupportKHR( i, presentationSurface, &queue_present_support[i] );
 
             if( (queue_family_properties[i].queueCount > 0) &&
                 (queue_family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics) ) {
                 // Select first queue that supports graphics
-                if( graphics_queue_family_index == UINT32_MAX ) {
-                    graphics_queue_family_index = i;
+                if( graphicsQueueFamilyIndex == UINT32_MAX ) {
+                    graphicsQueueFamilyIndex = i;
                 }
 
                 // If there is queue that supports both graphics and present - prefer it
                 if( queue_present_support[i] ) {
                     *selected_graphics_queue_family_index = i;
                     *selected_present_queue_family_index = i;
+                    std::cout << "Graphics queue family index " << i << std::endl;
+                    std::cout << "Present queue family index " << i << std::endl;
                     return true;
                 }
             }
@@ -204,36 +175,38 @@ namespace Ls {
         // We don't have queue that supports both graphics and present so we have to use separate queues
         for( uint32_t i = 0; i < queue_families_count; ++i ) {
             if( queue_present_support[i] ) {
-                present_queue_family_index = i;
+                presentQueueFamilyIndex = i;
                 break;
             }
         }
 
         // If this device doesn't support queues with graphics and present capabilities don't use it
-        if( (graphics_queue_family_index == UINT32_MAX) ||
-            (present_queue_family_index == UINT32_MAX) ) {
+        if( (graphicsQueueFamilyIndex == UINT32_MAX) ||
+            (presentQueueFamilyIndex == UINT32_MAX) ) {
           return false;
         }
 
-        *selected_graphics_queue_family_index = graphics_queue_family_index;
-        *selected_present_queue_family_index = present_queue_family_index;
+        *selected_graphics_queue_family_index = graphicsQueueFamilyIndex;
+        *selected_present_queue_family_index = presentQueueFamilyIndex;
+        std::cout << "Graphics queue family index " << graphicsQueueFamilyIndex << std::endl;
+        std::cout << "Present queue family index " << presentQueueFamilyIndex << std::endl;
         return true;
     }
 
-    bool CheckPhysicalDeviceProperties( vk::PhysicalDevice physical_device, uint32_t* queue_family_index, uint32_t* present_queue_family_index ) {
+    bool CheckPhysicalDeviceProperties( vk::PhysicalDevice physicalDevice, uint32_t* queue_family_index, uint32_t* presentQueueFamilyIndex ) {
         uint32_t extensions_count = 0;
-        if( (physical_device.enumerateDeviceExtensionProperties( nullptr, &extensions_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (physicalDevice.enumerateDeviceExtensionProperties( nullptr, &extensions_count, nullptr ) != vk::Result::eSuccess) ||
             (extensions_count == 0) ) {
             return false;
         }
 
         std::vector<vk::ExtensionProperties> available_extensions( extensions_count );
-        if( physical_device.enumerateDeviceExtensionProperties( nullptr, &extensions_count, &available_extensions[0] ) != vk::Result::eSuccess ) {
+        if( physicalDevice.enumerateDeviceExtensionProperties( nullptr, &extensions_count, &available_extensions[0] ) != vk::Result::eSuccess ) {
             return false;
         }
 
-        for( size_t i = 0; i < device_extensions.size(); ++i ) {
-            if( !CheckExtensionAvailability( device_extensions[i], available_extensions ) ) {
+        for( size_t i = 0; i < deviceExtensions.size(); ++i ) {
+            if( !CheckExtensionAvailability( deviceExtensions[i], available_extensions ) ) {
                 return false;
             }
         }
@@ -241,8 +214,8 @@ namespace Ls {
         vk::PhysicalDeviceProperties device_properties;
         vk::PhysicalDeviceFeatures   device_features;
 
-        physical_device.getProperties(&device_properties);
-        physical_device.getFeatures(&device_features);
+        physicalDevice.getProperties(&device_properties);
+        physicalDevice.getFeatures(&device_features);
 
         uint32_t major_version = VK_VERSION_MAJOR( device_properties.apiVersion );
         uint32_t minor_version = VK_VERSION_MINOR( device_properties.apiVersion );
@@ -253,7 +226,7 @@ namespace Ls {
             return false;
         }
 
-        if (!FindQueueFamilies(physical_device, queue_family_index, present_queue_family_index)) {
+        if (!FindQueueFamilies(physicalDevice, queue_family_index, presentQueueFamilyIndex)) {
             return false;
         }
         return true;
@@ -262,12 +235,14 @@ namespace Ls {
     void CreateDevice() {
         uint32_t num_devices = 0;
         if( (instance.enumeratePhysicalDevices(&num_devices, NULL) != vk::Result::eSuccess) || (num_devices == 0) ) {
-            Abort("Error occurred during physical devices enumeration!");
+            std::cout << "Error occurred during physical devices enumeration!" << std::endl;
+            Error();
         }
 
         std::vector<vk::PhysicalDevice> physical_devices( num_devices );
         if( (instance.enumeratePhysicalDevices(&num_devices, physical_devices.data()) != vk::Result::eSuccess) || (num_devices == 0) ) {
-            Abort("Error occurred during physical devices enumeration!");
+            std::cout << "Error occurred during physical devices enumeration!" << std::endl;
+            Error();
         }
 
         vk::PhysicalDevice* selected_physical_device = nullptr;
@@ -279,7 +254,8 @@ namespace Ls {
             }
         }
         if( selected_physical_device == nullptr ) {
-            Abort("Could not select physical device based on the chosen properties!");
+            std::cout << "Could not select physical device based on the chosen properties!" << std::endl;
+            Error();
         }
 
         std::vector<float> queue_priorities = { 1.0f };
@@ -302,22 +278,23 @@ namespace Ls {
                                                 &queue_create_infos[0],                           // const VkDeviceQueueCreateInfo      *pQueueCreateInfos
                                                 0,                                                // uint32_t                           enabledLayerCount
                                                 nullptr,                                          // const char * const                 *ppEnabledLayerNames
-                                                static_cast<uint32_t>(device_extensions.size()),  // uint32_t                           enabledExtensionCount
-                                                &device_extensions[0],                            // const char * const                 *ppEnabledExtensionNames
+                                                static_cast<uint32_t>(deviceExtensions.size()),  // uint32_t                           enabledExtensionCount
+                                                &deviceExtensions[0],                            // const char * const                 *ppEnabledExtensionNames
                                                 nullptr);                                         // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
 
         if( selected_physical_device->createDevice( &device_create_info, nullptr, &Ls::device ) != vk::Result::eSuccess ) {
-            Abort("Could not create Vulkan device!");
+            std::cout << "Could not create Vulkan device!" << std::endl;
+            Error();
         }
 
-        Ls::graphics_queue_family_index = selected_graphics_queue_family_index;
-        Ls::present_queue_family_index = selected_present_queue_family_index;
-        Ls::physical_device = *selected_physical_device;
+        Ls::graphicsQueueFamilyIndex = selected_graphics_queue_family_index;
+        Ls::presentQueueFamilyIndex = selected_present_queue_family_index;
+        Ls::physicalDevice = *selected_physical_device;
     }
 
     void GetQueues() {
-        device.getQueue( graphics_queue_family_index, 0, &graphics_queue );
-        device.getQueue( present_queue_family_index, 0, &present_queue );
+        device.getQueue( graphicsQueueFamilyIndex, 0, &graphicsQueue );
+        device.getQueue( presentQueueFamilyIndex, 0, &presentQueue );
     }
 
     void FreeDevice() {
@@ -338,9 +315,10 @@ namespace Ls {
             vk::SemaphoreCreateFlags()
         };
 
-        if( (device.createSemaphore( &semaphore_create_info, nullptr, &image_available_semaphore ) != vk::Result::eSuccess) ||
-            (device.createSemaphore( &semaphore_create_info, nullptr, &rendering_finished_semaphore ) != vk::Result::eSuccess) ) {
-            Abort("Could not create semaphores!");
+        if( (device.createSemaphore( &semaphore_create_info, nullptr, &imageAvailableSemaphore ) != vk::Result::eSuccess) ||
+            (device.createSemaphore( &semaphore_create_info, nullptr, &renderingFinishedSemaphore ) != vk::Result::eSuccess) ) {
+            std::cout << "Could not create semaphores!" << std::endl;
+            Error();
         }
     }
 
@@ -362,6 +340,8 @@ namespace Ls {
                 image_count = 2;
                 break;
         }
+
+        std::cout << "Using image count " << image_count << " for swap chain" << std::endl; 
 
         // clamp image count to fit surface capabilites
         if (image_count < surface_capabilities.minImageCount) {
@@ -423,7 +403,7 @@ namespace Ls {
     Optional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
         //// Color attachment flag must always be supported, don't have to check
         //// We can define other usage flags but we always need to check if they are supported
-        //if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) {
+        //if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) { // TODO: Why can't I get eTransferDst?
         //    return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
         //}
 	    //return Optional<vk::ImageUsageFlags>();
@@ -443,11 +423,13 @@ namespace Ls {
         // MAILBOX is the lowest latency V-Sync enabled mode (something like triple-buffering) so use it if available
         for( vk::PresentModeKHR &present_mode : present_modes ) {
             if( present_mode == vk::PresentModeKHR::eMailbox ) {
+                std::cout << "Using mailbox present mode" << std::endl; 
                 return present_mode;
             }
         }
         for( vk::PresentModeKHR &present_mode : present_modes ) {
             if( present_mode == vk::PresentModeKHR::eFifo ) {
+                std::cout << "Using fifo present mode" << std::endl; 
                 return present_mode;
             }
         }
@@ -459,30 +441,35 @@ namespace Ls {
         device.waitIdle();
 
         vk::SurfaceCapabilitiesKHR surface_capabilities;
-        if( physical_device.getSurfaceCapabilitiesKHR(presentation_surface, &surface_capabilities) != vk::Result::eSuccess ) {
-            Abort("Could not check presentation surface capabilities!");
+        if( physicalDevice.getSurfaceCapabilitiesKHR(presentationSurface, &surface_capabilities) != vk::Result::eSuccess ) {
+            std::cout << "Could not check presentation surface capabilities!" << std::endl;
+            Error();
         }
 
         uint32_t formats_count;
-        if( (physical_device.getSurfaceFormatsKHR( presentation_surface, &formats_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (physicalDevice.getSurfaceFormatsKHR( presentationSurface, &formats_count, nullptr ) != vk::Result::eSuccess) ||
             (formats_count == 0) ) {
-            Abort("Error occurred during presentation surface formats enumeration!");
+            std::cout << "Error occurred during presentation surface formats enumeration!" << std::endl;
+            Error();
         }
 
         std::vector<vk::SurfaceFormatKHR> surface_formats( formats_count );
-        if( physical_device.getSurfaceFormatsKHR( presentation_surface, &formats_count, &surface_formats[0] ) != vk::Result::eSuccess ) {
-            Abort("Error occurred during presentation surface formats enumeration!");
+        if( physicalDevice.getSurfaceFormatsKHR( presentationSurface, &formats_count, &surface_formats[0] ) != vk::Result::eSuccess ) {
+            std::cout << "Error occurred during presentation surface formats enumeration!" << std::endl;
+            Error();
         }
 
         uint32_t present_modes_count;
-        if( (physical_device.getSurfacePresentModesKHR( presentation_surface, &present_modes_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (physicalDevice.getSurfacePresentModesKHR( presentationSurface, &present_modes_count, nullptr ) != vk::Result::eSuccess) ||
             (present_modes_count == 0) ) {
-            Abort("Error occurred during presentation surface present modes enumeration!");
+            std::cout << "Error occurred during presentation surface present modes enumeration!" << std::endl;
+            Error();
         }
 
         std::vector<vk::PresentModeKHR> present_modes( present_modes_count );
-        if( physical_device.getSurfacePresentModesKHR( presentation_surface , &present_modes_count, &present_modes[0] ) != vk::Result::eSuccess ) {
-            Abort("Error occurred during presentation surface present modes enumeration!");
+        if( physicalDevice.getSurfacePresentModesKHR( presentationSurface , &present_modes_count, &present_modes[0] ) != vk::Result::eSuccess ) {
+            std::cout << "Error occurred during presentation surface present modes enumeration!" << std::endl;
+            Error();
         }
 
         vk::SurfaceFormatKHR            desired_format = GetSwapChainFormat( surface_formats );
@@ -490,13 +477,15 @@ namespace Ls {
         Optional<vk::ImageUsageFlags>   desired_usage = GetSwapChainUsageFlags( surface_capabilities );
         vk::SurfaceTransformFlagBitsKHR desired_transform = GetSwapChainTransform( surface_capabilities );
         Optional<vk::PresentModeKHR>    desired_present_mode = GetSwapChainPresentMode( present_modes );
-        vk::SwapchainKHR                old_swapchain = swapchain;
+        vk::SwapchainKHR                old_swapchain = swapChain;
 
         if( !desired_usage ) {
-            Abort("Surface does not support any suitable usage flags!");
+            std::cout << "Surface does not support any suitable usage flags!" << std::endl;
+            Error();
         }
         if( !desired_present_mode ) {
-            Abort("Surface does not support any suitable present modes!");
+            std::cout << "Surface does not support any suitable present modes!" << std::endl;
+            Error();
         }
 
         uint32_t desired_number_of_images = GetSwapChainNumImages( surface_capabilities, desired_present_mode );
@@ -509,7 +498,7 @@ namespace Ls {
 
         vk::SwapchainCreateInfoKHR swap_chain_create_info(
             vk::SwapchainCreateFlagsKHR(),                // vk::SwapchainCreateFlagsKHR      flags
-            presentation_surface,                         // vk::SurfaceKHR                   surface
+            presentationSurface,                         // vk::SurfaceKHR                   surface
             desired_number_of_images,                     // uint32_t                         minImageCount
             desired_format.format,                        // vk::Format                       imageFormat
             desired_format.colorSpace,                    // vk::ColorSpaceKHR                imageColorSpace
@@ -526,14 +515,234 @@ namespace Ls {
             old_swapchain                                 // vk::SwapchainKHR                 oldSwapchain
         );
 
-        if( device.createSwapchainKHR( &swap_chain_create_info, nullptr, &swapchain ) != vk::Result::eSuccess ) {
-            Abort("Could not create swap chain!");
+        if( device.createSwapchainKHR( &swap_chain_create_info, nullptr, &swapChain ) != vk::Result::eSuccess ) {
+            std::cout << "Could not create swap chain!" << std::endl;
+            Error();
         }
 
         if( old_swapchain ) {
             device.destroySwapchainKHR( old_swapchain, nullptr );
         }
         can_render = true;
+    }
+
+    void RecordCommandBuffers() {
+        uint32_t image_count = static_cast<uint32_t>(presentQueueCmdBuffers.size());
+
+        std::vector<vk::Image> swap_chain_images( image_count );
+        if( device.getSwapchainImagesKHR( swapChain, &image_count, &swap_chain_images[0] ) != vk::Result::eSuccess ) {
+            std::cout << "Could not get swap chain images!" << std::endl;
+            Error();
+        }
+
+        vk::CommandBufferBeginInfo cmd_buffer_begin_info(
+            vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
+            nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
+        );
+
+        VkClearColorValue clear_color = {
+            { 1.0f, 0.8f, 0.4f, 0.0f }
+        };
+
+        vk::ImageSubresourceRange image_subresource_range(
+            vk::ImageAspectFlagBits::eColor,              // VkImageAspectFlags                     aspectMask
+            0,                                            // uint32_t                               baseMipLevel
+            1,                                            // uint32_t                               levelCount
+            0,                                            // uint32_t                               baseArrayLayer
+            1                                             // uint32_t                               layerCount
+        );
+
+        for( uint32_t i = 0; i < image_count; ++i ) {
+            vk::ImageMemoryBarrier barrier_from_present_to_clear(
+                vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          srcAccessMask
+                vk::AccessFlagBits::eTransferWrite,         // VkAccessFlags                          dstAccessMask
+                vk::ImageLayout::eUndefined,                // VkImageLayout                          oldLayout
+                vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          newLayout
+                VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
+                VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
+                swap_chain_images[i],                       // VkImage                                image
+                image_subresource_range                     // VkImageSubresourceRange                subresourceRange
+            );
+
+            vk::ImageMemoryBarrier barrier_from_clear_to_present(
+                vk::AccessFlagBits::eTransferWrite,         // VkAccessFlags                          srcAccessMask
+                vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          dstAccessMask
+                vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          oldLayout
+                vk::ImageLayout::ePresentSrcKHR,            // VkImageLayout                          newLayout
+                VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
+                VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
+                swap_chain_images[i],                       // VkImage                                image
+                image_subresource_range                     // VkImageSubresourceRange                subresourceRange
+            );
+
+            presentQueueCmdBuffers[i].begin( &cmd_buffer_begin_info );
+            presentQueueCmdBuffers[i].pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
+                                                       vk::PipelineStageFlagBits::eTransfer,
+                                                       vk::DependencyFlagBits(),
+                                                       0,
+                                                       nullptr,
+                                                       0,
+                                                       nullptr,
+                                                       1,
+                                                       &barrier_from_present_to_clear );
+
+            // vkCmdClearColorImage( Vulkan.PresentQueueCmdBuffers[i], swap_chain_images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1, &image_subresource_range );
+
+            presentQueueCmdBuffers[i].pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
+                                                       vk::PipelineStageFlagBits::eBottomOfPipe,
+                                                       vk::DependencyFlagBits(),
+                                                       0,
+                                                       nullptr,
+                                                       0,
+                                                       nullptr,
+                                                       1,
+                                                       &barrier_from_present_to_clear );
+
+            if( presentQueueCmdBuffers[i].end() != vk::Result::eSuccess ) {
+                std::cout << "Could not record command buffers!" << std::endl;
+                Error();
+            }
+        }
+    }
+
+    void CreateCommandBuffers() {
+        vk::CommandPoolCreateInfo cmd_pool_create_info(vk::CommandPoolCreateFlags(), presentQueueFamilyIndex);
+        if (device.createCommandPool(&cmd_pool_create_info, nullptr, &presentQueueCmdPool) != vk::Result::eSuccess) {
+            std::cout << "Could not create a command pool!" << std::endl;
+            Error();
+        }
+
+        uint32_t image_count = 0;
+        if( (device.getSwapchainImagesKHR( swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
+            (image_count == 0) ) {
+            std::cout << "Could not get the number of swap chain images!" << std::endl;
+            Error();
+        }
+
+        presentQueueCmdBuffers.resize( image_count );
+
+        vk::CommandBufferAllocateInfo cmd_buffer_allocate_info(
+            presentQueueCmdPool,              // VkCommandPool                commandPool
+            vk::CommandBufferLevel::ePrimary, // VkCommandBufferLevel         level
+            image_count);                     // uint32_t                     bufferCount
+
+        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info, &presentQueueCmdBuffers[0] ) != vk::Result::eSuccess ) {
+            std::cout << "Could not allocate command buffers!" << std::endl;
+            Error();
+        }
+
+        RecordCommandBuffers();
+    }
+    
+    void FreeCommandBuffers() {
+        if( Ls::device ) {
+            Ls::device.waitIdle();
+            // TODO: drop pool and commands buffers
+        }
+    }
+
+    void OnWindowSizeChanged() {
+        if ( device ) {
+            FreeCommandBuffers();
+            CreateSwapChain();
+            CreateCommandBuffers();
+        }
+    }
+
+    void Draw() {
+        uint32_t image_index;
+        vk::Result result = device.acquireNextImageKHR( swapChain, UINT64_MAX, imageAvailableSemaphore, vk::Fence(), &image_index );
+        switch( result ) {
+            case vk::Result::eSuccess:
+                break;
+            case vk::Result::eSuboptimalKHR:
+                break;
+            case vk::Result::eErrorOutOfDateKHR:
+                OnWindowSizeChanged();
+                return;
+            default:
+                std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
+                Error();
+        }
+
+        vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eTransfer;
+        vk::SubmitInfo submit_info(
+            1,                                     // uint32_t                     waitSemaphoreCount
+            &imageAvailableSemaphore,              // const VkSemaphore           *pWaitSemaphores
+            &wait_dst_stage_mask,                  // const VkPipelineStageFlags  *pWaitDstStageMask;
+            1,                                     // uint32_t                     commandBufferCount
+            &presentQueueCmdBuffers[image_index],  // const VkCommandBuffer       *pCommandBuffers
+            1,                                     // uint32_t                     signalSemaphoreCount
+            &renderingFinishedSemaphore            // const VkSemaphore           *pSignalSemaphores
+        );
+
+        if( presentQueue.submit( 1, &submit_info, vk::Fence() ) != vk::Result::eSuccess ) {
+            std::cout << "Submit to queue failed!" << std::endl;
+            Error();
+        }
+
+        vk::PresentInfoKHR present_info(
+            1,                                     // uint32_t                     waitSemaphoreCount
+            &renderingFinishedSemaphore,           // const VkSemaphore           *pWaitSemaphores
+            1,                                     // uint32_t                     swapchainCount
+            &swapChain,                            // const VkSwapchainKHR        *pSwapchains
+            &image_index,                          // const uint32_t              *pImageIndices
+            nullptr                                // VkResult                    *pResults
+        );
+        result = presentQueue.presentKHR( &present_info );
+
+        switch( result ) {
+          case vk::Result::eSuccess:
+            break;
+          case vk::Result::eErrorOutOfDateKHR:
+          case vk::Result::eSuboptimalKHR:
+            return OnWindowSizeChanged();
+          default:
+            std::cout << "Problem occurred during image presentation!" << std::endl;
+            Error();
+        }
+    }
+
+    LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        switch (uMsg) {
+        case WM_CLOSE:
+            PostQuitMessage(0);
+            break;
+        case WM_PAINT:
+            Draw();
+            break;
+        case WM_SIZE:
+            OnWindowSizeChanged();
+            break;
+        default:
+            break;
+        }
+
+        // a pass-through for now. We will return to this callback
+        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    }
+
+    void CreateMainWindow() {
+        WNDCLASSEX windowClass = {};
+        windowClass.cbSize = sizeof(WNDCLASSEX);
+        windowClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+        windowClass.lpfnWndProc = WindowProc;
+        windowClass.hInstance = hInstance;
+        windowClass.lpszClassName = "LsMainWindow";
+        RegisterClassEx(&windowClass);
+
+        windowHandle = CreateWindowEx(NULL,
+            "LsMainWindow",
+            "Lustrious Paint",
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            100,
+            100,
+            width,
+            height,
+            NULL,
+            NULL,
+            hInstance,
+            NULL);
     }
 }
 
@@ -542,22 +751,25 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::width = 800;
     Ls::height = 600;
 
+    AttachConsole();
+
     Ls::CreateMainWindow();
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
     Ls::CreateInstance();
-    vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instance_extensions);
+    vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instanceExtensions);
     Ls::CreateDevice();
-    vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::device_extensions);
+    vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::deviceExtensions);
 	Ls::GetQueues();
     Ls::CreatePresentationSurface();
 	Ls::CreateSwapChain();
+    Ls::CreateCommandBuffers();
     
     while (Ls::Update()) {};
-    return Ls::msg.wParam;
-
+    
     Ls::FreeDevice();
     Ls::FreeInstance();
     vk::UnloadVulkanLibrary();
+    return Ls::msg.wParam;
 }
