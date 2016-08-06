@@ -99,8 +99,28 @@ namespace Ls {
         return false;
     }
 
-    bool CheckValidationAvailability(){
-        return false;
+    void CheckValidationAvailability() {
+        uint32_t availableLayerCount;
+        vk::enumerateInstanceLayerProperties(&availableLayerCount, nullptr);
+        std::vector<vk::LayerProperties> availableLayers(availableLayerCount);
+        vk::enumerateInstanceLayerProperties(&availableLayerCount, &availableLayers[0]);
+        availableLayers.resize(availableLayerCount);
+
+        for( size_t i = 0; i < instanceLayers.size(); ++i ) {
+            bool found = false;
+            for (size_t j = 0; j < availableLayers.size(); ++j)
+            {
+                if ( strcmp( instanceLayers[i], availableLayers[j].layerName ) == 0 ) {
+                    found = true;
+                    break;
+                }
+            }
+            if ( !found )
+            {
+                std::cout << "Instance layer " << instanceLayers[i] << " not found!" << std::endl; 
+                Error();
+            }
+        }
     }
 
     void CreateDebugReportCallback() {
@@ -671,7 +691,6 @@ namespace Ls {
     
     void FreeCommandBuffers() {
         if( Ls::device ) {
-            std::cout << "1" << std::endl;
             Ls::device.waitIdle();
             if( (presentQueueCmdBuffers.size() > 0) && presentQueueCmdBuffers[0] ) {
                 device.freeCommandBuffers( presentQueueCmdPool, static_cast<uint32_t>(presentQueueCmdBuffers.size()), &presentQueueCmdBuffers[0] );
@@ -750,16 +769,25 @@ namespace Ls {
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+
         switch (uMsg) {
         case WM_CLOSE:
             PostQuitMessage(0);
             break;
         case WM_PAINT:
-            Draw();
-            return 0;
+            if (hwnd == windowHandle)
+            {
+                Draw();
+                return 0;
+            }
+            break;
         case WM_SIZE:
-            OnWindowSizeChanged();
-            return 0;
+            if (hwnd == windowHandle)
+            {
+                OnWindowSizeChanged();
+                return 0;
+            }
+            break;
         default:
             break;
         }
@@ -800,10 +828,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     AttachConsole();
 
     Ls::CreateMainWindow();
-
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
+    Ls::CheckValidationAvailability();
 
     Ls::CreateInstance();
     vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instanceExtensions);
