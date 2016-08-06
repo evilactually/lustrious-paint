@@ -32,7 +32,6 @@ namespace Ls {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
         VK_EXT_DEBUG_REPORT_EXTENSION_NAME
-        //VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
     std::vector<const char*> deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -74,10 +73,6 @@ namespace Ls {
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
         std::cout << pLayerPrefix << ": " << pMessage << std::endl;
-        // OutputDebugStringA( pLayerPrefix );
-        // OutputDebugStringA( " " );
-        // OutputDebugStringA( pMessage );
-        // OutputDebugStringA( "\n" );
         return VK_FALSE;
     }
 
@@ -441,7 +436,7 @@ namespace Ls {
 		std::cout << "VK_IMAGE_USAGE_TRANSFER_DST image usage is not supported by the swap chain!" << std::endl;
 		Error();
 		
-	    //return Optional<vk::ImageUsageFlags>();
+	    return Optional<vk::ImageUsageFlags>::None();
 		//return vk::ImageUsageFlagBits::eColorAttachment;
     }
 
@@ -676,8 +671,18 @@ namespace Ls {
     
     void FreeCommandBuffers() {
         if( Ls::device ) {
+            std::cout << "1" << std::endl;
             Ls::device.waitIdle();
-            // TODO: drop pool and commands buffers
+            if( (presentQueueCmdBuffers.size() > 0) && presentQueueCmdBuffers[0] ) {
+                device.freeCommandBuffers( presentQueueCmdPool, static_cast<uint32_t>(presentQueueCmdBuffers.size()), &presentQueueCmdBuffers[0] );
+                presentQueueCmdBuffers.clear();
+                std::cout << "Command buffers freed" << std::endl;
+            }
+            if( presentQueueCmdPool ) {
+                device.destroyCommandPool( presentQueueCmdPool, nullptr );
+                presentQueueCmdPool = vk::CommandPool();
+                std::cout << "Command pool destroyed" << std::endl;
+            }
         }
     }
 
@@ -795,18 +800,22 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     AttachConsole();
 
     Ls::CreateMainWindow();
+
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
+
     Ls::CreateInstance();
     vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instanceExtensions);
-    Ls::CreateDebugReportCallback();
+
+    Ls::CreateDebugReportCallback(); // needs an instance level function
 	Ls::CreatePresentationSurface(); // need this for device creation
+
 	Ls::CreateDevice();
     vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::deviceExtensions);
+
 	Ls::CreateSemaphores();
 	Ls::GetQueues();
-    
 	Ls::CreateSwapChain();
     Ls::CreateCommandBuffers();
     
