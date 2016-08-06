@@ -17,6 +17,7 @@
 //}
 
 namespace Ls {
+    bool dialogShowing = false;
     vk::Instance instance;
     int width = 800;
     int height = 600;
@@ -50,11 +51,12 @@ namespace Ls {
     vk::DebugReportCallbackEXT debugReportCallback;
 
     void Abort(std::string& msg) {
-        MessageBox(nullptr, // HWND
+        dialogShowing = true;
+        MessageBox(windowHandle,
                    msg.c_str(),
                    "Error",
-                   MB_OK | MB_ICONERROR | MB_DEFAULT_DESKTOP_ONLY); // MB_DEFAULT_DESKTOP_ONLY required, otherwise message box will not show up
-        exit(1);                                                    // given how WM_PAINT is handled.
+                   MB_OK | MB_ICONERROR);
+        exit(1);
     }
 
     void Abort(const char* msg) {
@@ -769,6 +771,10 @@ namespace Ls {
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        // Don't process any messages if modal dialog is showing
+        if (dialogShowing) {
+            return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        }
 
         switch (uMsg) {
         case WM_CLOSE:
@@ -821,7 +827,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     AttachConsole();
     Ls::CreateMainWindow();
-    
+
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
@@ -840,7 +846,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	Ls::GetQueues();
 	Ls::CreateSwapChain();
     Ls::CreateCommandBuffers();
-    
+
     while (Ls::Update()) {};
     
     Ls::FreeDevice();
