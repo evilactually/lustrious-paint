@@ -22,7 +22,7 @@ namespace Ls {
     int height = 600;
     HINSTANCE hInstance;
     MSG msg;
-    HWND windowHandle;
+    HWND windowHandle = nullptr;
     vk::Device device;
     uint32_t graphicsQueueFamilyIndex;
     uint32_t presentQueueFamilyIndex;
@@ -50,11 +50,11 @@ namespace Ls {
     vk::DebugReportCallbackEXT debugReportCallback;
 
     void Abort(std::string& msg) {
-        MessageBox(windowHandle,
+        MessageBox(nullptr, // HWND
                    msg.c_str(),
                    "Error",
-                   MB_OK | MB_ICONERROR);
-        exit(1);
+                   MB_OK | MB_ICONERROR | MB_DEFAULT_DESKTOP_ONLY); // MB_DEFAULT_DESKTOP_ONLY required, otherwise message box will not show up
+        exit(1);                                                    // given how WM_PAINT is handled.
     }
 
     void Abort(const char* msg) {
@@ -775,18 +775,12 @@ namespace Ls {
             PostQuitMessage(0);
             break;
         case WM_PAINT:
-            if (hwnd == windowHandle)
-            {
-                Draw();
-                return 0;
-            }
+            Draw();
+            return 0;
             break;
         case WM_SIZE:
-            if (hwnd == windowHandle)
-            {
-                OnWindowSizeChanged();
-                return 0;
-            }
+            OnWindowSizeChanged();
+            return 0;
             break;
         default:
             break;
@@ -826,8 +820,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::height = 600;
 
     AttachConsole();
-
     Ls::CreateMainWindow();
+    
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
     vk::LoadGlobalLevelEntryPoints();
