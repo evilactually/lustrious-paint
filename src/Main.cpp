@@ -30,10 +30,15 @@ namespace Ls {
 	vk::Queue presentQueue;
     std::vector<const char*> instanceExtensions = {
         VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+        //VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
     std::vector<const char*> deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+    std::vector<const char*> instanceLayers = {
+        "VK_LAYER_LUNARG_standard_validation"
     };
     vk::SurfaceKHR presentationSurface;
     vk::Semaphore imageAvailableSemaphore;
@@ -43,6 +48,7 @@ namespace Ls {
     vk::CommandPool presentQueueCmdPool;
     std::vector<vk::CommandBuffer> presentQueueCmdBuffers;
     bool can_render = false;
+    vk::DebugReportCallbackEXT debugReportCallback;
 
     void Abort(std::string& msg) {
         MessageBox(windowHandle,
@@ -62,6 +68,17 @@ namespace Ls {
 
     void Error() {
         Abort(std::string("Error occurred, view log for details."));   
+    }
+
+    VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
+        VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
+        int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
+        std::cout << pLayerPrefix << ": " << pMessage << std::endl;
+        // OutputDebugStringA( pLayerPrefix );
+        // OutputDebugStringA( " " );
+        // OutputDebugStringA( pMessage );
+        // OutputDebugStringA( "\n" );
+        return VK_FALSE;
     }
 
     bool Update() {
@@ -85,6 +102,18 @@ namespace Ls {
             }
         }
         return false;
+    }
+
+    bool CheckValidationAvailability(){
+        return false;
+    }
+
+    void CreateDebugReportCallback() {
+        vk::DebugReportCallbackCreateInfoEXT callbackCreateInfo(
+            vk::DebugReportFlagBitsEXT::eError | vk::DebugReportFlagBitsEXT::eWarning,
+            MyDebugReportCallback,
+            nullptr);
+        instance.createDebugReportCallbackEXT(&callbackCreateInfo, nullptr, &debugReportCallback);
     }
 
     void CreateInstance() {
@@ -116,11 +145,14 @@ namespace Ls {
                                             VK_API_VERSION_1_0);
         vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(),
                                                   &appliactionInfo,
-                                                  0,
-                                                  NULL,
+                                                  static_cast<uint32_t>(instanceLayers.size()),
+                                                  &instanceLayers[0],
                                                   static_cast<uint32_t>(instanceExtensions.size()),
                                                   &instanceExtensions[0]);
-        createInstance(&instanceCreateInfo, nullptr, &instance);
+        if (createInstance(&instanceCreateInfo, nullptr, &instance) != vk::Result::eSuccess ) {
+            std::cout << "Failed to create Vulkan instance!" << std::endl;
+            Error();
+        }
     }
 
     void CreatePresentationSurface() {
@@ -401,13 +433,16 @@ namespace Ls {
     }
 
     Optional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
-        //// Color attachment flag must always be supported, don't have to check
-        //// We can define other usage flags but we always need to check if they are supported
-        //if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) { // TODO: Why can't I get eTransferDst?
-        //    return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
-        //}
+        // Color attachment flag must always be supported, don't have to check
+        // We can define other usage flags but we always need to check if they are supported
+        if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) { // TODO: Why can't I get eTransferDst?
+            return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
+		}
+		std::cout << "VK_IMAGE_USAGE_TRANSFER_DST image usage is not supported by the swap chain!" << std::endl;
+		Error();
+		
 	    //return Optional<vk::ImageUsageFlags>();
-		return vk::ImageUsageFlagBits::eColorAttachment;
+		//return vk::ImageUsageFlagBits::eColorAttachment;
     }
 
     vk::SurfaceTransformFlagBitsKHR GetSwapChainTransform( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
@@ -498,7 +533,7 @@ namespace Ls {
 
         vk::SwapchainCreateInfoKHR swap_chain_create_info(
             vk::SwapchainCreateFlagsKHR(),                // vk::SwapchainCreateFlagsKHR      flags
-            presentationSurface,                         // vk::SurfaceKHR                   surface
+            presentationSurface,                          // vk::SurfaceKHR                   surface
             desired_number_of_images,                     // uint32_t                         minImageCount
             desired_format.format,                        // vk::Format                       imageFormat
             desired_format.colorSpace,                    // vk::ColorSpaceKHR                imageColorSpace
@@ -540,9 +575,10 @@ namespace Ls {
             nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
         );
 
-        VkClearColorValue clear_color = {
-            { 1.0f, 0.8f, 0.4f, 0.0f }
-        };
+		const std::array<float, 4> color = { 1.0f, 0.8f, 0.4f, 0.0f };
+        vk::ClearColorValue clear_color(
+			color
+        );
 
         vk::ImageSubresourceRange image_subresource_range(
             vk::ImageAspectFlagBits::eColor,              // VkImageAspectFlags                     aspectMask
@@ -554,7 +590,7 @@ namespace Ls {
 
         for( uint32_t i = 0; i < image_count; ++i ) {
             vk::ImageMemoryBarrier barrier_from_present_to_clear(
-                vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          srcAccessMask
+				vk::AccessFlagBits(),                       // VkAccessFlags                          srcAccessMask, eMemoryRead fails validation
                 vk::AccessFlagBits::eTransferWrite,         // VkAccessFlags                          dstAccessMask
                 vk::ImageLayout::eUndefined,                // VkImageLayout                          oldLayout
                 vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          newLayout
@@ -586,7 +622,11 @@ namespace Ls {
                                                        1,
                                                        &barrier_from_present_to_clear );
 
-            // vkCmdClearColorImage( Vulkan.PresentQueueCmdBuffers[i], swap_chain_images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1, &image_subresource_range );
+            presentQueueCmdBuffers[i].clearColorImage( swap_chain_images[i],
+				                                       vk::ImageLayout::eTransferDstOptimal,
+				                                       &clear_color,
+				                                       1,
+				                                       &image_subresource_range );
 
             presentQueueCmdBuffers[i].pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
                                                        vk::PipelineStageFlagBits::eBottomOfPipe,
@@ -596,7 +636,7 @@ namespace Ls {
                                                        0,
                                                        nullptr,
                                                        1,
-                                                       &barrier_from_present_to_clear );
+                                                       &barrier_from_clear_to_present);
 
             if( presentQueueCmdBuffers[i].end() != vk::Result::eSuccess ) {
                 std::cout << "Could not record command buffers!" << std::endl;
@@ -642,11 +682,11 @@ namespace Ls {
     }
 
     void OnWindowSizeChanged() {
-        if ( device ) {
-            FreeCommandBuffers();
-            CreateSwapChain();
-            CreateCommandBuffers();
-        }
+         if ( device ) {
+             FreeCommandBuffers();
+             CreateSwapChain();
+             CreateCommandBuffers();
+         }
     }
 
     void Draw() {
@@ -658,6 +698,7 @@ namespace Ls {
             case vk::Result::eSuboptimalKHR:
                 break;
             case vk::Result::eErrorOutOfDateKHR:
+                std::cout << "Swap chain out of date" << std::endl;
                 OnWindowSizeChanged();
                 return;
             default:
@@ -710,10 +751,10 @@ namespace Ls {
             break;
         case WM_PAINT:
             Draw();
-            break;
+            return 0;
         case WM_SIZE:
             OnWindowSizeChanged();
-            break;
+            return 0;
         default:
             break;
         }
@@ -759,10 +800,13 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     vk::LoadGlobalLevelEntryPoints();
     Ls::CreateInstance();
     vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instanceExtensions);
-    Ls::CreateDevice();
+    Ls::CreateDebugReportCallback();
+	Ls::CreatePresentationSurface(); // need this for device creation
+	Ls::CreateDevice();
     vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::deviceExtensions);
+	Ls::CreateSemaphores();
 	Ls::GetQueues();
-    Ls::CreatePresentationSurface();
+    
 	Ls::CreateSwapChain();
     Ls::CreateCommandBuffers();
     
