@@ -200,7 +200,7 @@ namespace vk
         }
 
         #define LOAD_FUNCTION( fun )                                                             \
-        if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                                 \
+        if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                                   \
                     throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                     std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
                     abort();                                                                     \
@@ -243,7 +243,7 @@ namespace vk
 
         #define VK_USE_KHR_SWAPCHAIN
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
-           if ( KHR_SWAPCHAIN )                                                        \
+           if ( KHR_SWAPCHAIN )                                                                \
                 LOAD_FUNCTION(fun)
         #include "VulkanFunctions.inl"
         #undef VK_USE_SWAPCHAIN

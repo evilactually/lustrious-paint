@@ -73,3 +73,44 @@ include_directories("${PROJECT_BINARY_DIR}/include/")
 
 add_executable(LustriousPaint WIN32 ${SOURCE_FILES})
 target_link_libraries (LustriousPaint ${VULKAN_LIBRARY})
+
+### Shaders Target ###
+
+if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
+  set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
+else()
+  set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe")
+endif()
+
+message(STATUS ${GLSL_VALIDATOR})
+
+file(GLOB_RECURSE SHADER_SOURCE_FILES
+    "shaders/*.frag"
+    "shaders/*.vert")
+
+foreach(SHADER_SOURCE_FILE ${SHADER_SOURCE_FILES})
+  get_filename_component(FILE_NAME ${SHADER_SOURCE_FILE} NAME)
+  set(SHADER_BINARY_FILE "${PROJECT_BINARY_DIR}/shaders/${FILE_NAME}.spv")
+  ADD_CUSTOM_COMMAND(OUTPUT
+    ${SHADER_BINARY_FILE}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
+    COMMAND ${GLSL_VALIDATOR} -V ${SHADER_SOURCE_FILE} -o ${SHADER_BINARY_FILE}
+    DEPENDS ${SHADER_SOURCE_FILE})
+  list(APPEND SHADER_BINARY_FILES ${SHADER_BINARY_FILE})
+endforeach(SHADER_SOURCE_FILE)
+
+add_custom_target(
+    Shaders 
+    DEPENDS ${SHADER_BINARY_FILES}
+    )
+
+### Shaders Target ###
+
+add_dependencies(LustriousPaint Shaders)
+
+# Copy compiled shaders to executable directory
+add_custom_command(TARGET LustriousPaint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LustriousPaint>/shaders/"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_BINARY_DIR}/shaders"
+        "$<TARGET_FILE_DIR:LustriousPaint>/shaders")

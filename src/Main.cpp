@@ -825,7 +825,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::width = 800;
     Ls::height = 600;
 
-    AttachConsole();
+    Ls::AttachConsole();
     Ls::CreateMainWindow();
 
     vk::LoadVulkanLibrary();
