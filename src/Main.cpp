@@ -18,37 +18,57 @@
 
 namespace Ls {
     bool dialogShowing = false;
-    vk::Instance instance;
+    bool can_render = false;
     int width = 800;
     int height = 600;
+    
     HINSTANCE hInstance;
     MSG msg;
     HWND windowHandle = nullptr;
+
+    vk::Instance instance;
+    vk::PhysicalDevice physicalDevice;
     vk::Device device;
-    uint32_t graphicsQueueFamilyIndex;
-    uint32_t presentQueueFamilyIndex;
-    vk::Queue graphicsQueue;
-	vk::Queue presentQueue;
-    std::vector<const char*> instanceExtensions = {
+
+    struct {
+        uint32_t FamilyIndex;
+        vk::Queue Handle;
+    } GraphicsQueue;
+
+    struct {
+        uint32_t FamilyIndex;
+        vk::Queue Handle;
+    } PresentQueue;
+
+    struct {
+        vk::SurfaceKHR presentationSurface;
+        vk::SwapchainKHR swapChain;
+    } SwapChain;
+
+    vk::SurfaceKHR presentationSurface;
+    vk::SwapchainKHR swapChain;
+
+    struct {
+        vk::Semaphore imageAvailable;
+        vk::Semaphore renderingFinished;
+    } Semaphores;
+
+    vk::CommandPool presentQueueCmdPool;
+    std::vector<vk::CommandBuffer> presentQueueCmdBuffers;
+    
+    vk::DebugReportCallbackEXT debugReportCallback;
+
+    std::vector<const char*> INSTANCE_EXTENSIONS = {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
         VK_EXT_DEBUG_REPORT_EXTENSION_NAME
     };
-    std::vector<const char*> deviceExtensions = {
+    std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
-    std::vector<const char*> instanceLayers = {
+    std::vector<const char*> INSTANCE_LAYERS = {
         "VK_LAYER_LUNARG_standard_validation"
     };
-    vk::SurfaceKHR presentationSurface;
-    vk::Semaphore imageAvailableSemaphore;
-    vk::Semaphore renderingFinishedSemaphore;
-    vk::PhysicalDevice physicalDevice;
-    vk::SwapchainKHR swapChain;
-    vk::CommandPool presentQueueCmdPool;
-    std::vector<vk::CommandBuffer> presentQueueCmdBuffers;
-    bool can_render = false;
-    vk::DebugReportCallbackEXT debugReportCallback;
 
     void Abort(std::string& msg) {
         dialogShowing = true;
@@ -108,18 +128,18 @@ namespace Ls {
         vk::enumerateInstanceLayerProperties(&availableLayerCount, &availableLayers[0]);
         availableLayers.resize(availableLayerCount);
 
-        for( size_t i = 0; i < instanceLayers.size(); ++i ) {
+        for( size_t i = 0; i < INSTANCE_LAYERS.size(); ++i ) {
             bool found = false;
             for (size_t j = 0; j < availableLayers.size(); ++j)
             {
-                if ( strcmp( instanceLayers[i], availableLayers[j].layerName ) == 0 ) {
+                if ( strcmp( INSTANCE_LAYERS[i], availableLayers[j].layerName ) == 0 ) {
                     found = true;
                     break;
                 }
             }
             if ( !found )
             {
-                std::cout << "Instance layer " << instanceLayers[i] << " not found!" << std::endl; 
+                std::cout << "Instance layer " << INSTANCE_LAYERS[i] << " not found!" << std::endl; 
                 Error();
             }
         }
@@ -137,20 +157,20 @@ namespace Ls {
         uint32_t instance_extensions_count = 0;
         if( (vk::enumerateInstanceExtensionProperties( nullptr, &instance_extensions_count, nullptr ) != vk::Result::eSuccess) ||
             (instance_extensions_count == 0) ) {
-            std::cout << "Error occurred during instance instanceExtensions enumeration!" << std::endl;
+            std::cout << "Error occurred during instance INSTANCE_EXTENSIONS enumeration!" << std::endl;
             Error();
         }
 
         std::vector<vk::ExtensionProperties> available_instance_extensions( instance_extensions_count );
         if( vk::enumerateInstanceExtensionProperties( nullptr, &instance_extensions_count, &available_instance_extensions[0] ) != vk::Result::eSuccess ) {
-            std::cout << "Error occurred during instance instanceExtensions enumeration!" << std::endl;
+            std::cout << "Error occurred during instance INSTANCE_EXTENSIONS enumeration!" << std::endl;
             Error();
         }
 
-        for( size_t i = 0; i < instanceExtensions.size(); ++i ) {
-            if( !CheckExtensionAvailability( instanceExtensions[i], available_instance_extensions ) ) {
+        for( size_t i = 0; i < INSTANCE_EXTENSIONS.size(); ++i ) {
+            if( !CheckExtensionAvailability( INSTANCE_EXTENSIONS[i], available_instance_extensions ) ) {
                 Abort(std::string("Could not find instance extension named \"") + 
-                      std::string(instanceExtensions[i]) + 
+                      std::string(INSTANCE_EXTENSIONS[i]) + 
                       std::string("\"!"));
             }
         }
@@ -162,10 +182,10 @@ namespace Ls {
                                             VK_API_VERSION_1_0);
         vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(),
                                                   &appliactionInfo,
-                                                  static_cast<uint32_t>(instanceLayers.size()),
-                                                  &instanceLayers[0],
-                                                  static_cast<uint32_t>(instanceExtensions.size()),
-                                                  &instanceExtensions[0]);
+                                                  static_cast<uint32_t>(INSTANCE_LAYERS.size()),
+                                                  &INSTANCE_LAYERS[0],
+                                                  static_cast<uint32_t>(INSTANCE_EXTENSIONS.size()),
+                                                  &INSTANCE_EXTENSIONS[0]);
         if (createInstance(&instanceCreateInfo, nullptr, &instance) != vk::Result::eSuccess ) {
             std::cout << "Failed to create Vulkan instance!" << std::endl;
             Error();
@@ -254,8 +274,8 @@ namespace Ls {
             return false;
         }
 
-        for( size_t i = 0; i < deviceExtensions.size(); ++i ) {
-            if( !CheckExtensionAvailability( deviceExtensions[i], available_extensions ) ) {
+        for( size_t i = 0; i < DEVICE_EXTENSIONS.size(); ++i ) {
+            if( !CheckExtensionAvailability( DEVICE_EXTENSIONS[i], available_extensions ) ) {
                 return false;
             }
         }
@@ -327,8 +347,8 @@ namespace Ls {
                                                 &queue_create_infos[0],                           // const VkDeviceQueueCreateInfo      *pQueueCreateInfos
                                                 0,                                                // uint32_t                           enabledLayerCount
                                                 nullptr,                                          // const char * const                 *ppEnabledLayerNames
-                                                static_cast<uint32_t>(deviceExtensions.size()),  // uint32_t                           enabledExtensionCount
-                                                &deviceExtensions[0],                            // const char * const                 *ppEnabledExtensionNames
+                                                static_cast<uint32_t>(DEVICE_EXTENSIONS.size()),  // uint32_t                           enabledExtensionCount
+                                                &DEVICE_EXTENSIONS[0],                            // const char * const                 *ppEnabledExtensionNames
                                                 nullptr);                                         // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
 
         if( selected_physical_device->createDevice( &device_create_info, nullptr, &Ls::device ) != vk::Result::eSuccess ) {
@@ -336,14 +356,14 @@ namespace Ls {
             Error();
         }
 
-        Ls::graphicsQueueFamilyIndex = selected_graphics_queue_family_index;
-        Ls::presentQueueFamilyIndex = selected_present_queue_family_index;
+        Ls::GraphicsQueue.FamilyIndex = selected_graphics_queue_family_index;
+        Ls::PresentQueue.FamilyIndex = selected_present_queue_family_index;
         Ls::physicalDevice = *selected_physical_device;
     }
 
     void GetQueues() {
-        device.getQueue( graphicsQueueFamilyIndex, 0, &graphicsQueue );
-        device.getQueue( presentQueueFamilyIndex, 0, &presentQueue );
+        device.getQueue( GraphicsQueue.FamilyIndex, 0, &GraphicsQueue.Handle );
+        device.getQueue( PresentQueue.FamilyIndex, 0, &PresentQueue.Handle );
     }
 
     void FreeDevice() {
@@ -364,8 +384,8 @@ namespace Ls {
             vk::SemaphoreCreateFlags()
         };
 
-        if( (device.createSemaphore( &semaphore_create_info, nullptr, &imageAvailableSemaphore ) != vk::Result::eSuccess) ||
-            (device.createSemaphore( &semaphore_create_info, nullptr, &renderingFinishedSemaphore ) != vk::Result::eSuccess) ) {
+        if( (device.createSemaphore( &semaphore_create_info, nullptr, &Semaphores.imageAvailable ) != vk::Result::eSuccess) ||
+            (device.createSemaphore( &semaphore_create_info, nullptr, &Semaphores.renderingFinished ) != vk::Result::eSuccess) ) {
             std::cout << "Could not create semaphores!" << std::endl;
             Error();
         }
@@ -663,7 +683,7 @@ namespace Ls {
     }
 
     void CreateCommandBuffers() {
-        vk::CommandPoolCreateInfo cmd_pool_create_info(vk::CommandPoolCreateFlags(), presentQueueFamilyIndex);
+        vk::CommandPoolCreateInfo cmd_pool_create_info(vk::CommandPoolCreateFlags(), PresentQueue.FamilyIndex);
         if (device.createCommandPool(&cmd_pool_create_info, nullptr, &presentQueueCmdPool) != vk::Result::eSuccess) {
             std::cout << "Could not create a command pool!" << std::endl;
             Error();
@@ -717,7 +737,7 @@ namespace Ls {
 
     void Draw() {
         uint32_t image_index;
-        vk::Result result = device.acquireNextImageKHR( swapChain, UINT64_MAX, imageAvailableSemaphore, vk::Fence(), &image_index );
+        vk::Result result = device.acquireNextImageKHR( swapChain, UINT64_MAX, Semaphores.imageAvailable, vk::Fence(), &image_index );
         switch( result ) {
             case vk::Result::eSuccess:
                 break;
@@ -735,28 +755,28 @@ namespace Ls {
         vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eTransfer;
         vk::SubmitInfo submit_info(
             1,                                     // uint32_t                     waitSemaphoreCount
-            &imageAvailableSemaphore,              // const VkSemaphore           *pWaitSemaphores
+            &Semaphores.imageAvailable,            // const VkSemaphore           *pWaitSemaphores
             &wait_dst_stage_mask,                  // const VkPipelineStageFlags  *pWaitDstStageMask;
             1,                                     // uint32_t                     commandBufferCount
             &presentQueueCmdBuffers[image_index],  // const VkCommandBuffer       *pCommandBuffers
             1,                                     // uint32_t                     signalSemaphoreCount
-            &renderingFinishedSemaphore            // const VkSemaphore           *pSignalSemaphores
+            &Semaphores.renderingFinished          // const VkSemaphore           *pSignalSemaphores
         );
 
-        if( presentQueue.submit( 1, &submit_info, vk::Fence() ) != vk::Result::eSuccess ) {
+        if( PresentQueue.Handle.submit( 1, &submit_info, vk::Fence() ) != vk::Result::eSuccess ) {
             std::cout << "Submit to queue failed!" << std::endl;
             Error();
         }
 
         vk::PresentInfoKHR present_info(
             1,                                     // uint32_t                     waitSemaphoreCount
-            &renderingFinishedSemaphore,           // const VkSemaphore           *pWaitSemaphores
+            &Semaphores.renderingFinished,         // const VkSemaphore           *pWaitSemaphores
             1,                                     // uint32_t                     swapchainCount
             &swapChain,                            // const VkSwapchainKHR        *pSwapchains
             &image_index,                          // const uint32_t              *pImageIndices
             nullptr                                // VkResult                    *pResults
         );
-        result = presentQueue.presentKHR( &present_info );
+        result = PresentQueue.Handle.presentKHR( &present_info );
 
         switch( result ) {
           case vk::Result::eSuccess:
@@ -834,13 +854,13 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::CheckValidationAvailability();
 
     Ls::CreateInstance();
-    vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::instanceExtensions);
+    vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::INSTANCE_EXTENSIONS);
 
     Ls::CreateDebugReportCallback(); // needs an instance level function
 	Ls::CreatePresentationSurface(); // need this for device creation
 
 	Ls::CreateDevice();
-    vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::deviceExtensions);
+    vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
 
 	Ls::CreateSemaphores();
 	Ls::GetQueues();
