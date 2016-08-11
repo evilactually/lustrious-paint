@@ -31,22 +31,20 @@ namespace Ls {
     vk::Device device;
 
     struct {
-        uint32_t FamilyIndex;
-        vk::Queue Handle;
+        uint32_t  familyIndex;
+        vk::Queue handle;
     } GraphicsQueue;
 
     struct {
-        uint32_t FamilyIndex;
-        vk::Queue Handle;
+        uint32_t  familyIndex;
+        vk::Queue handle;
     } PresentQueue;
 
     struct {
-        vk::SurfaceKHR presentationSurface;
+        vk::SurfaceKHR   presentationSurface;
         vk::SwapchainKHR swapChain;
+        vk::Format       format;
     } SwapChain;
-
-    vk::SurfaceKHR presentationSurface;
-    vk::SwapchainKHR swapChain;
 
     struct {
         vk::Semaphore imageAvailable;
@@ -199,7 +197,7 @@ namespace Ls {
             windowHandle                                      // HWND                             hwnd
         );
 
-        if( instance.createWin32SurfaceKHR( &surface_create_info, nullptr, &presentationSurface ) != vk::Result::eSuccess ) {
+        if( instance.createWin32SurfaceKHR( &surface_create_info, nullptr, &SwapChain.presentationSurface ) != vk::Result::eSuccess ) {
             std::cout << "Could not create presentation surface!" << std::endl;
             Error();
         }
@@ -221,7 +219,7 @@ namespace Ls {
         uint32_t presentQueueFamilyIndex = UINT32_MAX;
 
         for( uint32_t i = 0; i < queue_families_count; ++i ) {
-            physicalDevice.getSurfaceSupportKHR( i, presentationSurface, &queue_present_support[i] );
+            physicalDevice.getSurfaceSupportKHR( i, SwapChain.presentationSurface, &queue_present_support[i] );
 
             if( (queue_family_properties[i].queueCount > 0) &&
                 (queue_family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics) ) {
@@ -356,14 +354,14 @@ namespace Ls {
             Error();
         }
 
-        Ls::GraphicsQueue.FamilyIndex = selected_graphics_queue_family_index;
-        Ls::PresentQueue.FamilyIndex = selected_present_queue_family_index;
+        Ls::GraphicsQueue.familyIndex = selected_graphics_queue_family_index;
+        Ls::PresentQueue.familyIndex = selected_present_queue_family_index;
         Ls::physicalDevice = *selected_physical_device;
     }
 
     void GetQueues() {
-        device.getQueue( GraphicsQueue.FamilyIndex, 0, &GraphicsQueue.Handle );
-        device.getQueue( PresentQueue.FamilyIndex, 0, &PresentQueue.Handle );
+        device.getQueue( GraphicsQueue.familyIndex, 0, &GraphicsQueue.handle );
+        device.getQueue( PresentQueue.familyIndex, 0, &PresentQueue.handle );
     }
 
     void FreeDevice() {
@@ -513,33 +511,33 @@ namespace Ls {
         device.waitIdle();
 
         vk::SurfaceCapabilitiesKHR surface_capabilities;
-        if( physicalDevice.getSurfaceCapabilitiesKHR(presentationSurface, &surface_capabilities) != vk::Result::eSuccess ) {
+        if( physicalDevice.getSurfaceCapabilitiesKHR(SwapChain.presentationSurface, &surface_capabilities) != vk::Result::eSuccess ) {
             std::cout << "Could not check presentation surface capabilities!" << std::endl;
             Error();
         }
 
         uint32_t formats_count;
-        if( (physicalDevice.getSurfaceFormatsKHR( presentationSurface, &formats_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (physicalDevice.getSurfaceFormatsKHR( SwapChain.presentationSurface, &formats_count, nullptr ) != vk::Result::eSuccess) ||
             (formats_count == 0) ) {
             std::cout << "Error occurred during presentation surface formats enumeration!" << std::endl;
             Error();
         }
 
         std::vector<vk::SurfaceFormatKHR> surface_formats( formats_count );
-        if( physicalDevice.getSurfaceFormatsKHR( presentationSurface, &formats_count, &surface_formats[0] ) != vk::Result::eSuccess ) {
+        if( physicalDevice.getSurfaceFormatsKHR( SwapChain.presentationSurface, &formats_count, &surface_formats[0] ) != vk::Result::eSuccess ) {
             std::cout << "Error occurred during presentation surface formats enumeration!" << std::endl;
             Error();
         }
 
         uint32_t present_modes_count;
-        if( (physicalDevice.getSurfacePresentModesKHR( presentationSurface, &present_modes_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (physicalDevice.getSurfacePresentModesKHR( SwapChain.presentationSurface, &present_modes_count, nullptr ) != vk::Result::eSuccess) ||
             (present_modes_count == 0) ) {
             std::cout << "Error occurred during presentation surface present modes enumeration!" << std::endl;
             Error();
         }
 
         std::vector<vk::PresentModeKHR> present_modes( present_modes_count );
-        if( physicalDevice.getSurfacePresentModesKHR( presentationSurface , &present_modes_count, &present_modes[0] ) != vk::Result::eSuccess ) {
+        if( physicalDevice.getSurfacePresentModesKHR( SwapChain.presentationSurface , &present_modes_count, &present_modes[0] ) != vk::Result::eSuccess ) {
             std::cout << "Error occurred during presentation surface present modes enumeration!" << std::endl;
             Error();
         }
@@ -549,7 +547,7 @@ namespace Ls {
         Optional<vk::ImageUsageFlags>   desired_usage = GetSwapChainUsageFlags( surface_capabilities );
         vk::SurfaceTransformFlagBitsKHR desired_transform = GetSwapChainTransform( surface_capabilities );
         Optional<vk::PresentModeKHR>    desired_present_mode = GetSwapChainPresentMode( present_modes );
-        vk::SwapchainKHR                old_swapchain = swapChain;
+        vk::SwapchainKHR                old_swapchain = SwapChain.swapChain;
 
         if( !desired_usage ) {
             std::cout << "Surface does not support any suitable usage flags!" << std::endl;
@@ -570,7 +568,7 @@ namespace Ls {
 
         vk::SwapchainCreateInfoKHR swap_chain_create_info(
             vk::SwapchainCreateFlagsKHR(),                // vk::SwapchainCreateFlagsKHR      flags
-            presentationSurface,                          // vk::SurfaceKHR                   surface
+            SwapChain.presentationSurface,                // vk::SurfaceKHR                   surface
             desired_number_of_images,                     // uint32_t                         minImageCount
             desired_format.format,                        // vk::Format                       imageFormat
             desired_format.colorSpace,                    // vk::ColorSpaceKHR                imageColorSpace
@@ -587,7 +585,7 @@ namespace Ls {
             old_swapchain                                 // vk::SwapchainKHR                 oldSwapchain
         );
 
-        if( device.createSwapchainKHR( &swap_chain_create_info, nullptr, &swapChain ) != vk::Result::eSuccess ) {
+        if( device.createSwapchainKHR( &swap_chain_create_info, nullptr, &SwapChain.swapChain ) != vk::Result::eSuccess ) {
             std::cout << "Could not create swap chain!" << std::endl;
             Error();
         }
@@ -595,6 +593,10 @@ namespace Ls {
         if( old_swapchain ) {
             device.destroySwapchainKHR( old_swapchain, nullptr );
         }
+
+        // need format for creating attachment, image views, etc
+        SwapChain.format = desired_format.format;
+
         can_render = true;
     }
 
@@ -602,7 +604,7 @@ namespace Ls {
         uint32_t image_count = static_cast<uint32_t>(presentQueueCmdBuffers.size());
 
         std::vector<vk::Image> swap_chain_images( image_count );
-        if( device.getSwapchainImagesKHR( swapChain, &image_count, &swap_chain_images[0] ) != vk::Result::eSuccess ) {
+        if( device.getSwapchainImagesKHR( SwapChain.swapChain, &image_count, &swap_chain_images[0] ) != vk::Result::eSuccess ) {
             std::cout << "Could not get swap chain images!" << std::endl;
             Error();
         }
@@ -683,14 +685,14 @@ namespace Ls {
     }
 
     void CreateCommandBuffers() {
-        vk::CommandPoolCreateInfo cmd_pool_create_info(vk::CommandPoolCreateFlags(), PresentQueue.FamilyIndex);
+        vk::CommandPoolCreateInfo cmd_pool_create_info(vk::CommandPoolCreateFlags(), PresentQueue.familyIndex);
         if (device.createCommandPool(&cmd_pool_create_info, nullptr, &presentQueueCmdPool) != vk::Result::eSuccess) {
             std::cout << "Could not create a command pool!" << std::endl;
             Error();
         }
 
         uint32_t image_count = 0;
-        if( (device.getSwapchainImagesKHR( swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
+        if( (device.getSwapchainImagesKHR( SwapChain.swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
             (image_count == 0) ) {
             std::cout << "Could not get the number of swap chain images!" << std::endl;
             Error();
@@ -737,7 +739,7 @@ namespace Ls {
 
     void Draw() {
         uint32_t image_index;
-        vk::Result result = device.acquireNextImageKHR( swapChain, UINT64_MAX, Semaphores.imageAvailable, vk::Fence(), &image_index );
+        vk::Result result = device.acquireNextImageKHR( SwapChain.swapChain, UINT64_MAX, Semaphores.imageAvailable, vk::Fence(), &image_index );
         switch( result ) {
             case vk::Result::eSuccess:
                 break;
@@ -763,7 +765,7 @@ namespace Ls {
             &Semaphores.renderingFinished          // const VkSemaphore           *pSignalSemaphores
         );
 
-        if( PresentQueue.Handle.submit( 1, &submit_info, vk::Fence() ) != vk::Result::eSuccess ) {
+        if( PresentQueue.handle.submit( 1, &submit_info, vk::Fence() ) != vk::Result::eSuccess ) {
             std::cout << "Submit to queue failed!" << std::endl;
             Error();
         }
@@ -772,11 +774,11 @@ namespace Ls {
             1,                                     // uint32_t                     waitSemaphoreCount
             &Semaphores.renderingFinished,         // const VkSemaphore           *pWaitSemaphores
             1,                                     // uint32_t                     swapchainCount
-            &swapChain,                            // const VkSwapchainKHR        *pSwapchains
+            &SwapChain.swapChain,                  // const VkSwapchainKHR        *pSwapchains
             &image_index,                          // const uint32_t              *pImageIndices
             nullptr                                // VkResult                    *pResults
         );
-        result = PresentQueue.Handle.presentKHR( &present_info );
+        result = PresentQueue.handle.presentKHR( &present_info );
 
         switch( result ) {
           case vk::Result::eSuccess:
