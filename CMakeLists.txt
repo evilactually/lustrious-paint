@@ -36,8 +36,8 @@ configure_file (
 
 # Configure version header file
 configure_file (
-  "${PROJECT_SOURCE_DIR}/src/Version.h.in"
-  "${PROJECT_BINARY_DIR}/src/Version.h"
+  "${PROJECT_SOURCE_DIR}/src/version.h.in"
+  "${PROJECT_BINARY_DIR}/src/version.h"
   )
 
 # Dowload C++ Vulkan wrapper
