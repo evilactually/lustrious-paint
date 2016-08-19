@@ -22,8 +22,6 @@
 namespace Ls {
     bool dialogShowing = false;
     bool canRender = false;
-    int width = 600;
-    int height = 800;
     
     HINSTANCE hInstance;
     MSG msg;
@@ -62,6 +60,7 @@ namespace Ls {
     
     vk::RenderPass renderPass;
     std::vector<vk::Framebuffer> framebuffers;
+    vk::Pipeline graphicsPipeline;
 
     vk::DebugReportCallbackEXT debugReportCallback;
 
@@ -329,6 +328,9 @@ namespace Ls {
                                       &queue_priorities[0]});                         // const float                  *pQueuePriorities    
         }
 
+        vk::PhysicalDeviceFeatures device_features;
+        device_features.wideLines = VK_TRUE;
+
         vk::DeviceCreateInfo device_create_info(vk::DeviceCreateFlags(),                          // vk::DeviceCreateFlags              flags
                                                 static_cast<uint32_t>(queue_create_infos.size()), // uint32_t                           queueCreateInfoCount
                                                 &queue_create_infos[0],                           // const VkDeviceQueueCreateInfo      *pQueueCreateInfos
@@ -336,7 +338,7 @@ namespace Ls {
                                                 nullptr,                                          // const char * const                 *ppEnabledLayerNames
                                                 static_cast<uint32_t>(DEVICE_EXTENSIONS.size()),  // uint32_t                           enabledExtensionCount
                                                 &DEVICE_EXTENSIONS[0],                            // const char * const                 *ppEnabledExtensionNames
-                                                nullptr);                                         // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
+                                                &device_features);                                // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
 
         if( selected_physical_device->createDevice( &device_create_info, nullptr, &Ls::device ) != vk::Result::eSuccess ) {
             std::cout << "Could not create Vulkan device!" << std::endl;
@@ -432,25 +434,29 @@ namespace Ls {
     Optional<vk::Extent2D> GetSwapChainExtent( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
         // Special value of surface extent is width == height == -1
         // If this is so we define the size by ourselves but it must fit within defined confines
-        if( surface_capabilities.currentExtent.width == -1 ) {
-            VkExtent2D swap_chain_extent = { 640, 480 };
-            if( swap_chain_extent.width < surface_capabilities.minImageExtent.width ) {
-                swap_chain_extent.width = surface_capabilities.minImageExtent.width;
-            }
-            if( swap_chain_extent.height < surface_capabilities.minImageExtent.height ) {
-                swap_chain_extent.height = surface_capabilities.minImageExtent.height;
-            }
-            if( swap_chain_extent.width > surface_capabilities.maxImageExtent.width ) {
-                swap_chain_extent.width = surface_capabilities.maxImageExtent.width;
-            }
-            if( swap_chain_extent.height > surface_capabilities.maxImageExtent.height ) {
-                swap_chain_extent.height = surface_capabilities.maxImageExtent.height;
-            }
-            return swap_chain_extent;
+        if( surface_capabilities.currentExtent.width == -1 || TRUE) {
+			    RECT window_rect = {}; 
+			    GetClientRect(windowHandle, &window_rect);
+			    VkExtent2D swap_chain_extent = { static_cast<uint32_t>(window_rect.right - window_rect.left),
+				                                   static_cast<uint32_t>(window_rect.bottom - window_rect.top) };
+
+          if( swap_chain_extent.width < surface_capabilities.minImageExtent.width ) {
+              swap_chain_extent.width = surface_capabilities.minImageExtent.width;
+          }
+          if( swap_chain_extent.height < surface_capabilities.minImageExtent.height ) {
+              swap_chain_extent.height = surface_capabilities.minImageExtent.height;
+          }
+          if( swap_chain_extent.width > surface_capabilities.maxImageExtent.width ) {
+              swap_chain_extent.width = surface_capabilities.maxImageExtent.width;
+          }
+          if( swap_chain_extent.height > surface_capabilities.maxImageExtent.height ) {
+              swap_chain_extent.height = surface_capabilities.maxImageExtent.height;
+          }
+          return swap_chain_extent;
         }
 
         if (surface_capabilities.currentExtent.width == 0 || surface_capabilities.currentExtent.height == 0 ) {
-            Optional<vk::Extent2D>();
+          Optional<vk::Extent2D>();
         }
         // Most of the cases we define size of the swap_chain images equal to current window's size
         return surface_capabilities.currentExtent;
@@ -921,8 +927,175 @@ namespace Ls {
         return shader_module;
     }
 
-    void CreatePipeline() {
+    vk::PipelineLayout CreatePipelineLayout() {
+      vk::PipelineLayoutCreateInfo layout_create_info = {
+        vk::PipelineLayoutCreateFlags(),                // VkPipelineLayoutCreateFlags    flags
+        0,                                              // uint32_t                       setLayoutCount
+        nullptr,                                        // const VkDescriptorSetLayout    *pSetLayouts
+        0,                                              // uint32_t                       pushConstantRangeCount
+        nullptr                                         // const VkPushConstantRange      *pPushConstantRanges
+      };
 
+      vk::PipelineLayout pipeline_layout;
+      if( device.createPipelineLayout( &layout_create_info, nullptr, &pipeline_layout ) != vk::Result::eSuccess ) {
+        std::cout << "Could not create pipeline layout!" << std::endl;
+        Error();
+      }
+
+      return pipeline_layout;
+    }
+
+
+    void CreatePipeline() {
+        Ls::shaders["shader.vert"] = Ls::CreateShaderModule("shaders/shader.vert.spv");
+        Ls::shaders["shader.frag"] = Ls::CreateShaderModule("shaders/shader.frag.spv");
+
+        std::vector<vk::PipelineShaderStageCreateInfo> shader_stage_create_infos = {
+          // Vertex shader
+          {
+            vk::PipelineShaderStageCreateFlags(),                       // VkPipelineShaderStageCreateFlags               flags
+            vk::ShaderStageFlagBits::eVertex,                           // VkShaderStageFlagBits                          stage
+            Ls::shaders["shader.vert"],                                 // VkShaderModule                                 module
+            "main",                                                     // const char                                    *pName
+            nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo
+          },
+          // Fragment shader
+          {
+            vk::PipelineShaderStageCreateFlags(),                       // VkPipelineShaderStageCreateFlags               flags
+            vk::ShaderStageFlagBits::eFragment,                         // VkShaderStageFlagBits                          stage
+            Ls::shaders["shader.frag"],                                 // VkShaderModule                                 module
+            "main",                                                     // const char                                    *pName
+            nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo
+          }
+        };
+
+        vk::PipelineVertexInputStateCreateInfo vertex_input_state_create_info(
+          vk::PipelineVertexInputStateCreateFlags(),                    // VkPipelineVertexInputStateCreateFlags          flags;
+          0,                                                            // uint32_t                                       vertexBindingDescriptionCount
+          nullptr,                                                      // const VkVertexInputBindingDescription         *pVertexBindingDescriptions
+          0,                                                            // uint32_t                                       vertexAttributeDescriptionCount
+          nullptr                                                       // const VkVertexInputAttributeDescription       *pVertexAttributeDescriptions
+        );
+
+        vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {
+          vk::PipelineInputAssemblyStateCreateFlags(),                  // VkPipelineInputAssemblyStateCreateFlags        flags
+          vk::PrimitiveTopology::eLineList,                             // VkPrimitiveTopology                            topology
+          VK_FALSE                                                      // VkBool32                                       primitiveRestartEnable
+        };
+
+        vk::Viewport viewport = {
+          0.0f,                                                         // float                                          x
+          0.0f,                                                         // float                                          y
+          static_cast<float>(swapChainInfo.extent.width),               // float                                          width
+          static_cast<float>(swapChainInfo.extent.height),              // float                                          height
+          0.0f,                                                         // float                                          minDepth
+          1.0f                                                          // float                                          maxDepth
+        };
+
+        vk::Rect2D scissor = {
+          {                                                             // VkOffset2D                                     offset
+            0,                                                          // int32_t                                        x
+            0                                                           // int32_t                                        y
+          },
+          {                                                             // VkExtent2D                                     extent
+            static_cast<uint32_t>(swapChainInfo.extent.width),          // uint32_t                                       width
+            static_cast<uint32_t>(swapChainInfo.extent.height)          // uint32_t                                       height
+          }
+        };
+
+        vk::PipelineViewportStateCreateInfo viewport_state_create_info = {
+          vk::PipelineViewportStateCreateFlags(),                       // VkPipelineViewportStateCreateFlags             flags
+          1,                                                            // uint32_t                                       viewportCount
+          &viewport,                                                    // const VkViewport                              *pViewports
+          1,                                                            // uint32_t                                       scissorCount
+          &scissor                                                      // const VkRect2D                                *pScissors
+        };
+
+        vk::PipelineRasterizationStateCreateInfo rasterization_state_create_info = {
+          vk::PipelineRasterizationStateCreateFlags(),                  // VkPipelineRasterizationStateCreateFlags        flags
+          VK_FALSE,                                                     // VkBool32                                       depthClampEnable
+          VK_FALSE,                                                     // VkBool32                                       rasterizerDiscardEnable
+          vk::PolygonMode::eFill,                                       // VkPolygonMode                                  polygonMode
+          vk::CullModeFlagBits::eBack,                                  // VkCullModeFlags                                cullMode
+          vk::FrontFace::eCounterClockwise,                             // VkFrontFace                                    frontFace
+          VK_FALSE,                                                     // VkBool32                                       depthBiasEnable
+          0.0f,                                                         // float                                          depthBiasConstantFactor
+          0.0f,                                                         // float                                          depthBiasClamp
+          0.0f,                                                         // float                                          depthBiasSlopeFactor
+          1.0f                                                          // float                                          lineWidth
+        };
+
+        vk::PipelineMultisampleStateCreateInfo multisample_state_create_info = {
+          vk::PipelineMultisampleStateCreateFlags(),                    // VkPipelineMultisampleStateCreateFlags          flags
+          vk::SampleCountFlagBits::e1,                                  // VkSampleCountFlagBits                          rasterizationSamples
+          VK_FALSE,                                                     // VkBool32                                       sampleShadingEnable
+          1.0f,                                                         // float                                          minSampleShading
+          nullptr,                                                      // const VkSampleMask                            *pSampleMask
+          VK_FALSE,                                                     // VkBool32                                       alphaToCoverageEnable
+          VK_FALSE                                                      // VkBool32                                       alphaToOneEnable
+        };
+
+        vk::PipelineColorBlendAttachmentState color_blend_attachment_state = {
+          VK_FALSE,                                                     // VkBool32                                       blendEnable
+          vk::BlendFactor::eOne,                                        // VkBlendFactor                                  srcColorBlendFactor
+          vk::BlendFactor::eZero,                                       // VkBlendFactor                                  dstColorBlendFactor
+          vk::BlendOp::eAdd,                                            // VkBlendOp                                      colorBlendOp
+          vk::BlendFactor::eOne,                                        // VkBlendFactor                                  srcAlphaBlendFactor
+          vk::BlendFactor::eZero,                                       // VkBlendFactor                                  dstAlphaBlendFactor
+          vk::BlendOp::eAdd,                                            // VkBlendOp                                      alphaBlendOp
+          vk::ColorComponentFlagBits::eR |                              // VkColorComponentFlags                          colorWriteMask
+          vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB |
+          vk::ColorComponentFlagBits::eA
+        };
+
+        vk::PipelineColorBlendStateCreateInfo color_blend_state_create_info = {
+          vk::PipelineColorBlendStateCreateFlags(),                     // VkPipelineColorBlendStateCreateFlags           flags
+          VK_FALSE,                                                     // VkBool32                                       logicOpEnable
+          vk::LogicOp::eCopy,                                           // VkLogicOp                                      logicOp
+          1,                                                            // uint32_t                                       attachmentCount
+          &color_blend_attachment_state,                                // const VkPipelineColorBlendAttachmentState     *pAttachments
+          { 0.0f, 0.0f, 0.0f, 0.0f }                                    // float                                          blendConstants[4]
+        };
+
+        std::vector<vk::DynamicState> dynamic_states = {
+          vk::DynamicState::eViewport,
+          vk::DynamicState::eLineWidth,
+          vk::DynamicState::eScissor
+        };
+
+        vk::PipelineDynamicStateCreateInfo dynamic_state_create_info = {
+          vk::PipelineDynamicStateCreateFlags(),                        // VkPipelineDynamicStateCreateFlags              flags
+          static_cast<uint32_t>(dynamic_states.size()),                 // uint32_t                                       dynamicStateCount
+          &dynamic_states[0]                                            // const VkDynamicState                          *pDynamicStates
+        };
+
+        vk::PipelineLayout pipeline_layout = CreatePipelineLayout();
+
+        vk::GraphicsPipelineCreateInfo pipeline_create_info(
+          vk::PipelineCreateFlags(),                                    // VkPipelineCreateFlags                          flags
+          static_cast<uint32_t>(shader_stage_create_infos.size()),      // uint32_t                                       stageCount
+          &shader_stage_create_infos[0],                                // const VkPipelineShaderStageCreateInfo         *pStages
+          &vertex_input_state_create_info,                              // const VkPipelineVertexInputStateCreateInfo    *pVertexInputState;
+          &input_assembly_state_create_info,                            // const VkPipelineInputAssemblyStateCreateInfo  *pInputAssemblyState
+          nullptr,                                                      // const VkPipelineTessellationStateCreateInfo   *pTessellationState
+          &viewport_state_create_info,                                  // const VkPipelineViewportStateCreateInfo       *pViewportState
+          &rasterization_state_create_info,                             // const VkPipelineRasterizationStateCreateInfo  *pRasterizationState
+          &multisample_state_create_info,                               // const VkPipelineMultisampleStateCreateInfo    *pMultisampleState
+          nullptr,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
+          &color_blend_state_create_info,                               // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
+          &dynamic_state_create_info,                                   // const VkPipelineDynamicStateCreateInfo        *pDynamicState
+          pipeline_layout,                                              // VkPipelineLayout                               layout
+          renderPass,                                                   // VkRenderPass                                   renderPass
+          0,                                                            // uint32_t                                       subpass
+          vk::Pipeline(),                                               // VkPipeline                                     basePipelineHandle
+          -1                                                            // int32_t                                        basePipelineIndex
+        );
+
+        if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &pipeline_create_info, nullptr, &graphicsPipeline ) != vk::Result::eSuccess ) {
+          std::cout << "Could not create graphics pipeline!" << std::endl;
+          Error();
+        }
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -966,8 +1139,8 @@ namespace Ls {
             WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
             100,
             100,
-            width,
-            height,
+            800,
+            600,
             NULL,
             NULL,
             hInstance,
@@ -990,21 +1163,20 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::INSTANCE_EXTENSIONS);
 
     Ls::CreateDebugReportCallback(); // needs an instance level function
-	Ls::CreatePresentationSurface(); // need this for device creation
+	  Ls::CreatePresentationSurface(); // need this for device creation
 
-	Ls::CreateDevice();
+	  Ls::CreateDevice();
     vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
 
-	Ls::CreateSemaphores();
-	Ls::GetQueues();
-	Ls::CreateSwapChain();
+	  Ls::CreateSemaphores();
+	  Ls::GetQueues();
+  	Ls::CreateSwapChain();
     Ls::CreateCommandBuffers();
 
     Ls::CreateRenderPass();
     Ls::CreateFramebuffers();
 
-    Ls::shaders["shader.vert"] = Ls::CreateShaderModule("shaders/shader.vert.spv");
-    Ls::shaders["shader.frag"] = Ls::CreateShaderModule("shaders/shader.frag.spv");
+    Ls::CreatePipeline();
 
     ShowWindow(Ls::windowHandle, SW_SHOW);
 
