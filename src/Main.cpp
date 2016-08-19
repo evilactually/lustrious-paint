@@ -63,6 +63,7 @@ namespace Ls {
     vk::RenderPass renderPass;
     std::vector<vk::Framebuffer> framebuffers;
     vk::Pipeline graphicsPipeline;
+    vk::PipelineLayout pipeline_layout;
 
     vk::DebugReportCallbackEXT debugReportCallback;
 
@@ -78,6 +79,16 @@ namespace Ls {
         "VK_LAYER_LUNARG_standard_validation"
     };
     std::map<std::string, vk::ShaderModule> shaders;
+
+    struct LinePushConstants {
+      float positions[4];
+      float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    };
+
+    struct {
+      float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+      float lineWidth = 1.0f;
+    } drawingContext;
 
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
@@ -726,6 +737,16 @@ namespace Ls {
 
         graphicsCommandBuffers[i].bindPipeline( vk::PipelineBindPoint::eGraphics, graphicsPipeline );
 
+        LinePushConstants pushConstants;
+        pushConstants.positions[0] = -0.1f;
+        pushConstants.positions[1] = -1.1f;
+
+        graphicsCommandBuffers[i].pushConstants( pipeline_layout,
+                                                 vk::ShaderStageFlagBits::eVertex,
+                                                 0,
+                                                 sizeof(LinePushConstants),
+                                                 &pushConstants);
+
         graphicsCommandBuffers[i].draw( 2, 1, 0, 0 );
 
         graphicsCommandBuffers[i].endRenderPass();
@@ -892,12 +913,18 @@ namespace Ls {
     }
 
     vk::PipelineLayout CreatePipelineLayout() {
+      vk::PushConstantRange pushConstantRange = {
+        vk::ShaderStageFlagBits::eVertex,
+        0,
+        sizeof(LinePushConstants)
+      };
+      
       vk::PipelineLayoutCreateInfo layout_create_info = {
         vk::PipelineLayoutCreateFlags(),                // VkPipelineLayoutCreateFlags    flags
         0,                                              // uint32_t                       setLayoutCount
         nullptr,                                        // const VkDescriptorSetLayout    *pSetLayouts
-        0,                                              // uint32_t                       pushConstantRangeCount
-        nullptr                                         // const VkPushConstantRange      *pPushConstantRanges
+        1/*0*/,                                         // uint32_t                       pushConstantRangeCount
+        &pushConstantRange/*nullptr*/                   // const VkPushConstantRange      *pPushConstantRanges
       };
 
       vk::PipelineLayout pipeline_layout;
@@ -1033,7 +1060,8 @@ namespace Ls {
         //   &dynamic_states[0]                                            // const VkDynamicState                          *pDynamicStates
         // };
 
-        vk::PipelineLayout pipeline_layout = CreatePipelineLayout();
+        //vk::PipelineLayout pipeline_layout = CreatePipelineLayout();
+        pipeline_layout = CreatePipelineLayout();
 
         vk::GraphicsPipelineCreateInfo pipeline_create_info(
           vk::PipelineCreateFlags(),                                    // VkPipelineCreateFlags                          flags
@@ -1149,6 +1177,38 @@ namespace Ls {
             std::cout << "Problem occurred during image presentation!" << std::endl;
             Error();
         }
+    }
+
+    void BeginFrame() {
+
+    }
+
+    void EndFrame() {
+
+    }
+
+    void Clear(float r, float g, float b) {
+
+    }
+
+    void DrawLine(float x1, float y1, float x2, float y2) {
+
+    }
+
+    void DrawPoint(float x, float y) {
+
+    }
+
+    void SetColor(float r, float g, float b) {
+
+    }
+
+    void SetLineWidth(float width) {
+      
+    }
+
+    void SetPointSize(float width) {
+      
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
