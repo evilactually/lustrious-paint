@@ -5,6 +5,7 @@
 #include "win32_console.hpp"
 #include "utility.h"
 #include <map>
+#include "assert.h"
 //#include "mesh.h"
 
 //#include "Application.hpp"
@@ -48,6 +49,7 @@ namespace Ls {
         std::vector<vk::Image> images;
         std::vector<vk::ImageView> imageViews;
         vk::Extent2D extent;
+        uint32_t acquiredImageIndex;
     } swapChainInfo;
 
     struct {
@@ -55,15 +57,19 @@ namespace Ls {
         vk::Semaphore renderingFinished;
     } semaphores;
 
+    vk::Fence submitCompleteFence;
+
     //vk::CommandPool presentQueueCmdPool;                   // depricated, don't need command buffer to present
     //std::vector<vk::CommandBuffer> presentQueueCmdBuffers; // depricated
     vk::CommandPool graphicsCommandPool; 
     std::vector<vk::CommandBuffer> graphicsCommandBuffers;
+    vk::CommandBuffer commandBuffer;            // No pre-recording, so reusing same command buffer
+    uint32_t commandBufferIndex;
     
     vk::RenderPass renderPass;
     std::vector<vk::Framebuffer> framebuffers;
     vk::Pipeline graphicsPipeline;
-    vk::PipelineLayout pipeline_layout;
+    vk::PipelineLayout pipelineLayout;
 
     vk::DebugReportCallbackEXT debugReportCallback;
 
@@ -82,12 +88,14 @@ namespace Ls {
 
     struct LinePushConstants {
       float positions[4];
-      float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+	  float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     };
 
     struct {
-      float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+      float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
       float lineWidth = 1.0f;
+      bool drawing = false; // indicates that command buffer is ready to draw
+
     } drawingContext;
 
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
@@ -95,20 +103,6 @@ namespace Ls {
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
         std::cout << pLayerPrefix << ": " << pMessage << std::endl;
         return VK_FALSE;
-    }
-
-    bool Update() {
-        bool running = true;
-        PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
-        if (msg.message == WM_QUIT) {
-            running = false;
-        }
-        else {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-        RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
-        return running;
     }
 
     bool CheckExtensionAvailability( const char *extension_name, const std::vector<vk::ExtensionProperties> &available_instance_extensions ) {
@@ -497,6 +491,7 @@ namespace Ls {
     }
 
     Optional<vk::PresentModeKHR> GetSwapChainPresentMode( std::vector<vk::PresentModeKHR> &present_modes ) {
+        return vk::PresentModeKHR::eImmediate;
         // FIFO present mode is always available
         // MAILBOX is the lowest latency V-Sync enabled mode (something like triple-buffering) so use it if available
         for( vk::PresentModeKHR &present_mode : present_modes ) {
@@ -699,11 +694,7 @@ namespace Ls {
                                                    1,
                                                    &barrier_from_present_to_draw );
         // Use it for Clear(...) command later
-        // graphicsCommandBuffers[i].clearColorImage( swapChainInfo.images[i],
-        //                        vk::ImageLayout::eTransferDstOptimal,
-        //                        &clear_color,
-        //                        1,
-        //                        &image_subresource_range );
+
 
         vk::RenderPassBeginInfo render_pass_begin_info = {
           renderPass,                            // VkRenderPass                   renderPass
@@ -741,7 +732,13 @@ namespace Ls {
         pushConstants.positions[0] = -0.1f;
         pushConstants.positions[1] = -1.1f;
 
-        graphicsCommandBuffers[i].pushConstants( pipeline_layout,
+        // graphicsCommandBuffers[i].clearColorImage( swapChainInfo.images[i],
+        //                                            vk::ImageLayout::eTransferDstOptimal,
+        //                &clear_color,
+        //                1,
+        //                &image_subresource_range );
+
+        graphicsCommandBuffers[i].pushConstants( pipelineLayout,
                                                  vk::ShaderStageFlagBits::eVertex,
                                                  0,
                                                  sizeof(LinePushConstants),
@@ -770,7 +767,7 @@ namespace Ls {
 
     void CreateCommandBuffers() {
         vk::CommandPoolCreateInfo cmd_pool_create_info(
-          vk::CommandPoolCreateFlags(),
+          vk::CommandPoolCreateFlagBits::eResetCommandBuffer, // allow resetting command buffer
           graphicsQueue.familyIndex
         );
 
@@ -799,7 +796,15 @@ namespace Ls {
             Error();
         }
 
-        RecordCommandBuffers();
+        vk::CommandBufferAllocateInfo cmd_buffer_allocate_info_2(
+          graphicsCommandPool,                               // VkCommandPool                commandPool
+          vk::CommandBufferLevel::ePrimary,                  // VkCommandBufferLevel         level
+          1);                                                // uint32_t                     bufferCount
+
+        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info_2, &commandBuffer ) != vk::Result::eSuccess ) {
+            std::cout << "Could not allocate command buffers!" << std::endl;
+            Error();
+        }
     }
     
     void FreeCommandBuffers() {
@@ -825,7 +830,7 @@ namespace Ls {
                 vk::AttachmentDescriptionFlags(),        // VkAttachmentDescriptionFlags   flags
                 swapChainInfo.format,                    // VkFormat                       format
                 vk::SampleCountFlagBits::e1,             // VkSampleCountFlagBits          samples
-                vk::AttachmentLoadOp::eClear,            // VkAttachmentLoadOp             loadOp
+                vk::AttachmentLoadOp::eLoad,             // VkAttachmentLoadOp             loadOp
                 vk::AttachmentStoreOp::eStore,           // VkAttachmentStoreOp            storeOp
                 vk::AttachmentLoadOp::eDontCare,         // VkAttachmentLoadOp             stencilLoadOp
                 vk::AttachmentStoreOp::eDontCare,        // VkAttachmentStoreOp            stencilStoreOp
@@ -914,7 +919,8 @@ namespace Ls {
 
     vk::PipelineLayout CreatePipelineLayout() {
       vk::PushConstantRange pushConstantRange = {
-        vk::ShaderStageFlagBits::eVertex,
+        vk::ShaderStageFlagBits::eVertex | 
+        vk::ShaderStageFlagBits::eFragment,
         0,
         sizeof(LinePushConstants)
       };
@@ -927,25 +933,25 @@ namespace Ls {
         &pushConstantRange/*nullptr*/                   // const VkPushConstantRange      *pPushConstantRanges
       };
 
-      vk::PipelineLayout pipeline_layout;
-      if( device.createPipelineLayout( &layout_create_info, nullptr, &pipeline_layout ) != vk::Result::eSuccess ) {
+      vk::PipelineLayout pipelineLayout;
+      if( device.createPipelineLayout( &layout_create_info, nullptr, &pipelineLayout ) != vk::Result::eSuccess ) {
         std::cout << "Could not create pipeline layout!" << std::endl;
         Error();
       }
 
-      return pipeline_layout;
+      return pipelineLayout;
     }
 
     void CreatePipeline() {
-        Ls::shaders["shader.vert"] = Ls::CreateShaderModule("shaders/shader.vert.spv");
-        Ls::shaders["shader.frag"] = Ls::CreateShaderModule("shaders/shader.frag.spv");
+        Ls::shaders["line.vert"] = Ls::CreateShaderModule("shaders/line.vert.spv");
+        Ls::shaders["line.frag"] = Ls::CreateShaderModule("shaders/line.frag.spv");
 
         std::vector<vk::PipelineShaderStageCreateInfo> shader_stage_create_infos = {
           // Vertex shader
           {
             vk::PipelineShaderStageCreateFlags(),                       // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eVertex,                           // VkShaderStageFlagBits                          stage
-            Ls::shaders["shader.vert"],                                 // VkShaderModule                                 module
+            Ls::shaders["line.vert"],                                 // VkShaderModule                                 module
             "main",                                                     // const char                                    *pName
             nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo
           },
@@ -953,7 +959,7 @@ namespace Ls {
           {
             vk::PipelineShaderStageCreateFlags(),                       // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eFragment,                         // VkShaderStageFlagBits                          stage
-            Ls::shaders["shader.frag"],                                 // VkShaderModule                                 module
+            Ls::shaders["line.frag"],                                 // VkShaderModule                                 module
             "main",                                                     // const char                                    *pName
             nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo
           }
@@ -1060,8 +1066,8 @@ namespace Ls {
         //   &dynamic_states[0]                                            // const VkDynamicState                          *pDynamicStates
         // };
 
-        //vk::PipelineLayout pipeline_layout = CreatePipelineLayout();
-        pipeline_layout = CreatePipelineLayout();
+        //vk::PipelineLayout pipelineLayout = CreatePipelineLayout();
+        pipelineLayout = CreatePipelineLayout();
 
         vk::GraphicsPipelineCreateInfo pipeline_create_info(
           vk::PipelineCreateFlags(),                                    // VkPipelineCreateFlags                          flags
@@ -1076,7 +1082,7 @@ namespace Ls {
           nullptr,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
           &color_blend_state_create_info,                               // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
           nullptr/*&dynamic_state_create_info*/,                        // const VkPipelineDynamicStateCreateInfo        *pDynamicState
-          pipeline_layout,                                              // VkPipelineLayout                               layout
+          pipelineLayout,                                               // VkPipelineLayout                               layout
           renderPass,                                                   // VkRenderPass                                   renderPass
           0,                                                            // uint32_t                                       subpass
           vk::Pipeline(),                                               // VkPipeline                                     basePipelineHandle
@@ -1087,6 +1093,18 @@ namespace Ls {
           std::cout << "Could not create graphics pipeline!" << std::endl;
           Error();
         }
+    }
+
+    void CreateFence() {
+      // Fence used to protect command buffer while submitting
+      vk::FenceCreateInfo fence_create_info = {
+        vk::FenceCreateFlagBits::eSignaled // VkFenceCreateFlags flags
+      };
+
+      if( device.createFence( &fence_create_info, nullptr, &submitCompleteFence ) != vk::Result::eSuccess ) {
+        std::cout << "Could not create a fence!" << std::endl;
+        Error();
+      }
     }
 
     void DestroyRenderpass() {
@@ -1109,7 +1127,7 @@ namespace Ls {
       }
     }
 
-    void OnWindowSizeChanged() {
+    void RefreshSwapChain() {
       if ( device ) {
         DestroyRenderpass();
         DestroyFramebuffers();
@@ -1121,6 +1139,7 @@ namespace Ls {
         CreateFramebuffers();
         CreatePipeline();
         CreateCommandBuffers();
+        RecordCommandBuffers();
       }
     }
 
@@ -1134,7 +1153,7 @@ namespace Ls {
                 break;
             case vk::Result::eErrorOutOfDateKHR:
                 std::cout << "Swap chain out of date" << std::endl;
-                OnWindowSizeChanged();
+                RefreshSwapChain();
                 return;
             default:
                 std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
@@ -1172,27 +1191,284 @@ namespace Ls {
             break;
           case vk::Result::eErrorOutOfDateKHR:
           case vk::Result::eSuboptimalKHR:
-            return OnWindowSizeChanged();
+            return RefreshSwapChain();
           default:
             std::cout << "Problem occurred during image presentation!" << std::endl;
             Error();
         }
     }
 
-    void BeginFrame() {
+    void BeginDrawing() {
+      assert(!drawingContext.drawing);
 
+      // If queue present and graphics queue families are not the same
+      // transfer ownership to graphics queue
+      // vk::ImageSubresourceRange image_subresource_range(
+      //   vk::ImageAspectFlagBits::eColor, // VkImageAspectFlags                     aspectMask
+      //   0,                               // uint32_t                               baseMipLevel
+      //   1,                               // uint32_t                               levelCount
+      //   0,                               // uint32_t                               baseArrayLayer
+      //   1                                // uint32_t                               layerCount
+      // );
+
+      // vk::ImageMemoryBarrier barrier_from_present_to_draw(
+      //   vk::AccessFlagBits::eMemoryRead,                        // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
+      //   vk::AccessFlagBits::eColorAttachmentWrite,              // VkAccessFlags            dstAccessMask
+      //   vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            oldLayout
+      //   vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
+      //   presentQueue.familyIndex,                               // uint32_t                 srcQueueFamilyIndex
+      //   graphicsQueue.familyIndex,                              // uint32_t                 dstQueueFamilyIndex
+      //   swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
+      //   image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
+      // );
+
+      // commandBuffer.pipelineBarrier( 
+      //   vk::PipelineStageFlagBits::eColorAttachmentOutput | // Wait for drawing 
+      //   vk::PipelineStageFlagBits::eTransfer,               // and transfer commands.
+      //   vk::PipelineStageFlagBits::eColorAttachmentOutput,  // Block drawing commands
+      //   vk::DependencyFlagBits(),
+      //   0,
+      //   nullptr,
+      //   0,
+      //   nullptr,
+      //   1,
+      //   &barrier_from_present_to_draw);
+
+      // Begin rendering pass
+      vk::RenderPassBeginInfo render_pass_begin_info = {
+        renderPass,                                     // VkRenderPass                   renderPass
+        framebuffers[swapChainInfo.acquiredImageIndex], // VkFramebuffer                  framebuffer
+        {                                               // VkRect2D                       renderArea
+          {                                             // VkOffset2D                     offset
+            0,                                          // int32_t                        x
+            0                                           // int32_t                        y
+          },
+          {                                             // VkExtent2D                     extent
+            swapChainInfo.extent.width,                 // int32_t                        width
+            swapChainInfo.extent.height,                // int32_t                        height
+          }
+        },
+        0,                                              // uint32_t                       clearValueCount
+        nullptr                                         // const VkClearValue            *pClearValues
+      };
+      commandBuffer.beginRenderPass( &render_pass_begin_info, vk::SubpassContents::eInline );
+
+      // Tell drawing functions that command buffer is already prepared for drawing
+      drawingContext.drawing = true;
+    }
+
+    void EndDrawing() {
+      commandBuffer.endRenderPass();
+      drawingContext.drawing = false;
+    }
+
+    void BeginFrame() {
+      if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
+        std::cout << "Waiting for fence takes too long!" << std::endl;
+        Error();
+      }
+
+      device.resetFences( 1, &submitCompleteFence );
+
+      vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
+                                                      UINT64_MAX,
+                                                      semaphores.imageAvailable,
+                                                      vk::Fence(),
+                                                      &swapChainInfo.acquiredImageIndex );
+      switch( result ) {
+          case vk::Result::eSuccess:
+              break;
+          case vk::Result::eSuboptimalKHR:
+              break;
+          case vk::Result::eErrorOutOfDateKHR:
+              std::cout << "Swap chain out of date" << std::endl;
+              RefreshSwapChain();
+              return;
+          default:
+              std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
+              Error();
+      }
+
+      vk::CommandBufferBeginInfo cmd_buffer_begin_info(
+          vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
+          nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
+      );
+
+      commandBuffer.begin( &cmd_buffer_begin_info );
+
+      vk::ImageSubresourceRange image_subresource_range(
+        vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
+        0,                                              // uint32_t                               baseMipLevel
+        1,                                              // uint32_t                               levelCount
+        0,                                              // uint32_t                               baseArrayLayer
+        1                                               // uint32_t                               layerCount
+      );
+
+      // Transition to presentation layout and tell vulkan that we are discarding previous contents of the image
+      vk::ImageMemoryBarrier barrier_from_present_to_draw(
+        vk::AccessFlagBits(),                                   // VkAccessFlags            srcAccessMask
+        vk::AccessFlagBits::eMemoryRead,                        // VkAccessFlags            dstAccessMask
+        vk::ImageLayout::eUndefined,                            // VkImageLayout            oldLayout // TODO: DO AN INITIAL FILL
+        vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
+        VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 srcQueueFamilyIndex
+        VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 dstQueueFamilyIndex
+        swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
+        image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
+      );
+
+      commandBuffer.pipelineBarrier( 
+        vk::PipelineStageFlagBits::eColorAttachmentOutput, // | eTransfer
+        vk::PipelineStageFlagBits::eColorAttachmentOutput, // | eTransfer
+        vk::DependencyFlagBits(),
+        0,
+        nullptr,
+        0,
+        nullptr,
+        1,
+        &barrier_from_present_to_draw);
     }
 
     void EndFrame() {
+      if( drawingContext.drawing ) {
+        EndDrawing();
+      }
 
+      if( commandBuffer.end() != vk::Result::eSuccess ) {
+          std::cout << "Could not record command buffers!" << std::endl;
+          Error();
+      }
+
+      vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                                                   vk::PipelineStageFlagBits::eTransfer;
+      vk::SubmitInfo submit_info(
+        1,                                     // uint32_t                     waitSemaphoreCount
+        &semaphores.imageAvailable,            // const VkSemaphore           *pWaitSemaphores
+        &wait_dst_stage_mask,                  // const VkPipelineStageFlags  *pWaitDstStageMask;
+        1,                                     // uint32_t                     commandBufferCount
+        &commandBuffer,                        // const VkCommandBuffer       *pCommandBuffers
+        1,                                     // uint32_t                     signalSemaphoreCount
+        &semaphores.renderingFinished          // const VkSemaphore           *pSignalSemaphores
+      );
+
+      if( presentQueue.handle.submit( 1, &submit_info, submitCompleteFence ) != vk::Result::eSuccess ) {
+        std::cout << "Submit to queue failed!" << std::endl;
+        Error();
+      }
+
+      vk::PresentInfoKHR present_info(
+        1,                                    // uint32_t                     waitSemaphoreCount
+        &semaphores.renderingFinished,        // const VkSemaphore           *pWaitSemaphores
+        1,                                    // uint32_t                     swapchainCount
+        &swapChainInfo.swapChain,             // const VkSwapchainKHR        *pSwapchains
+        &swapChainInfo.acquiredImageIndex,    // const uint32_t              *pImageIndices
+        nullptr                               // VkResult                    *pResults
+      );
+      
+      vk::Result result = presentQueue.handle.presentKHR( &present_info );
+
+      switch( result ) {
+        case vk::Result::eSuccess:
+          break;
+        case vk::Result::eErrorOutOfDateKHR:
+        case vk::Result::eSuboptimalKHR:
+          return RefreshSwapChain();
+        default:
+          std::cout << "Problem occurred during image presentation!" << std::endl;
+          Error();
+      }
     }
 
     void Clear(float r, float g, float b) {
+      if( drawingContext.drawing ) {
+        EndDrawing();
+      }
+
+      vk::ImageSubresourceRange image_subresource_range(
+        vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
+        0,                                              // uint32_t                               baseMipLevel
+        1,                                              // uint32_t                               levelCount
+        0,                                              // uint32_t                               baseArrayLayer
+        1                                               // uint32_t                               layerCount
+      );
+
+      vk::ImageMemoryBarrier barrier_from_present_to_clear(
+        vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          srcAccessMask, eMemoryRead fails validation
+        vk::AccessFlagBits::eTransferWrite,         // VkAccessFlags                          dstAccessMask
+        vk::ImageLayout::ePresentSrcKHR,            // VkImageLayout                          oldLayout
+        vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          newLayout
+        VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
+        VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
+        swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                                image
+        image_subresource_range                     // VkImageSubresourceRange                subresourceRange
+      );
+
+      commandBuffer.pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
+                                     vk::PipelineStageFlagBits::eTransfer,
+                                     vk::DependencyFlagBits(),
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &barrier_from_present_to_clear );
+
+      const std::array<float, 4> color = { r, g, b, 1.0f };
+      vk::ClearColorValue clear_color(
+        color
+      );
+
+      commandBuffer.clearColorImage( swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                                     vk::ImageLayout::eTransferDstOptimal,
+                                     &clear_color,
+                                     1,
+                                     &image_subresource_range );
+
+      vk::ImageMemoryBarrier barrier_from_clear_to_present(
+        vk::AccessFlagBits::eTransferWrite ,        // VkAccessFlags                          srcAccessMask, eMemoryRead fails validation
+        vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          dstAccessMask
+        vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          oldLayout
+        vk::ImageLayout::ePresentSrcKHR,            // VkImageLayout                          newLayout
+        VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
+        VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
+        swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                                image
+        image_subresource_range                     // VkImageSubresourceRange                subresourceRange
+      );
+
+      commandBuffer.pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
+                                     vk::PipelineStageFlagBits::eBottomOfPipe,
+                                     vk::DependencyFlagBits(),
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &barrier_from_clear_to_present );
 
     }
 
     void DrawLine(float x1, float y1, float x2, float y2) {
+      if( !drawingContext.drawing ) {
+        BeginDrawing();
+      }
 
+      // Bind line graphics pipeline
+      commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, graphicsPipeline );
+
+      // Transition image layout from generic read/present
+      LinePushConstants pushConstants;
+      pushConstants.positions[0] = x1;
+      pushConstants.positions[1] = y1;
+      pushConstants.positions[2] = x2;
+      pushConstants.positions[3] = y2;
+      std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
+
+      commandBuffer.pushConstants( pipelineLayout,
+                                   vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                                   0, // offset
+                                   sizeof(LinePushConstants),
+                                   &pushConstants );
+      // commandBuffer.setLineWidth(drawingContext.lineWidth);
+      commandBuffer.draw( 2, 1, 0, 0 );
     }
 
     void DrawPoint(float x, float y) {
@@ -1200,33 +1476,88 @@ namespace Ls {
     }
 
     void SetColor(float r, float g, float b) {
-
+      drawingContext.color[0] = r;
+      drawingContext.color[1] = g;
+      drawingContext.color[2] = b;
     }
 
     void SetLineWidth(float width) {
       
     }
 
-    void SetPointSize(float width) {
+    void SetPointSize(float size) {
       
     }
 
+    bool Update() {
+      static float t;
+      t += 0.01;
+      bool running = true;
+      PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
+      if (msg.message == WM_QUIT) {
+          running = false;
+      }
+      else {
+          TranslateMessage(&msg);
+          DispatchMessage(&msg);
+      }
+      //RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
+      
+      // POINT cursor;
+      // GetCursorPos(&cursor);
+      // ScreenToClient(windowHandle, &cursor);
+      // float fcursor[2] = { 2.0f*((float)cursor.x)/swapChainInfo.extent.width - 1.0f, 
+      //                      2.0f*((float)cursor.y)/swapChainInfo.extent.height - 1.0f };
+      
+      // std::cout << fcursor[0] << std::endl;
+
+      // BeginFrame();
+      // Clear(0.0f, 0.0f, 0.0f);
+      // SetColor(0.0f, 1.0f, 0.0f);
+      // DrawLine(fcursor[0], fcursor[1]-0.05f, fcursor[0], fcursor[1]+0.05f);
+      // DrawLine(fcursor[0]-0.05f, fcursor[1], fcursor[0]+0.05f, fcursor[1]);
+      // EndFrame();
+      return running;
+    }
+
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        static float t;
+        t += 0.01;
+        float fcursor[2];
         // Don't process any messages if modal dialog is showing
         if (dialogShowing) {
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
         }
 
         switch (uMsg) {
+          case WM_MOUSEMOVE:
+          POINT cursor;
+          GetCursorPos(&cursor);
+          ScreenToClient(windowHandle, &cursor);
+          fcursor[0] = 2.0f*((float)cursor.x)/swapChainInfo.extent.width - 1.0f;
+          fcursor[1] = 2.0f*((float)cursor.y)/swapChainInfo.extent.height - 1.0f;
+
+          BeginFrame();
+          Clear(0.1f, 0.1f, 0.1f);
+          SetColor(0.8f, 0.8f, 0.8f);
+          DrawLine(fcursor[0], fcursor[1]-0.05f, fcursor[0], fcursor[1]+0.05f);
+          DrawLine(fcursor[0]-0.05f, fcursor[1], fcursor[0]+0.05f, fcursor[1]);
+          EndFrame();
+          break;
         case WM_CLOSE:
             PostQuitMessage(0);
             break;
         case WM_PAINT:
-            Draw();
+            //Draw();
+            // BeginFrame();
+            // Clear(0.0f, 0.0f, 0.0f);
+            // DrawLine(0.0f, 0.0f, sin(t), cos(t));
+            // SetColor(1.0f, 0.0f, 0.0f);
+            // EndFrame();
             return 0;
             break;
         case WM_SIZE:
-            OnWindowSizeChanged();
+            RefreshSwapChain();
             return 0;
             break;
         default:
@@ -1253,7 +1584,7 @@ namespace Ls {
             100,
             100,
             800,
-            600,
+            800,
             NULL,
             NULL,
             hInstance,
@@ -1282,6 +1613,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
 
     Ls::CreateSemaphores();
+    Ls::CreateFence();
     Ls::GetQueues();
     Ls::CreateSwapChain();
 
@@ -1290,10 +1622,12 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::CreatePipeline();
 
     Ls::CreateCommandBuffers();
+    //Ls::RecordCommandBuffers();
 
-    Ls::OnWindowSizeChanged();
-    
+    //Ls::RefreshSwapChain();
+
     ShowWindow(Ls::windowHandle, SW_SHOW);
+    //ShowCursor(false);
 
     while (Ls::Update()) {};
     
