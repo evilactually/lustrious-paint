@@ -59,19 +59,14 @@ namespace Ls {
 
     vk::Fence submitCompleteFence;
 
-    //vk::CommandPool presentQueueCmdPool;                   // depricated, don't need command buffer to present
-    //std::vector<vk::CommandBuffer> presentQueueCmdBuffers; // depricated
     vk::CommandPool graphicsCommandPool; 
-    std::vector<vk::CommandBuffer> graphicsCommandBuffers;
-    vk::CommandBuffer commandBuffer;            // No pre-recording, so reusing same command buffer
+    vk::CommandBuffer commandBuffer;
     uint32_t commandBufferIndex;
     
     vk::RenderPass renderPass;
     std::vector<vk::Framebuffer> framebuffers;
-    vk::Pipeline graphicsPipeline;
     vk::Pipeline linePipeline;
     vk::Pipeline pointPipeline;
-    vk::PipelineLayout pipelineLayout;
     vk::PipelineLayout linePipelineLayout;
     vk::PipelineLayout pointPipelineLayout;
 
@@ -93,16 +88,13 @@ namespace Ls {
     struct LinePushConstants {
       float positions[4];
       float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-      //float size = 1.0f;
-      //float size2 = 1.0f;
     };
 
     struct PointPushConstants {
-      float positions[2];
+      float positions[2]; 
+      float pad[2];
       float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
       float size = 1.0f;
-      //float size2 = 1.0f;
-      //float data[2+4+1];
     };
 
     struct {
@@ -309,6 +301,14 @@ namespace Ls {
         return true;
     }
 
+    void CheckPushConstantsLimits() {
+      vk::PhysicalDeviceProperties deviceProps;
+      physicalDevice.getProperties( &deviceProps );
+      std::cout << "Push constants limit " << deviceProps.limits.maxPushConstantsSize << std::endl;
+      assert(sizeof(PointPushConstants) <= deviceProps.limits.maxPushConstantsSize);
+      assert(sizeof(LinePushConstants) <= deviceProps.limits.maxPushConstantsSize);
+    }
+
     void CreateDevice() {
         uint32_t num_devices = 0;
         if( (instance.enumeratePhysicalDevices(&num_devices, NULL) != vk::Result::eSuccess) || (num_devices == 0) ) {
@@ -370,6 +370,8 @@ namespace Ls {
         Ls::graphicsQueue.familyIndex = selected_graphics_queue_family_index;
         Ls::presentQueue.familyIndex = selected_present_queue_family_index;
         Ls::physicalDevice = *selected_physical_device;
+
+        CheckPushConstantsLimits();
     }
 
     void GetQueues() {
@@ -649,23 +651,22 @@ namespace Ls {
         swapChainInfo.format = desired_format.format; // for creating attachment, image views, etc
         swapChainInfo.extent = desired_extent;        // for framebuffers
 
-        // get swap chain images
-        uint32_t image_count = 0;
-        if( (device.getSwapchainImagesKHR( swapChainInfo.swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
-            (image_count == 0) ) {
-            std::cout << "Could not get the number of swap chain images!" << std::endl;
-            Error();
-        }
-
-        swapChainInfo.images.resize( static_cast<size_t>(image_count) );
-        if( device.getSwapchainImagesKHR( swapChainInfo.swapChain, &image_count, &swapChainInfo.images[0] ) != vk::Result::eSuccess ) {
-            std::cout << "Could not get swap chain images!" << std::endl;
-            Error();
-        }
-
-        CreateSwapChainImageViews();
-
         canRender = true;
+    }
+
+    void GetSwapChainImages() {
+      uint32_t image_count = 0;
+      if( (device.getSwapchainImagesKHR( swapChainInfo.swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
+          (image_count == 0) ) {
+          std::cout << "Could not get the number of swap chain images!" << std::endl;
+          Error();
+      }
+
+      swapChainInfo.images.resize( static_cast<size_t>(image_count) );
+      if( device.getSwapchainImagesKHR( swapChainInfo.swapChain, &image_count, &swapChainInfo.images[0] ) != vk::Result::eSuccess ) {
+          std::cout << "Could not get swap chain images!" << std::endl;
+          Error();
+      }
     }
 
     void CreateCommandBuffers() {
@@ -679,45 +680,24 @@ namespace Ls {
             Error();
         }
 
-        // uint32_t image_count = 0;
-        // if( (device.getSwapchainImagesKHR( swapChainInfo.swapChain, &image_count, nullptr ) != vk::Result::eSuccess) ||
-        //     (image_count == 0) ) {
-        //     std::cout << "Could not get the number of swap chain images!" << std::endl;
-        //     Error();
-        // }
-
-        graphicsCommandBuffers.resize( swapChainInfo.images.size() );
-
-        vk::CommandBufferAllocateInfo cmd_buffer_allocate_info(
-            graphicsCommandPool,                               // VkCommandPool                commandPool
-            vk::CommandBufferLevel::ePrimary,                  // VkCommandBufferLevel         level
-            static_cast<size_t>(swapChainInfo.images.size())   // uint32_t                     bufferCount
-        );
-
-        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info, &graphicsCommandBuffers[0] ) != vk::Result::eSuccess ) {
-            std::cout << "Could not allocate command buffers!" << std::endl;
-            Error();
-        }
-
         vk::CommandBufferAllocateInfo cmd_buffer_allocate_info_2(
           graphicsCommandPool,                               // VkCommandPool                commandPool
           vk::CommandBufferLevel::ePrimary,                  // VkCommandBufferLevel         level
           1);                                                // uint32_t                     bufferCount
 
         if( device.allocateCommandBuffers( &cmd_buffer_allocate_info_2, &commandBuffer ) != vk::Result::eSuccess ) {
-            std::cout << "Could not allocate command buffers!" << std::endl;
+            std::cout << "Could not allocate command buffer!" << std::endl;
             Error();
         }
     }
     
     void FreeCommandBuffers() {
         if( Ls::device ) {
-            Ls::device.waitIdle();
-            if( (graphicsCommandBuffers.size() > 0) && graphicsCommandBuffers[0] ) {
-                device.freeCommandBuffers( graphicsCommandPool, static_cast<uint32_t>(graphicsCommandBuffers.size()), &graphicsCommandBuffers[0] );
-                graphicsCommandBuffers.clear();
-                std::cout << "Command buffers freed" << std::endl;
+            if ( commandBuffer ) {
+              Ls::device.waitIdle();
+              device.freeCommandBuffers( graphicsCommandPool, 1, &commandBuffer);
             }
+
             if( graphicsCommandPool ) {
                 device.destroyCommandPool( graphicsCommandPool, nullptr );
                 graphicsCommandPool = vk::CommandPool();
@@ -839,7 +819,7 @@ namespace Ls {
         vk::PipelineLayoutCreateFlags(),                // VkPipelineLayoutCreateFlags    flags
         0,                                              // uint32_t                       setLayoutCount
         nullptr,                                        // const VkDescriptorSetLayout    *pSetLayouts
-        1/*0*/,                                         // uint32_t                       pushConstantRangeCount
+        1,                                              // uint32_t                       pushConstantRangeCount
         &linePushConstantRange                          // const VkPushConstantRange      *pPushConstantRanges
       };
 
@@ -847,14 +827,9 @@ namespace Ls {
         vk::PipelineLayoutCreateFlags(),                // VkPipelineLayoutCreateFlags    flags
         0,                                              // uint32_t                       setLayoutCount
         nullptr,                                        // const VkDescriptorSetLayout    *pSetLayouts
-        1/*0*/,                                         // uint32_t                       pushConstantRangeCount
+        1,                                              // uint32_t                       pushConstantRangeCount
         &pointPushConstantRange                         // const VkPushConstantRange      *pPushConstantRanges
       };
-
-      if( device.createPipelineLayout( &lineLayoutCreateInfo, nullptr, &pipelineLayout ) != vk::Result::eSuccess ) {
-        std::cout << "Could not create pipeline layout!" << std::endl;
-        Error();
-      }
 
       if( device.createPipelineLayout( &lineLayoutCreateInfo, nullptr, &linePipelineLayout ) != vk::Result::eSuccess ) {
         std::cout << "Could not create pipeline layout!" << std::endl;
@@ -1058,10 +1033,10 @@ namespace Ls {
           -1                                                            // int32_t                                        basePipelineIndex
         );
 
-        if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &line_pipeline_create_info, nullptr, &graphicsPipeline ) != vk::Result::eSuccess ) {
-          std::cout << "Could not create graphics pipeline!" << std::endl;
-          Error();
-        }
+        // if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &line_pipeline_create_info, nullptr, &graphicsPipeline ) != vk::Result::eSuccess ) {
+        //   std::cout << "Could not create graphics pipeline!" << std::endl;
+        //   Error();
+        // }
 
         if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &line_pipeline_create_info, nullptr, &linePipeline ) != vk::Result::eSuccess ) {
           std::cout << "Could not create graphics pipeline!" << std::endl;
@@ -1086,6 +1061,12 @@ namespace Ls {
       }
     }
 
+    void DestroyFence() {
+      if ( submitCompleteFence ) {
+        device.destroyFence( submitCompleteFence, nullptr );
+      }
+    }
+
     void DestroyRenderpass() {
       if ( renderPass )
       {
@@ -1099,25 +1080,89 @@ namespace Ls {
       }
     }
 
+    void DestroyShaderModules() {
+      for(auto &shader: shaders) {
+        device.destroyShaderModule(shader.second, nullptr);
+      }
+    }
+
     void DestroyPipeline() {
-      if ( graphicsPipeline )
+      if ( linePipeline )
       {
-        device.destroyPipeline(graphicsPipeline, nullptr);
+        device.destroyPipeline(linePipeline, nullptr);
+      }
+
+      if ( pointPipeline )
+      {
+        device.destroyPipeline(pointPipeline, nullptr);
+      }
+
+      DestroyShaderModules();
+    }
+
+    void DestroyImageViews() {
+      swapChainInfo.imageViews.resize(swapChainInfo.images.size());
+      for( auto &imageView: swapChainInfo.imageViews) {
+        device.destroyImageView(imageView, nullptr);
+      }
+    }
+
+    void DestroyPipelineLayout() {
+      if ( linePipelineLayout ) {
+        device.destroyPipelineLayout(linePipelineLayout, nullptr);
+      }
+
+      if ( pointPipelineLayout ) {
+        device.destroyPipelineLayout(pointPipelineLayout, nullptr);
+      }
+    }
+
+    void DestroyPresentationSurface() {
+      if ( swapChainInfo.presentationSurface ) {
+        instance.destroySurfaceKHR(swapChainInfo.presentationSurface, nullptr);
+      }
+    }
+
+    void DestroySwapchain() {
+      if ( swapChainInfo.swapChain )
+      {
+        device.destroySwapchainKHR(swapChainInfo.swapChain, nullptr);
+      }
+    }
+
+    void DestroySemaphores() {
+      if ( semaphores.renderingFinished ) {
+        device.destroySemaphore(semaphores.renderingFinished, nullptr);
+      }
+
+      if ( semaphores.imageAvailable ) {
+        device.destroySemaphore(semaphores.imageAvailable, nullptr);
+      }
+    }
+
+    void DestroyDebugReportCallback() {
+      if ( debugReportCallback ) {
+        instance.destroyDebugReportCallbackEXT(debugReportCallback, nullptr);
       }
     }
 
     void RefreshSwapChain() {
       if ( device ) {
-        DestroyRenderpass();
-        DestroyFramebuffers();
-        DestroyPipeline();
         FreeCommandBuffers();
+        DestroyPipeline();
+        DestroyFramebuffers();
+        DestroyRenderpass();
+        DestroyImageViews();
 
         CreateSwapChain(); // deletes old swap chain, because we need to specify what swap chain it replaces
+        GetSwapChainImages();
+        CreateSwapChainImageViews();
         CreateRenderPass();
         CreateFramebuffers();
         CreatePipeline();
         CreateCommandBuffers();
+
+        std::cout << "Swap chain extent " << swapChainInfo.extent.width << "x" << swapChainInfo.extent.height << std::endl;
       }
     }
 
@@ -1438,17 +1483,8 @@ namespace Ls {
       PointPushConstants pushConstants;
       pushConstants.positions[0] = x;
       pushConstants.positions[1] = y;
-      //pushConstants.data[0] = x;
-      //pushConstants.data[1] = y;
-      //pushConstants.size = 1.0f;//drawingContext.pointSize;
+      pushConstants.size = drawingContext.pointSize;
       std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
-      // pushConstants.data[2] = drawingContext.color[0];
-      // pushConstants.data[3] = drawingContext.color[1];
-      // pushConstants.data[4] = drawingContext.color[2];
-      // pushConstants.data[5] = drawingContext.color[3];
-
-      //pushConstants.data[6] = drawingContext.pointSize;
-      //std::cout << sizeof(PointPushConstants) << std::endl;
 
       commandBuffer.pushConstants( pointPipelineLayout,
                                    vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
@@ -1473,8 +1509,6 @@ namespace Ls {
     }
 
     bool Update() {
-      static float t;
-      t += 0.01;
       bool running = true;
       PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
       if (msg.message == WM_QUIT) {
@@ -1485,22 +1519,51 @@ namespace Ls {
         DispatchMessage(&msg);
       }
       //RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
-      
-      // POINT cursor;
-      // GetCursorPos(&cursor);
-      // ScreenToClient(windowHandle, &cursor);
-      // float fcursor[2] = { 2.0f*((float)cursor.x)/swapChainInfo.extent.width - 1.0f, 
-      //                      2.0f*((float)cursor.y)/swapChainInfo.extent.height - 1.0f };
-      
-      // std::cout << fcursor[0] << std::endl;
-
-      // BeginFrame();
-      // Clear(0.0f, 0.0f, 0.0f);
-      // SetColor(0.0f, 1.0f, 0.0f);
-      // DrawLine(fcursor[0], fcursor[1]-0.05f, fcursor[0], fcursor[1]+0.05f);
-      // DrawLine(fcursor[0]-0.05f, fcursor[1], fcursor[0]+0.05f, fcursor[1]);
-      // EndFrame();
       return running;
+    }
+
+    void RenderPointGrid() {
+      const float cell_size = 32.0f;
+      const int horizontal_cell_count = ceil(((float)swapChainInfo.extent.width)/cell_size);
+      const int vertical_cell_count = ceil(((float)swapChainInfo.extent.height)/cell_size);
+      const float x_per_pixel = (2.0f/(float)swapChainInfo.extent.width);
+      const float y_per_pixel = (2.0f/(float)swapChainInfo.extent.height);
+      SetPointSize(2.0f);
+      SetColor(0.2f, 0.2f, 0.2f);
+      for( int y = 0; y < vertical_cell_count; ++y ) {
+        float y_offset = y*cell_size;
+        for( int x = 0; x < horizontal_cell_count; ++x ) {
+          float x_offset = x*cell_size;
+          DrawPoint(x_per_pixel*x_offset - 1.0f, y_per_pixel*y_offset - 1.0f);
+        }
+      }
+    }
+
+    void RenderCursor() {
+      const float half_width = 16.0f;
+      const float half_height = 16.0f;
+      const float x_per_pixel = (2.0f/(float)swapChainInfo.extent.width);
+      const float y_per_pixel = (2.0f/(float)swapChainInfo.extent.height);
+      POINT cursor;
+      float fcursor[2];
+      GetCursorPos(&cursor);
+      ScreenToClient(windowHandle, &cursor);
+      fcursor[0] = x_per_pixel*cursor.x - 1.0f;
+      fcursor[1] = y_per_pixel*cursor.y - 1.0f;
+      float fhalf_width = x_per_pixel*half_width;
+      float fhalf_height = y_per_pixel*half_height;
+      SetColor(1.0f, 0.0f, 0.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
+      SetColor(0.0f, 1.0f, 0.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
+    }
+
+    void Render() {
+      BeginFrame();
+      Clear(0.1f, 0.1f, 0.1f);
+      RenderPointGrid();
+      RenderCursor();
+      EndFrame();
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -1520,22 +1583,7 @@ namespace Ls {
 
       switch (uMsg) {
         case WM_MOUSEMOVE:
-        POINT cursor;
-        GetCursorPos(&cursor);
-        ScreenToClient(windowHandle, &cursor);
-        fcursor[0] = 2.0f*((float)cursor.x)/swapChainInfo.extent.width - 1.0f;
-        fcursor[1] = 2.0f*((float)cursor.y)/swapChainInfo.extent.height - 1.0f;
-        BeginFrame();
-        Clear(0.1f, 0.1f, 0.1f);
-        SetColor(0.8f, 0.8f, 0.8f);
-        SetLineWidth(1.5f);
-        //DrawLine(fcursor[0], fcursor[1]-0.05f, fcursor[0], fcursor[1]+0.05f);
-        //Clear(0.1f, 0.1f, 0.1f);
-        //DrawLine(fcursor[0]-0.05f, fcursor[1], fcursor[0]+0.05f, fcursor[1]);
-        DrawPoint(fcursor[0], fcursor[1]);
-        //Clear(0.1f, 0.1f, 0.1f);
-        //Clear(fcursor[0], 0.0f, 0.0f);
-        EndFrame();
+        Render();
         break;
       case WM_CLOSE:
         PostQuitMessage(0);
@@ -1545,6 +1593,7 @@ namespace Ls {
         break;
       case WM_SIZE:
         RefreshSwapChain();
+        Render();
         return FALSE;
         break;
       default:
@@ -1566,17 +1615,17 @@ namespace Ls {
         RegisterClassEx(&windowClass);
 
         windowHandle = CreateWindowEx(NULL,
-            "LsMainWindow",
-            "Lustrious Paint",
-            WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
-            100,
-            100,
-            800,
-            800,
-            NULL,
-            NULL,
-            hInstance,
-            NULL);
+                                      "LsMainWindow",
+                                      "Lustrious Paint",
+                                      WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
+                                      100,
+                                      100,
+                                      1024+16,
+                                      640+38,
+                                      NULL,
+                                      NULL,
+                                      hInstance,
+                                      NULL);
     }
 }
 
@@ -1604,6 +1653,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::CreateFence();
     Ls::GetQueues();
     Ls::CreateSwapChain();
+    Ls::GetSwapChainImages();
+    Ls::CreateSwapChainImageViews();
 
     Ls::CreateRenderPass();
     Ls::CreateFramebuffers();
@@ -1613,12 +1664,26 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Ls::CreateCommandBuffers();
 
     ShowWindow(Ls::windowHandle, SW_SHOW);
-    //ShowCursor(false);
 
     while (Ls::Update()) {};
     
+    Ls::FreeCommandBuffers();
+    Ls::DestroyPipeline();
+    Ls::DestroyPipelineLayout();
+    Ls::DestroyFramebuffers();
+    Ls::DestroyRenderpass();
+
+    Ls::DestroyImageViews();
+    Ls::DestroySwapchain();
+    Ls::DestroyPresentationSurface();
+
+    Ls::DestroyFence();
+    Ls::DestroySemaphores();
+
     Ls::FreeDevice();
+    Ls::DestroyDebugReportCallback();
     Ls::FreeInstance();
+
     vk::UnloadVulkanLibrary();
     return Ls::msg.wParam;
 }

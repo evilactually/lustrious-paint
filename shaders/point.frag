@@ -5,7 +5,7 @@ layout(location = 0) out vec4 out_Color;
 layout(push_constant) uniform PushConsts {
   vec2 position;
   vec4 color;
-  //float size;
+  float size;
 } pointPushConsts;
 
 void main() {

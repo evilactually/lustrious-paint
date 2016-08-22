@@ -8,8 +8,6 @@ out gl_PerVertex
 layout(push_constant) uniform PushConsts {
   vec2 positions[2];
   vec4 colors;
-  //float size;
-  //float size2;
 } linePushConsts;
 
 void main() {
