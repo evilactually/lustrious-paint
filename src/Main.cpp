@@ -1015,10 +1015,10 @@ namespace Ls {
 
         vk::GraphicsPipelineCreateInfo point_pipeline_create_info(
           vk::PipelineCreateFlags(),                                    // VkPipelineCreateFlags                          flags
-          static_cast<uint32_t>(point_shader_stage_create_infos.size()), // uint32_t                                       stageCount
-          &point_shader_stage_create_infos[0],                           // const VkPipelineShaderStageCreateInfo         *pStages
+          static_cast<uint32_t>(point_shader_stage_create_infos.size()),// uint32_t                                       stageCount
+          &point_shader_stage_create_infos[0],                          // const VkPipelineShaderStageCreateInfo         *pStages
           &vertex_input_state_create_info,                              // const VkPipelineVertexInputStateCreateInfo    *pVertexInputState;
-          &point_input_assembly_state_create_info,                       // const VkPipelineInputAssemblyStateCreateInfo  *pInputAssemblyState
+          &point_input_assembly_state_create_info,                      // const VkPipelineInputAssemblyStateCreateInfo  *pInputAssemblyState
           nullptr,                                                      // const VkPipelineTessellationStateCreateInfo   *pTessellationState
           &viewport_state_create_info,                                  // const VkPipelineViewportStateCreateInfo       *pViewportState
           &rasterization_state_create_info,                             // const VkPipelineRasterizationStateCreateInfo  *pRasterizationState
@@ -1026,17 +1026,12 @@ namespace Ls {
           nullptr,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
           &color_blend_state_create_info,                               // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
           nullptr,                                                      // const VkPipelineDynamicStateCreateInfo        *pDynamicState
-          pointPipelineLayout,                                               // VkPipelineLayout                               layout
+          pointPipelineLayout,                                          // VkPipelineLayout                               layout
           renderPass,                                                   // VkRenderPass                                   renderPass
           0,                                                            // uint32_t                                       subpass
           vk::Pipeline(),                                               // VkPipeline                                     basePipelineHandle
           -1                                                            // int32_t                                        basePipelineIndex
         );
-
-        // if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &line_pipeline_create_info, nullptr, &graphicsPipeline ) != vk::Result::eSuccess ) {
-        //   std::cout << "Could not create graphics pipeline!" << std::endl;
-        //   Error();
-        // }
 
         if( device.createGraphicsPipelines( vk::PipelineCache(), 1, &line_pipeline_create_info, nullptr, &linePipeline ) != vk::Result::eSuccess ) {
           std::cout << "Could not create graphics pipeline!" << std::endl;
@@ -1630,60 +1625,62 @@ namespace Ls {
 }
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    Ls::hInstance = hInstance;
+	try {
+		Ls::hInstance = hInstance;
+		Ls::AttachConsole();
+		Ls::CreateMainWindow();
 
-    Ls::AttachConsole();
-    Ls::CreateMainWindow();
+		vk::LoadVulkanLibrary();
+		vk::LoadExportedEntryPoints();
+		vk::LoadGlobalLevelEntryPoints();
+		Ls::CheckValidationAvailability();
 
-    vk::LoadVulkanLibrary();
-    vk::LoadExportedEntryPoints();
-    vk::LoadGlobalLevelEntryPoints();
-    Ls::CheckValidationAvailability();
+		Ls::CreateInstance();
+		vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::INSTANCE_EXTENSIONS);
 
-    Ls::CreateInstance();
-    vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::INSTANCE_EXTENSIONS);
+		Ls::CreateDebugReportCallback(); // needs an instance level function
+		Ls::CreatePresentationSurface(); // need this for device creation
 
-    Ls::CreateDebugReportCallback(); // needs an instance level function
-    Ls::CreatePresentationSurface(); // need this for device creation
+		Ls::CreateDevice();
+		vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
 
-    Ls::CreateDevice();
-    vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
+		Ls::CreateSemaphores();
+		Ls::CreateFence();
+		Ls::GetQueues();
+		Ls::CreateSwapChain();
+		Ls::GetSwapChainImages();
+		Ls::CreateSwapChainImageViews();
 
-    Ls::CreateSemaphores();
-    Ls::CreateFence();
-    Ls::GetQueues();
-    Ls::CreateSwapChain();
-    Ls::GetSwapChainImages();
-    Ls::CreateSwapChainImageViews();
+		Ls::CreateRenderPass();
+		Ls::CreateFramebuffers();
+		Ls::CreatePipelineLayout();
+		Ls::CreatePipeline();
 
-    Ls::CreateRenderPass();
-    Ls::CreateFramebuffers();
-    Ls::CreatePipelineLayout();
-    Ls::CreatePipeline();
+		Ls::CreateCommandBuffers();
 
-    Ls::CreateCommandBuffers();
+		ShowWindow(Ls::windowHandle, SW_SHOW);
 
-    ShowWindow(Ls::windowHandle, SW_SHOW);
+		while (Ls::Update()) {};
+	}
+	catch (...) {}; // run clean-up on errors
 
-    while (Ls::Update()) {};
-    
-    Ls::FreeCommandBuffers();
-    Ls::DestroyPipeline();
-    Ls::DestroyPipelineLayout();
-    Ls::DestroyFramebuffers();
-    Ls::DestroyRenderpass();
+  Ls::FreeCommandBuffers();
+  Ls::DestroyPipeline();
+  Ls::DestroyPipelineLayout();
+  Ls::DestroyFramebuffers();
+  Ls::DestroyRenderpass();
 
-    Ls::DestroyImageViews();
-    Ls::DestroySwapchain();
-    Ls::DestroyPresentationSurface();
+  Ls::DestroyImageViews();
+  Ls::DestroySwapchain();
+  Ls::DestroyPresentationSurface();
 
-    Ls::DestroyFence();
-    Ls::DestroySemaphores();
+  Ls::DestroyFence();
+  Ls::DestroySemaphores();
 
-    Ls::FreeDevice();
-    Ls::DestroyDebugReportCallback();
-    Ls::FreeInstance();
+  Ls::FreeDevice();
+  Ls::DestroyDebugReportCallback();
+  Ls::FreeInstance();
 
-    vk::UnloadVulkanLibrary();
-    return Ls::msg.wParam;
+  vk::UnloadVulkanLibrary();
+  return Ls::msg.wParam;
 }
