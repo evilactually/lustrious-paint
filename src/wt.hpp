@@ -1,14 +1,20 @@
 #pragma once
 
-#include "wt_pfns.hpp"
+#define NOWTBASICFXNS
+#define NOWTCTXEDITFXNS
+#define NOWTVISIBILITYFXNS
+#define NOWTQUEUEFXNS
+#include "wintab/WINTAB.H"
 
-#define WT_EXPORTED_FUNCTION( fun ) extern PFN_##fun fun;
+#include "wt_pfns.inl"
+
+#define WT_EXPORTED_FUNCTION( fun ) PFN_##fun fun;
 
 #include "wt_functions.inl"
 
 namespace wt
 {
-  extern HMODULE wintabLibrary;
+  HMODULE wintabLibrary;
   
   void LoadWintabLibrary() {
     wintabLibrary = LoadLibrary("Wintab32.dll");

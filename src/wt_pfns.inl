@@ -1,11 +1,3 @@
-#pragma once
-
-#define NOWTBASICFXNS
-#define NOWTCTXEDITFXNS
-#define NOWTVISIBILITYFXNS
-#define NOWTQUEUEFXNS
-#include "wintab/WINTAB.H"
-
 typedef UINT ( API * PFN_WTInfoA ) ( UINT, UINT, LPVOID );
 typedef HCTX ( API * PFN_WTOpenA )( HWND, LPLOGCONTEXTA, BOOL );
 typedef BOOL ( API * PFN_WTGetA ) ( HCTX, LPLOGCONTEXT );
