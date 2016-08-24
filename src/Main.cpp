@@ -7,6 +7,11 @@
 #include <map>
 #include "assert.h"
 #include "wt.hpp"
+
+#define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
+#define PACKETMODE 0
+#include "wintab/PKTDEF.h"
+
 //#include "mesh.h"
 
 //#include "Application.hpp"
@@ -20,6 +25,18 @@
 //        *base = 1;
 //    }
 //}
+
+/* converts FIX32 to double */
+#define FIX_DOUBLE(x)   ((double)(INT(x))+((double)FRAC(x)/65536))
+
+std::ostream& operator<<(std::ostream& os, const AXIS& ax)
+{
+  os << "AXIS { axMin:" << ax.axMin <<
+             ", axMax:" << ax.axMax << 
+             ", axUnits: " << ax.axUnits << 
+             ", axResolution: " << FIX_DOUBLE(ax.axResolution) << " }";
+  return os;
+}
 
 namespace ls {
     bool dialogShowing = false;
@@ -105,6 +122,8 @@ namespace ls {
       bool drawing = false; // indicates that command buffer is ready to draw
 
     } drawingContext;
+
+    HCTX tabletContext;   
 
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
@@ -1563,6 +1582,7 @@ namespace ls {
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+      PACKET pkt;
       // Don't process any messages if modal dialog is showing
       if (dialogShowing) {
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -1574,7 +1594,7 @@ namespace ls {
         SetCursor(NULL);
         return TRUE;
       }
-
+      static int n;
       switch (uMsg) {
         case WM_MOUSEMOVE:
         Render();
@@ -1584,6 +1604,12 @@ namespace ls {
         break;
       case WM_PAINT:
         return FALSE;
+        break;
+      case WT_PACKET:
+        if (WTPacket((HCTX)lParam, wParam, &pkt)) 
+        {
+          std::cout << pkt.pkX << " " << pkt.pkY << std::endl;
+        }
         break;
       case WM_SIZE:
         RefreshSwapChain();
@@ -1598,39 +1624,248 @@ namespace ls {
       return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
-    void CreateMainWindow() {
-        WNDCLASSEX windowClass = {};
-        windowClass.cbSize = sizeof(WNDCLASSEX);
-        windowClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
-        windowClass.lpfnWndProc = WindowProc;
-        windowClass.hInstance = hInstance;
-        windowClass.lpszClassName = "LsMainWindow";
-        windowClass.hCursor = NULL;
-        RegisterClassEx(&windowClass);
+  void CreateMainWindow() {
+      WNDCLASSEX windowClass = {};
+      windowClass.cbSize = sizeof(WNDCLASSEX);
+      windowClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+      windowClass.lpfnWndProc = WindowProc;
+      windowClass.hInstance = hInstance;
+      windowClass.lpszClassName = "LsMainWindow";
+      windowClass.hCursor = NULL;
+      RegisterClassEx(&windowClass);
 
-        windowHandle = CreateWindowEx(NULL,
-                                      "LsMainWindow",
-                                      "Lustrious Paint",
-                                      WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
-                                      100,
-                                      100,
-                                      1024+16,
-                                      640+38,
-                                      NULL,
-                                      NULL,
-                                      hInstance,
-                                      NULL);
+      windowHandle = CreateWindowEx(NULL,
+                                    "LsMainWindow",
+                                    "Lustrious Paint",
+                                    WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
+                                    100,
+                                    100,
+                                    1024+16,
+                                    640+38,
+                                    NULL,
+                                    NULL,
+                                    hInstance,
+                                    NULL);
+  }
+
+  void WintabReport() {
+    TCHAR wintabid[32];
+    WORD specVersion;
+    WORD implVersion;
+    UINT nDevices;
+    UINT nCursors;
+    UINT nContexts;
+    UINT ctxOptions;
+    UINT ctxSaveSize;
+    UINT nExtensions;
+    UINT nManagers;
+
+    WTInfoA(WTI_INTERFACE , IFC_WINTABID, &wintabid);
+    WTInfoA(WTI_INTERFACE , IFC_SPECVERSION, &specVersion);
+    WTInfoA(WTI_INTERFACE , IFC_IMPLVERSION, &implVersion);
+    WTInfoA(WTI_INTERFACE , IFC_NDEVICES, &nDevices);
+    WTInfoA(WTI_INTERFACE , IFC_NCURSORS, &nCursors);
+    WTInfoA(WTI_INTERFACE , IFC_NCONTEXTS, &nContexts);
+    WTInfoA(WTI_INTERFACE , IFC_CTXOPTIONS, &ctxOptions);
+    WTInfoA(WTI_INTERFACE , IFC_CTXSAVESIZE, &ctxSaveSize);
+    WTInfoA(WTI_INTERFACE , IFC_NEXTENSIONS, &nExtensions);
+    WTInfoA(WTI_INTERFACE , IFC_NMANAGERS, &nManagers);
+    
+    std::cout << " ------------------------------------ " << std::endl;
+    std::cout << "             Wintab Report            " << std::endl;
+    std::cout << " ------------------------------------ " << std::endl << std::endl;
+    std::cout << "WTI_INTERFACE:" << std::endl;
+    std::cout << "  IFC_WINTABID:" << wintabid << std::endl;
+    std::cout << "  IFC_SPECVERSION:" << specVersion << std::endl;
+    std::cout << "  IFC_IMPLVERSION:" << implVersion << std::endl;
+    std::cout << "  IFC_NDEVICES:" << nDevices << std::endl;
+    std::cout << "  IFC_NCURSORS:" << nCursors << std::endl;
+    std::cout << "  IFC_NCONTEXTS:" << nContexts << std::endl;
+    std::cout << "  IFC_CTXOPTIONS:" << ctxOptions << std::endl;
+    std::cout << "  IFC_CTXSAVESIZE:" << ctxSaveSize << std::endl;
+    std::cout << "  IFC_NEXTENSIONS:" << nExtensions << std::endl;
+    std::cout << "  IFC_NMANAGERS:" << nManagers << std::endl;
+
+    TCHAR wtDvcName[64];
+    AXIS pressureNormal;
+    AXIS pressureTangent;
+    AXIS orientation[3];
+    AXIS dvcX;
+    AXIS dvcY;
+    
+    for(int i = 0; i < nDevices; ++i) {
+      WTInfoA(WTI_DEVICES|i, DVC_NAME, &wtDvcName);
+      WTInfoA(WTI_DEVICES|i, DVC_NPRESSURE, &pressureNormal);
+      WTInfoA(WTI_DEVICES|i, DVC_TPRESSURE, &pressureTangent);
+      WTInfoA(WTI_DEVICES|i, DVC_ORIENTATION, &orientation);
+      WTInfoA(WTI_DEVICES|i, DVC_X, &dvcX);
+      WTInfoA(WTI_DEVICES|i, DVC_Y, &dvcY);
+
+      std::cout << "WTI_DEVICES[" << i << "]" << std::endl;
+      std::cout << "  DVC_NPRESSURE:" << pressureNormal << std::endl;
+      std::cout << "  DVC_TPRESSURE:" << pressureTangent << std::endl;
+      std::cout << "  DVC_ORIENTATION[0]:" << orientation[0] << std::endl;
+      std::cout << "  DVC_ORIENTATION[1]:" << orientation[1] << std::endl;
+      std::cout << "  DVC_ORIENTATION[2]:" << orientation[2] << std::endl;
+      std::cout << "  DVC_X:" << dvcX << std::endl;
+      std::cout << "  DVC_Y:" << dvcY << std::endl;
     }
+
+    TCHAR extName[32];
+    for(int i = 0; i < nExtensions; ++i) {
+      WTInfoA(WTI_EXTENSIONS|i, EXT_NAME, &extName);
+
+      std::cout << "WTI_EXTENSIONS[" << i << "]" << std::endl;
+      std::cout << "  EXT_NAME:" << extName << std::endl;
+    }
+
+    TCHAR defCtxName[32];
+    UINT defCtxOptions;
+    UINT defCtxStatus;
+    UINT defCtxLocks;
+    UINT defCtxMsgBase;
+    UINT defCtxDevice;
+    UINT defCtxPktRate;
+    WTPKT defCtxPktData;
+    WTPKT defCtxPktMode;
+    WTPKT defCtxMoveMask;
+    DWORD defCtxBtnDnMask;
+    DWORD defCtxBtnUpMask;
+    LONG defCtxInOrgX;
+    LONG defCtxInOrgY;
+    LONG defCtxInOrgZ;
+    LONG defCtxInExtX;
+    LONG defCtxInExtY;
+    LONG defCtxInExtZ;
+    LONG defCtxOutOrgX;
+    LONG defCtxOutOrgY;
+    LONG defCtxOutOrgZ;
+    LONG defCtxOutExtX;
+    LONG defCtxOutExtY;
+    LONG defCtxOutExtZ;
+    FIX32 defCtxSensX;
+    FIX32 defCtxSensY;
+    FIX32 defCtxSensZ;
+    BOOL defCtxSysMode;
+    int defCtxSysOrgX;
+    int defCtxSysOrgY;
+    int defCtxSysExtX;
+    int defCtxSysExtY;
+    FIX32 defCtxSysSensX;
+    FIX32 defCtxSysSensY;
+
+    WTInfoA(WTI_DEFSYSCTX, CTX_NAME, &defCtxName);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OPTIONS, &defCtxOptions);
+    WTInfoA(WTI_DEFSYSCTX, CTX_STATUS, &defCtxStatus);
+    WTInfoA(WTI_DEFSYSCTX, CTX_LOCKS, &defCtxLocks);
+    WTInfoA(WTI_DEFSYSCTX, CTX_MSGBASE, &defCtxMsgBase);
+    WTInfoA(WTI_DEFSYSCTX, CTX_DEVICE, &defCtxDevice);
+    WTInfoA(WTI_DEFSYSCTX, CTX_PKTRATE, &defCtxPktRate);
+    WTInfoA(WTI_DEFSYSCTX, CTX_PKTDATA, &defCtxPktData);
+    WTInfoA(WTI_DEFSYSCTX, CTX_PKTMODE, &defCtxPktMode);
+    WTInfoA(WTI_DEFSYSCTX, CTX_MOVEMASK, &defCtxMoveMask);
+    WTInfoA(WTI_DEFSYSCTX, CTX_BTNDNMASK, &defCtxBtnDnMask);
+    WTInfoA(WTI_DEFSYSCTX, CTX_BTNUPMASK, &defCtxBtnUpMask);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INORGX, &defCtxInOrgX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INORGY, &defCtxInOrgY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INORGZ, &defCtxInOrgZ);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INEXTX, &defCtxInExtX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INEXTY, &defCtxInExtY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_INEXTZ, &defCtxInExtZ);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTORGX, &defCtxOutOrgX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTORGY, &defCtxOutOrgY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTORGZ, &defCtxOutOrgZ);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTEXTX, &defCtxOutExtX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTEXTY, &defCtxOutExtY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_OUTEXTZ, &defCtxOutExtZ);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SENSX, &defCtxSensX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SENSY, &defCtxSensY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SENSZ, &defCtxSensZ);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSMODE, &defCtxSysMode);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSORGX, &defCtxSysOrgX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSORGY, &defCtxSysOrgY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSEXTX, &defCtxSysExtX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSEXTY, &defCtxSysExtY);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSSENSX, &defCtxSysSensX);
+    WTInfoA(WTI_DEFSYSCTX, CTX_SYSSENSY, &defCtxSysSensY);
+
+    std::cout << "WTI_DEFSYSCTX:" << std::endl;
+    std::cout << "  CTX_NAME:" << defCtxName << std::endl;
+    std::cout << "  CTX_OPTIONS:" << std::hex << "0x" << defCtxOptions << std::dec << std::endl;
+    std::cout << "  CTX_STATUS:" << defCtxStatus << std::endl;
+    std::cout << "  CTX_LOCKS:" << defCtxLocks << std::endl;
+    std::cout << "  CTX_MSGBASE:" << defCtxMsgBase << std::endl;
+    std::cout << "  CTX_DEVICE:" << (int)defCtxDevice << std::endl;
+    std::cout << "  CTX_PKTRATE:" << defCtxPktRate << std::endl;
+    std::cout << "  CTX_PKTDATA:" << std::hex << "0x" << defCtxPktData << std::dec << std::endl;
+    std::cout << "  CTX_PKTMODE:" << std::hex << "0x" << defCtxPktMode << std::dec << std::endl;
+    std::cout << "  CTX_MOVEMASK:" << std::hex << "0x" << defCtxMoveMask << std::dec << std::endl;
+    std::cout << "  CTX_BTNDNMASK:" << std::hex << "0x" << defCtxBtnDnMask << std::dec << std::endl;
+    std::cout << "  CTX_BTNUPMASK:" << std::hex << "0x" << defCtxBtnUpMask << std::dec << std::endl;
+    std::cout << "  CTX_INORGX:" << defCtxInOrgX << std::endl;
+    std::cout << "  CTX_INORGY:" << defCtxInOrgY << std::endl;
+    std::cout << "  CTX_INORGZ:" << defCtxInOrgZ << std::endl;
+    std::cout << "  CTX_INEXTX:" << defCtxInExtX << std::endl;
+    std::cout << "  CTX_INEXTY:" << defCtxInExtY << std::endl;
+    std::cout << "  CTX_INEXTZ:" << defCtxInExtZ << std::endl;
+    std::cout << "  CTX_OUTORGX:" << defCtxOutOrgX << std::endl;
+    std::cout << "  CTX_OUTORGY:" << defCtxOutOrgY << std::endl;
+    std::cout << "  CTX_OUTORGZ:" << defCtxOutOrgZ << std::endl;
+    std::cout << "  CTX_OUTEXTX:" << defCtxOutExtX << std::endl;
+    std::cout << "  CTX_OUTEXTY:" << defCtxOutExtY << std::endl;
+    std::cout << "  CTX_OUTEXTZ:" << defCtxOutExtZ << std::endl;
+    std::cout << "  CTX_SENSX:" << FIX_DOUBLE(defCtxSensX) << std::endl;
+    std::cout << "  CTX_SENSY:" << FIX_DOUBLE(defCtxSensY) << std::endl;
+    std::cout << "  CTX_SENSZ:" << FIX_DOUBLE(defCtxSensZ) << std::endl;
+    std::cout << "  CTX_SYSMODE:" << defCtxSysMode << std::endl;
+    std::cout << "  CTX_SYSORGX:" << defCtxSysOrgX << std::endl;
+    std::cout << "  CTX_SYSORGY:" << defCtxSysOrgY << std::endl;
+    std::cout << "  CTX_SYSEXTX:" << defCtxSysExtX << std::endl;
+    std::cout << "  CTX_SYSEXTY:" << defCtxSysExtY << std::endl;
+    std::cout << "  CTX_SYSSENSX:" << FIX_DOUBLE(defCtxSysSensX) << std::endl;
+    std::cout << "  CTX_SYSSENSY:" << FIX_DOUBLE(defCtxSysSensY) << std::endl;
+    std::cout << std::endl << " ------------------------------------ " << std::endl;
+  }
+
+  /* ------------------------------------------------------------------------- */
+  void TabletInit()
+  {
+    AXIS            dvcX, dvcY; // The maximum tablet size
+    LOGCONTEXT      lcMine;     // The context of the tablet
+
+    WTInfoA(WTI_DEFSYSCTX, 0, &lcMine); // get system logical context
+
+    /* modify the digitizing region */
+    wsprintf(lcMine.lcName, "Lustrious Paint Digitizing %x", hInstance);
+    lcMine.lcOptions |= CXO_MESSAGES;
+    lcMine.lcPktData = PACKETDATA;
+    lcMine.lcPktMode = PACKETMODE;
+    lcMine.lcMoveMask = PACKETDATA;
+    lcMine.lcBtnUpMask = lcMine.lcBtnDnMask;
+
+    /* Set the entire tablet as active */
+    WTInfoA(WTI_DEVICES,DVC_X, &dvcX);
+    WTInfoA(WTI_DEVICES,DVC_Y, &dvcY);
+    lcMine.lcInOrgX = 0;
+    lcMine.lcInOrgY = 0;
+    lcMine.lcInExtX = dvcX.axMax;
+    lcMine.lcInExtY = dvcY.axMax;
+
+    tabletContext = WTOpenA(windowHandle, &lcMine, TRUE);
+  }
 }
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
   try {
     ls::hInstance = hInstance;
-    AttachConsole();
+    
     ls::CreateMainWindow();
+    AttachConsole();
 
     wt::LoadWintabLibrary();
     wt::LoadEntryPoints();
+    ls::WintabReport();
+    ls::TabletInit();
 
     vk::LoadVulkanLibrary();
     vk::LoadExportedEntryPoints();
