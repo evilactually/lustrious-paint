@@ -40,13 +40,14 @@ configure_file (
   "${PROJECT_BINARY_DIR}/src/version.h"
   )
 
+# Depricated. Simplify builds, store external libraries in external/ folder, manually update them.
 # Dowload C++ Vulkan wrapper
-file(DOWNLOAD "https://raw.githubusercontent.com/nvpro-pipeline/vkcpp/b81f8ec376047f488b90182a7f291a2664fe6779/vulkan/vk_cpp.hpp" "${PROJECT_BINARY_DIR}/include/vulkan/vk_cpp.hpp")
+# file(DOWNLOAD "https://raw.githubusercontent.com/nvpro-pipeline/vkcpp/b81f8ec376047f488b90182a7f291a2664fe6779/vulkan/vk_cpp.hpp" "${PROJECT_BINARY_DIR}/include/vulkan/vk_cpp.hpp")
 
 # Glob all project source files
 file(GLOB_RECURSE SOURCE_FILES
-    "src/*.h"
-    "src/*.cpp"
+  "src/*.h"
+  "src/*.cpp"
 	"src/*.hpp"
 	"src/*.inl"
 	"${PROJECT_BINARY_DIR}/resources/*.rc"
@@ -55,8 +56,11 @@ file(GLOB_RECURSE SOURCE_FILES
 	"resources/*.rc"
 )
 
+# Include external headers
+include_directories("external/")
+
 # Definitions
-add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS)
+add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES)
 
 # Find Vulkan SDK
 find_package(Vulkan)
@@ -67,9 +71,8 @@ else()
 	message(FATAL_ERROR "Vulkan SDK not found")
 endif()
 
-# Include generated & downloaded headers
+# Include generated headers
 include_directories("${PROJECT_BINARY_DIR}/src/")
-include_directories("${PROJECT_BINARY_DIR}/include/")
 
 add_executable(LustriousPaint WIN32 ${SOURCE_FILES})
 target_link_libraries (LustriousPaint ${VULKAN_LIBRARY})
