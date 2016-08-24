@@ -2,7 +2,7 @@
 
 #include "Utils.h"
 
-namespace Ls {
+namespace ls {
     enum WindowMode
     {
         WINDOW_MODE_NORMAL    = SW_SHOW,

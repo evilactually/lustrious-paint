@@ -1,17 +1,9 @@
-#ifndef __GUICON_H__
-
-#define __GUICON_H__
+#pragma once
 
 //#ifdef _DEBUG
 
-namespace Ls {
-
 void AttachConsole();
 
-}
-
 //#endif
-
-#endif
 
 /* End of File */

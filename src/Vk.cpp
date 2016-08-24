@@ -15,7 +15,7 @@
 #define VK_USE_KHR_DISPLAY_SWAPCHAIN
 #define VK_USE_KHR_SWAPCHAIN
 
-#include "VulkanFunctions.inl"
+#include "vk_functions.inl"
 
 #undef VK_USE_CORE
 #undef VK_USE_KHR_DISPLAY
@@ -25,4 +25,6 @@
 #undef VK_USE_KHR_DISPLAY_SWAPCHAIN
 #undef VK_USE_KHR_SWAPCHAIN
 
-HMODULE VulkanLibrary;
+namespace vk {
+  HMODULE VulkanLibrary;
+}

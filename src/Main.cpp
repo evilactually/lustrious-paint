@@ -6,6 +6,7 @@
 #include "utility.h"
 #include <map>
 #include "assert.h"
+#include "wt.hpp"
 //#include "mesh.h"
 
 //#include "Application.hpp"
@@ -20,7 +21,7 @@
 //    }
 //}
 
-namespace Ls {
+namespace ls {
     bool dialogShowing = false;
     bool canRender = false;
     
@@ -175,8 +176,8 @@ namespace Ls {
             }
         }
 
-        vk::ApplicationInfo appliactionInfo(Ls::Info::PRODUCT_NAME,
-                                            Ls::Info::VERSION,
+        vk::ApplicationInfo appliactionInfo(ls::Info::PRODUCT_NAME,
+                                            ls::Info::VERSION,
                                             NULL,
                                             NULL,
                                             VK_API_VERSION_1_0);
@@ -362,14 +363,14 @@ namespace Ls {
                                                 &DEVICE_EXTENSIONS[0],                            // const char * const                 *ppEnabledExtensionNames
                                                 &device_features);                                // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
 
-        if( selected_physical_device->createDevice( &device_create_info, nullptr, &Ls::device ) != vk::Result::eSuccess ) {
+        if( selected_physical_device->createDevice( &device_create_info, nullptr, &ls::device ) != vk::Result::eSuccess ) {
             std::cout << "Could not create Vulkan device!" << std::endl;
             Error();
         }
 
-        Ls::graphicsQueue.familyIndex = selected_graphics_queue_family_index;
-        Ls::presentQueue.familyIndex = selected_present_queue_family_index;
-        Ls::physicalDevice = *selected_physical_device;
+        ls::graphicsQueue.familyIndex = selected_graphics_queue_family_index;
+        ls::presentQueue.familyIndex = selected_present_queue_family_index;
+        ls::physicalDevice = *selected_physical_device;
 
         CheckPushConstantsLimits();
     }
@@ -692,9 +693,9 @@ namespace Ls {
     }
     
     void FreeCommandBuffers() {
-        if( Ls::device ) {
+        if( ls::device ) {
             if ( commandBuffer ) {
-              Ls::device.waitIdle();
+              ls::device.waitIdle();
               device.freeCommandBuffers( graphicsCommandPool, 1, &commandBuffer);
             }
 
@@ -843,17 +844,17 @@ namespace Ls {
     }
 
     void CreatePipeline() {
-        Ls::shaders["line.vert"] = Ls::CreateShaderModule("shaders/line.vert.spv");
-        Ls::shaders["line.frag"] = Ls::CreateShaderModule("shaders/line.frag.spv");
-        Ls::shaders["point.vert"] = Ls::CreateShaderModule("shaders/point.vert.spv");
-        Ls::shaders["point.frag"] = Ls::CreateShaderModule("shaders/point.frag.spv");
+        ls::shaders["line.vert"] = ls::CreateShaderModule("shaders/line.vert.spv");
+        ls::shaders["line.frag"] = ls::CreateShaderModule("shaders/line.frag.spv");
+        ls::shaders["point.vert"] = ls::CreateShaderModule("shaders/point.vert.spv");
+        ls::shaders["point.frag"] = ls::CreateShaderModule("shaders/point.frag.spv");
 
         std::vector<vk::PipelineShaderStageCreateInfo> line_shader_stage_create_infos = {
           // Vertex shader
           {
             vk::PipelineShaderStageCreateFlags(),                     // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eVertex,                         // VkShaderStageFlagBits                          stage
-            Ls::shaders["line.vert"],                                 // VkShaderModule                                 module
+            ls::shaders["line.vert"],                                 // VkShaderModule                                 module
             "main",                                                   // const char                                    *pName
             nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
           },
@@ -861,7 +862,7 @@ namespace Ls {
           {
             vk::PipelineShaderStageCreateFlags(),                     // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eFragment,                       // VkShaderStageFlagBits                          stage
-            Ls::shaders["line.frag"],                                 // VkShaderModule                                 module
+            ls::shaders["line.frag"],                                 // VkShaderModule                                 module
             "main",                                                   // const char                                    *pName
             nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
           }
@@ -872,7 +873,7 @@ namespace Ls {
           {
             vk::PipelineShaderStageCreateFlags(),                     // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eVertex,                         // VkShaderStageFlagBits                          stage
-            Ls::shaders["point.vert"],                                // VkShaderModule                                 module
+            ls::shaders["point.vert"],                                // VkShaderModule                                 module
             "main",                                                   // const char                                    *pName
             nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
           },
@@ -880,7 +881,7 @@ namespace Ls {
           {
             vk::PipelineShaderStageCreateFlags(),                     // VkPipelineShaderStageCreateFlags               flags
             vk::ShaderStageFlagBits::eFragment,                       // VkShaderStageFlagBits                          stage
-            Ls::shaders["point.frag"],                                // VkShaderModule                                 module
+            ls::shaders["point.frag"],                                // VkShaderModule                                 module
             "main",                                                   // const char                                    *pName
             nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
           }
@@ -1519,8 +1520,8 @@ namespace Ls {
 
     void RenderPointGrid() {
       const float cell_size = 32.0f;
-      const int horizontal_cell_count = ceil(((float)swapChainInfo.extent.width)/cell_size);
-      const int vertical_cell_count = ceil(((float)swapChainInfo.extent.height)/cell_size);
+      const int horizontal_cell_count = static_cast<int>(ceil(((float)swapChainInfo.extent.width)/cell_size));
+      const int vertical_cell_count = static_cast<int>(ceil(((float)swapChainInfo.extent.height)/cell_size));
       const float x_per_pixel = (2.0f/(float)swapChainInfo.extent.width);
       const float y_per_pixel = (2.0f/(float)swapChainInfo.extent.height);
       SetPointSize(2.0f);
@@ -1562,8 +1563,6 @@ namespace Ls {
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-      float fcursor[2];
-
       // Don't process any messages if modal dialog is showing
       if (dialogShowing) {
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -1625,62 +1624,65 @@ namespace Ls {
 }
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-	try {
-		Ls::hInstance = hInstance;
-		Ls::AttachConsole();
-		Ls::CreateMainWindow();
+  try {
+    ls::hInstance = hInstance;
+    AttachConsole();
+    ls::CreateMainWindow();
 
-		vk::LoadVulkanLibrary();
-		vk::LoadExportedEntryPoints();
-		vk::LoadGlobalLevelEntryPoints();
-		Ls::CheckValidationAvailability();
+    wt::LoadWintabLibrary();
+    wt::LoadEntryPoints();
 
-		Ls::CreateInstance();
-		vk::LoadInstanceLevelEntryPoints(Ls::instance, Ls::INSTANCE_EXTENSIONS);
+    vk::LoadVulkanLibrary();
+    vk::LoadExportedEntryPoints();
+    vk::LoadGlobalLevelEntryPoints();
+    ls::CheckValidationAvailability();
 
-		Ls::CreateDebugReportCallback(); // needs an instance level function
-		Ls::CreatePresentationSurface(); // need this for device creation
+    ls::CreateInstance();
+    vk::LoadInstanceLevelEntryPoints(ls::instance, ls::INSTANCE_EXTENSIONS);
 
-		Ls::CreateDevice();
-		vk::LoadDeviceLevelEntryPoints(Ls::device, Ls::DEVICE_EXTENSIONS);
+    ls::CreateDebugReportCallback(); // needs an instance level function
+    ls::CreatePresentationSurface(); // need this for device creation
 
-		Ls::CreateSemaphores();
-		Ls::CreateFence();
-		Ls::GetQueues();
-		Ls::CreateSwapChain();
-		Ls::GetSwapChainImages();
-		Ls::CreateSwapChainImageViews();
+    ls::CreateDevice();
+    vk::LoadDeviceLevelEntryPoints(ls::device, ls::DEVICE_EXTENSIONS);
 
-		Ls::CreateRenderPass();
-		Ls::CreateFramebuffers();
-		Ls::CreatePipelineLayout();
-		Ls::CreatePipeline();
+    ls::CreateSemaphores();
+    ls::CreateFence();
+    ls::GetQueues();
+    ls::CreateSwapChain();
+    ls::GetSwapChainImages();
+    ls::CreateSwapChainImageViews();
 
-		Ls::CreateCommandBuffers();
+    ls::CreateRenderPass();
+    ls::CreateFramebuffers();
+    ls::CreatePipelineLayout();
+    ls::CreatePipeline();
 
-		ShowWindow(Ls::windowHandle, SW_SHOW);
+    ls::CreateCommandBuffers();
 
-		while (Ls::Update()) {};
-	}
-	catch (...) {}; // run clean-up on errors
+    ShowWindow(ls::windowHandle, SW_SHOW);
 
-  Ls::FreeCommandBuffers();
-  Ls::DestroyPipeline();
-  Ls::DestroyPipelineLayout();
-  Ls::DestroyFramebuffers();
-  Ls::DestroyRenderpass();
+    while (ls::Update()) {};
+  }
+  catch (...) {}; // run clean-up on errors
 
-  Ls::DestroyImageViews();
-  Ls::DestroySwapchain();
-  Ls::DestroyPresentationSurface();
+  ls::FreeCommandBuffers();
+  ls::DestroyPipeline();
+  ls::DestroyPipelineLayout();
+  ls::DestroyFramebuffers();
+  ls::DestroyRenderpass();
 
-  Ls::DestroyFence();
-  Ls::DestroySemaphores();
+  ls::DestroyImageViews();
+  ls::DestroySwapchain();
+  ls::DestroyPresentationSurface();
 
-  Ls::FreeDevice();
-  Ls::DestroyDebugReportCallback();
-  Ls::FreeInstance();
+  ls::DestroyFence();
+  ls::DestroySemaphores();
+
+  ls::FreeDevice();
+  ls::DestroyDebugReportCallback();
+  ls::FreeInstance();
 
   vk::UnloadVulkanLibrary();
-  return Ls::msg.wParam;
+  return ls::msg.wParam;
 }

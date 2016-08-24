@@ -6,7 +6,7 @@ out gl_PerVertex
   float gl_PointSize;
 };
 
-layout(push_constant) uniform PushConsts2 {
+layout(push_constant) uniform PushConsts {
   vec2 position;
   vec4 colors;
   float size;

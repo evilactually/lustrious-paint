@@ -20,7 +20,7 @@
 #define VK_USE_KHR_DISPLAY_SWAPCHAIN
 #define VK_USE_KHR_SWAPCHAIN
 
-#include "VulkanFunctions.inl"
+#include "vk_functions.inl"
 
 #undef VK_USE_CORE
 #undef VK_USE_KHR_DISPLAY
@@ -34,14 +34,15 @@
 #include <vector>
 #include "vulkan/vk_cpp.hpp"
 
-extern HMODULE VulkanLibrary;
-
 namespace vk
 {
+    extern HMODULE VulkanLibrary;
+
     void LoadVulkanLibrary() {
         VulkanLibrary = LoadLibrary("vulkan-1.dll");
         if (VulkanLibrary == nullptr) {
-            throw std::runtime_error("Could not load Vulkan library!");
+            std::cout << "Could not load Vulkan library!" << std::endl;
+            throw 1;
         }
     }
 
@@ -55,10 +56,10 @@ namespace vk
         #define VK_EXPORTED_FUNCTION( fun )                                                  \
             if(!(fun = (PFN_##fun)GetProcAddress( VulkanLibrary, #fun ))) {                  \
                 std::cout << "Could not load exported function: ##fun!" << std::endl;        \
-                abort();                                                                     \
+                throw 1;                                                                     \
             }
         #define VK_USE_CORE
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_CORE
     }
 
@@ -66,10 +67,10 @@ namespace vk
         #define VK_GLOBAL_LEVEL_FUNCTION( fun )                                              \
             if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( nullptr, #fun )) ) {               \
                 std::cout << "Could not load global level function: ##fun!" << std::endl;    \
-                abort();                                                                     \
+                throw 1;                                                                     \
             }
         #define VK_USE_CORE
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_CORE
     }
 
@@ -78,10 +79,10 @@ namespace vk
     //         if( !(fun = (PFN_##fun)instance.getProcAddr( #fun )) ) {                         \
     //             throw std::runtime_error("Could not load instnace level function: ##fun!");  \
     //             std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
-    //             abort();                                                                     \
+    //             throw 1;                                                                     \
     //         }
     //     #define VK_USE_CORE
-    //     #include "VulkanFunctions.inl"
+    //     #include "vk_functions.inl"
     //     #undef VK_USE_CORE
     // }
 
@@ -91,10 +92,10 @@ namespace vk
             if( !(fun = (PFN_##fun)instance.getProcAddr( #fun )) ) {                         \
                 throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                 std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
-                abort();                                                                     \
+                throw 1;                                                                     \
             }
         #define VK_USE_CORE
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_CORE
 
         // Extensions
@@ -127,35 +128,35 @@ namespace vk
         if( !(fun = (PFN_##fun)instance.getProcAddr( #fun )) ) {                                 \
                     throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                     std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
-                    abort();                                                                     \
+                    throw 1;                                                                     \
                 }
 
         #define VK_USE_KHR_DISPLAY
         #define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_DISPLAY )                                                                   \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_DISPLAY
 
         #define VK_USE_KHR_SURFACE
         #define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_SURFACE )                                                                   \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_SURFACE    
 
         #define VK_USE_KHR_WIN32_SURFACE
         #define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_WIN32_SURFACE )                                                             \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_WIN32_SURFACE
 
         #define VK_USE_EXT_DEBUG_REPORT
         #define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                \
             if ( EXT_DEBUG_REPORT )                                                              \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_EXT_DEBUG_REPORT
 
         #undef LOAD_FUNCTION
@@ -167,10 +168,10 @@ namespace vk
             if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                           \
                 throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                 std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
-                abort();                                                                     \
+                throw 1;                                                                     \
             }
         #define VK_USE_CORE
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_CORE
 
         // Extensions
@@ -203,49 +204,49 @@ namespace vk
         if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                                   \
                     throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                     std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
-                    abort();                                                                     \
+                    throw 1;                                                                     \
                 }
 
         #define VK_USE_KHR_DISPLAY
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_DISPLAY )                                                                 \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_DISPLAY
 
         #define VK_USE_KHR_SURFACE
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_SURFACE )                                                                 \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_SURFACE    
 
         #define VK_USE_KHR_WIN32_SURFACE
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
             if ( KHR_WIN32_SURFACE )                                                           \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_WIN32_SURFACE
 
         #define VK_USE_EXT_DEBUG_REPORT
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
             if ( EXT_DEBUG_REPORT )                                                            \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_EXT_DEBUG_REPORT
 
         #define VK_USE_KHR_DISPLAY_SWAPCHAIN
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
            if ( KHR_DISPLAY_SWAPCHAIN )                                                        \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_KHR_DISPLAY_SWAPCHAIN
 
         #define VK_USE_KHR_SWAPCHAIN
         #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                \
            if ( KHR_SWAPCHAIN )                                                                \
                 LOAD_FUNCTION(fun)
-        #include "VulkanFunctions.inl"
+        #include "vk_functions.inl"
         #undef VK_USE_SWAPCHAIN
 
         #undef LOAD_FUNCTION

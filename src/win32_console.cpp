@@ -9,17 +9,12 @@ using namespace std;
 
 //#ifdef _DEBUG
 
-namespace Ls {
-
 void AttachConsole() {
-  
   AllocConsole();
   freopen("CONOUT$", "w", stdout);
   freopen("CONOUT$", "w", stderr);
   freopen("CONOUT$", "r", stdin);
-
 }
 
-}
 
 //#endif

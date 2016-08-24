@@ -56,7 +56,7 @@ file(GLOB_RECURSE SOURCE_FILES
 )
 
 # Definitions
-add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS)
 
 # Find Vulkan SDK
 find_package(Vulkan)
