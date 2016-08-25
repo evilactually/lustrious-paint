@@ -1697,9 +1697,8 @@ namespace ls {
     }
 
     void RenderBrushFrame() {
-      const float half_width = 16.0f;
-      const float half_height = 16.0f;
-      POINT cursor;
+      const float half_width = 32.0f;
+      const float half_height = 32.0f;
       float fcursor[2];
       fcursor[0] = pixelDimensions.width*penStatus.position[0] - 1.0f;
       fcursor[1] = pixelDimensions.height*penStatus.position[1] - 1.0f;
@@ -1715,14 +1714,18 @@ namespace ls {
       BeginFrame();
       Clear(0.1f, 0.1f, 0.1f);
       RenderPointGrid();
-      RenderPointerFrame();
-      //RenderBrushFrame();
+      //RenderPointerFrame();
+      RenderBrushFrame();
       EndFrame();
     }
 
     bool needRender = false;
-
-    bool Update() {
+    bool canSleep = true;
+    
+    // 1. Run update code
+    // 2. Render if update code set needRender flag
+    // 3. Sleep if update code set canSleep flag
+    bool Run() {
       BeginProfiling();
       needRender = false;
       while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) ) {
@@ -1738,6 +1741,9 @@ namespace ls {
         if(EndProfiling()) {
           SetWindowText(windowHandle, (std::string("Lustrious Paint - ") + std::to_string(profilingInfo.lastFPS)).c_str());
         }
+      }
+      if (canSleep) {
+        WaitMessage();
       }
       return true;
     }
@@ -1767,7 +1773,7 @@ namespace ls {
       case WM_CLOSE:
         PostQuitMessage(0);
         break;
-      // case WM_PAINT: // Handling WM_PAINT make PeekMessage always return TRUE and event loop gets stuck!
+      // case WM_PAINT: // WM_PAINT is not removed by GetMessage from queue!
       //   return TRUE;
       //   break;
       case WT_PACKET:
@@ -1779,15 +1785,16 @@ namespace ls {
           penStatus.pressure *= PRESSURE_SENSITIVITY;
           penStatus.orientation[0] = (pkt.pkOrientation.orAzimuth/10)*(M_PI/180.0f);
           penStatus.orientation[1] = (pkt.pkOrientation.orAltitude/10)*(M_PI/180.0f);
-          GetCursorPos(&cursor);
-          ScreenToClient(windowHandle, &cursor);
-          penStatus.position[0] = cursor.x;
-          penStatus.position[1] = cursor.y;
+          // GetCursorPos(&cursor);
+          // ScreenToClient(windowHandle, &cursor);
+          // penStatus.position[0] = cursor.x;
+          // penStatus.position[1] = cursor.y;
           //std::cout << penStatus.position[0] << std::endl;
         }
         return FALSE;
         break;
       case WM_SIZE:
+        // Message pump to loop while resizing, no rendering will be performed
         RefreshSwapChain();
         UpdatePixelDimensions();
         return FALSE;
@@ -2014,7 +2021,8 @@ namespace ls {
 
     /* modify the digitizing region */
     wsprintf(lcMine.lcName, "Lustrious Paint Digitizing %x", hInstance);
-    lcMine.lcOptions |= CXO_MESSAGES;
+    lcMine.lcOptions |= CXO_MESSAGES; // recieve WM_PACKET
+    lcMine.lcOptions |= CXO_SYSTEM;   // receive WM_MOUSEMOVE
     lcMine.lcPktData = PACKETDATA;
     lcMine.lcPktMode = PACKETMODE;
     lcMine.lcMoveMask = PACKETDATA;
@@ -2027,8 +2035,6 @@ namespace ls {
     lcMine.lcInOrgY = 0;
     lcMine.lcInExtX = dvcX.axMax;
     lcMine.lcInExtY = dvcY.axMax;
-    //lcMine.lcPktRate = 2;
-    //lcMine.lcOptions |= CXO_SYSTEM;
 
     tabletContext = WTOpenA(windowHandle, &lcMine, TRUE);
   }
@@ -2077,7 +2083,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     ShowWindow(ls::windowHandle, SW_SHOW);
 
-    while (ls::Update()) {};
+    while (ls::Run()) {};
   }
   catch (...) {}; // run clean-up on errors
 
