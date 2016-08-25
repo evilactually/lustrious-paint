@@ -5,8 +5,10 @@
 #include "win32_console.hpp"
 #include "utility.h"
 #include <map>
+#include <cmath>
 #include "assert.h"
 #include "wt.hpp"
+#include "glm/glm.hpp"
 
 #define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
 #define PACKETMODE 0
@@ -123,8 +125,21 @@ namespace ls {
 
     } drawingContext;
 
-    HCTX tabletContext;   
+    HCTX tabletContext;
 
+    struct {
+      float position[2];
+      float orientation[2];
+      float pressure;
+    } penStatus;
+
+    #define PRESSURE_SENSITIVITY 3.0f
+
+    struct {
+      float width;
+      float height;
+    } pixelDimensions; // size of a pixel in vulkan coordinates
+    
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
@@ -1181,6 +1196,11 @@ namespace ls {
       }
     }
 
+    void UpdatePixelDimensions() {
+      pixelDimensions.width = (2.0f/(float)swapChainInfo.extent.width);
+      pixelDimensions.height = (2.0f/(float)swapChainInfo.extent.height);
+    }
+
     void BeginDrawing() {
       assert(!drawingContext.drawing);
 
@@ -1297,6 +1317,7 @@ namespace ls {
           case vk::Result::eErrorOutOfDateKHR:
               std::cout << "Swap chain out of date" << std::endl;
               RefreshSwapChain();
+              UpdatePixelDimensions();
               return;
           default:
               std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
@@ -1386,7 +1407,9 @@ namespace ls {
           break;
         case vk::Result::eErrorOutOfDateKHR:
         case vk::Result::eSuboptimalKHR:
-          return RefreshSwapChain();
+          RefreshSwapChain();
+          UpdatePixelDimensions();
+          return;
         default:
           std::cout << "Problem occurred during image presentation!" << std::endl;
           Error();
@@ -1495,6 +1518,7 @@ namespace ls {
       commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, pointPipeline );
 
       // Transition image layout from generic read/present
+      // TODO: Do I need to push it every time?
       PointPushConstants pushConstants;
       pushConstants.positions[0] = x;
       pushConstants.positions[1] = y;
@@ -1523,50 +1547,47 @@ namespace ls {
       drawingContext.pointSize = size;
     }
 
-    bool Update() {
-      bool running = true;
-      PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
-      if (msg.message == WM_QUIT) {
-        running = false;
-      }
-      else {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-      }
-      //RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
-      return running;
-    }
-
     void RenderPointGrid() {
       const float cell_size = 32.0f;
       const int horizontal_cell_count = static_cast<int>(ceil(((float)swapChainInfo.extent.width)/cell_size));
       const int vertical_cell_count = static_cast<int>(ceil(((float)swapChainInfo.extent.height)/cell_size));
-      const float x_per_pixel = (2.0f/(float)swapChainInfo.extent.width);
-      const float y_per_pixel = (2.0f/(float)swapChainInfo.extent.height);
       SetPointSize(2.0f);
       SetColor(0.2f, 0.2f, 0.2f);
       for( int y = 0; y < vertical_cell_count; ++y ) {
         float y_offset = y*cell_size;
         for( int x = 0; x < horizontal_cell_count; ++x ) {
           float x_offset = x*cell_size;
-          DrawPoint(x_per_pixel*x_offset - 1.0f, y_per_pixel*y_offset - 1.0f);
+          DrawPoint(pixelDimensions.width*x_offset - 1.0f, pixelDimensions.height*y_offset - 1.0f);
         }
       }
     }
 
-    void RenderCursor() {
+    void RenderPointerFrame() {
       const float half_width = 16.0f;
       const float half_height = 16.0f;
-      const float x_per_pixel = (2.0f/(float)swapChainInfo.extent.width);
-      const float y_per_pixel = (2.0f/(float)swapChainInfo.extent.height);
       POINT cursor;
       float fcursor[2];
       GetCursorPos(&cursor);
       ScreenToClient(windowHandle, &cursor);
-      fcursor[0] = x_per_pixel*cursor.x - 1.0f;
-      fcursor[1] = y_per_pixel*cursor.y - 1.0f;
-      float fhalf_width = x_per_pixel*half_width;
-      float fhalf_height = y_per_pixel*half_height;
+      fcursor[0] = pixelDimensions.width*cursor.x - 1.0f;
+      fcursor[1] = pixelDimensions.height*cursor.y - 1.0f;
+      float fhalf_width = pixelDimensions.width*half_width;
+      float fhalf_height = pixelDimensions.height*half_height;
+      SetColor(1.0f, 0.0f, 0.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
+      SetColor(0.0f, 1.0f, 0.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
+    }
+
+    void RenderBrushFrame() {
+      const float half_width = 16.0f;
+      const float half_height = 16.0f;
+      POINT cursor;
+      float fcursor[2];
+      fcursor[0] = pixelDimensions.width*penStatus.position[0] - 1.0f;
+      fcursor[1] = pixelDimensions.height*penStatus.position[1] - 1.0f;
+      float fhalf_width = pixelDimensions.width*half_width;
+      float fhalf_height = pixelDimensions.height*half_height;
       SetColor(1.0f, 0.0f, 0.0f);
       DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
       SetColor(0.0f, 1.0f, 0.0f);
@@ -1577,26 +1598,46 @@ namespace ls {
       BeginFrame();
       Clear(0.1f, 0.1f, 0.1f);
       RenderPointGrid();
-      RenderCursor();
+      //RenderPointerFrame();
+      RenderBrushFrame();
       EndFrame();
+    }
+
+    bool Update() {
+      bool running = true;
+      PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
+      if (msg.message == WM_QUIT) {
+        running = false;
+      }
+      else {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+      }
+      //Render();
+      //RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
+      return running;
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
       PACKET pkt;
+      POINT cursor;
       // Don't process any messages if modal dialog is showing
       if (dialogShowing) {
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
       }
-
       // Hide mouse inside client area
-      if (uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT)
-      {
-        SetCursor(NULL);
-        return TRUE;
-      }
+      // if (uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT)
+      // {
+      //   SetCursor(NULL);
+      //   return TRUE;
+      // }
       static int n;
       switch (uMsg) {
         case WM_MOUSEMOVE:
+        GetCursorPos(&cursor);
+        ScreenToClient(windowHandle, &cursor);
+        penStatus.position[0] = cursor.x;
+        penStatus.position[1] = cursor.y;
         Render();
         break;
       case WM_CLOSE:
@@ -1608,11 +1649,22 @@ namespace ls {
       case WT_PACKET:
         if (WTPacket((HCTX)lParam, wParam, &pkt)) 
         {
-          std::cout << pkt.pkX << " " << pkt.pkY << std::endl;
+          AXIS pressureNormal;
+          WTInfoA(WTI_DEVICES|0, DVC_NPRESSURE, &pressureNormal);
+          penStatus.pressure = static_cast<float>(pkt.pkNormalPressure)/static_cast<float>(pressureNormal.axMax);
+          penStatus.pressure *= PRESSURE_SENSITIVITY;
+          penStatus.orientation[0] = (pkt.pkOrientation.orAzimuth/10)*(M_PI/180.0f);
+          penStatus.orientation[1] = (pkt.pkOrientation.orAltitude/10)*(M_PI/180.0f);
+          GetCursorPos(&cursor);
+          ScreenToClient(windowHandle, &cursor);
+          penStatus.position[0] = cursor.x;
+          penStatus.position[1] = cursor.y;
+          std::cout << penStatus.position[0] << std::endl;
         }
         break;
       case WM_SIZE:
         RefreshSwapChain();
+        UpdatePixelDimensions();
         Render();
         return FALSE;
         break;
@@ -1638,7 +1690,7 @@ namespace ls {
                                     "LsMainWindow",
                                     "Lustrious Paint",
                                     WS_OVERLAPPEDWINDOW, //| WS_VISIBLE,
-                                    100,
+                                    400,
                                     100,
                                     1024+16,
                                     640+38,
@@ -1693,7 +1745,7 @@ namespace ls {
     AXIS dvcX;
     AXIS dvcY;
     
-    for(int i = 0; i < nDevices; ++i) {
+    for(int i = 0; i < static_cast<int>(nDevices); ++i) {
       WTInfoA(WTI_DEVICES|i, DVC_NAME, &wtDvcName);
       WTInfoA(WTI_DEVICES|i, DVC_NPRESSURE, &pressureNormal);
       WTInfoA(WTI_DEVICES|i, DVC_TPRESSURE, &pressureTangent);
@@ -1702,6 +1754,7 @@ namespace ls {
       WTInfoA(WTI_DEVICES|i, DVC_Y, &dvcY);
 
       std::cout << "WTI_DEVICES[" << i << "]" << std::endl;
+      std::cout << "  DVC_NAME:" << wtDvcName << std::endl;
       std::cout << "  DVC_NPRESSURE:" << pressureNormal << std::endl;
       std::cout << "  DVC_TPRESSURE:" << pressureTangent << std::endl;
       std::cout << "  DVC_ORIENTATION[0]:" << orientation[0] << std::endl;
@@ -1712,7 +1765,7 @@ namespace ls {
     }
 
     TCHAR extName[32];
-    for(int i = 0; i < nExtensions; ++i) {
+    for(int i = 0; i < static_cast<int>(nExtensions); ++i) {
       WTInfoA(WTI_EXTENSIONS|i, EXT_NAME, &extName);
 
       std::cout << "WTI_EXTENSIONS[" << i << "]" << std::endl;
@@ -1850,6 +1903,8 @@ namespace ls {
     lcMine.lcInOrgY = 0;
     lcMine.lcInExtX = dvcX.axMax;
     lcMine.lcInExtY = dvcY.axMax;
+    //lcMine.lcPktRate = 2;
+    //lcMine.lcOptions |= CXO_SYSTEM;
 
     tabletContext = WTOpenA(windowHandle, &lcMine, TRUE);
   }
@@ -1887,6 +1942,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     ls::CreateSwapChain();
     ls::GetSwapChainImages();
     ls::CreateSwapChainImageViews();
+    ls::UpdatePixelDimensions();
 
     ls::CreateRenderPass();
     ls::CreateFramebuffers();

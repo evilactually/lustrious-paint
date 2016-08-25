@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utility.h"
+
 #define NOWTBASICFXNS
 #define NOWTCTXEDITFXNS
 #define NOWTVISIBILITYFXNS
@@ -20,6 +22,7 @@ namespace wt
     wintabLibrary = LoadLibrary("Wintab32.dll");
     if (wintabLibrary == nullptr) {
       std::cout << "Could not load Wintab library!" << std::endl;
+      ls::Error();
       throw 1;
     }
   }
