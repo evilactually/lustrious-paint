@@ -109,6 +109,16 @@ namespace ls {
     };
     std::map<std::string, vk::ShaderModule> shaders;
 
+    HCTX tabletContext;
+
+    struct {
+      float position[2];
+      float orientation[2];
+      float pressure;
+    } penStatus;
+
+    #define PRESSURE_SENSITIVITY 3.0f
+
     struct LinePushConstants {
       float positions[4];
       float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -121,29 +131,6 @@ namespace ls {
       float size = 1.0f;
     };
 
-    struct {
-      float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-      float lineWidth = 1.0f;
-      float pointSize = 1.0f;
-      bool drawing = false; // indicates that command buffer is ready to draw
-
-    } drawingContext;
-
-    HCTX tabletContext;
-
-    struct {
-      float position[2];
-      float orientation[2];
-      float pressure;
-    } penStatus;
-
-    #define PRESSURE_SENSITIVITY 3.0f
-
-    struct {
-      float width;
-      float height;
-    } pixelDimensions; // size of a pixel in vulkan coordinates
-    
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
@@ -1199,11 +1186,27 @@ namespace ls {
         std::cout << "Swap chain extent " << swapChainInfo.extent.width << "x" << swapChainInfo.extent.height << std::endl;
       }
     }
+    struct {
+      float width;
+      float height;
+    } pixelDimensions; // size of a pixel in vulkan coordinates
 
     void UpdatePixelDimensions() {
       pixelDimensions.width = (2.0f/(float)swapChainInfo.extent.width);
       pixelDimensions.height = (2.0f/(float)swapChainInfo.extent.height);
     }
+
+    #define PIPELINE_BINDING_NONE 0x0
+    #define PIPELINE_BINDING_LINE  0x1
+    #define PIPELINE_BINDING_POINT 0x2
+
+    struct {
+      float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+      float lineWidth = 1.0f;
+      float pointSize = 1.0f;
+      bool drawing = false; // indicates that command buffer is ready to draw
+      int pipelineBinding = 0;;
+    } drawingContext;
 
     void BeginDrawing() {
       assert(!drawingContext.drawing);
@@ -1262,6 +1265,8 @@ namespace ls {
 
       // Tell drawing functions that command buffer is already prepared for drawing
       drawingContext.drawing = true;
+
+      drawingContext.pipelineBinding = PIPELINE_BINDING_NONE;
     }
 
     void EndDrawing() {
@@ -1420,6 +1425,76 @@ namespace ls {
       }
     }
 
+    void RepeatLastFrame() {
+      if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
+        std::cout << "Waiting for fence takes too long!" << std::endl;
+        Error();
+      }
+
+      device.resetFences( 1, &submitCompleteFence );
+
+      vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
+                                                      UINT64_MAX,
+                                                      semaphores.imageAvailable,
+                                                      vk::Fence(),
+                                                      &swapChainInfo.acquiredImageIndex );
+      switch( result ) {
+          case vk::Result::eSuccess:
+              break;
+          case vk::Result::eSuboptimalKHR:
+              break;
+          case vk::Result::eErrorOutOfDateKHR:
+              std::cout << "Swap chain out of date" << std::endl;
+              RefreshSwapChain();
+              UpdatePixelDimensions();
+              return;
+          default:
+              std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
+              Error();
+      }
+
+      vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                                                   vk::PipelineStageFlagBits::eTransfer;
+      vk::SubmitInfo submit_info(
+        1,                                     // uint32_t                     waitSemaphoreCount
+        &semaphores.imageAvailable,            // const VkSemaphore           *pWaitSemaphores
+        &wait_dst_stage_mask,                  // const VkPipelineStageFlags  *pWaitDstStageMask;
+        1,                                     // uint32_t                     commandBufferCount
+        &commandBuffer,                        // const VkCommandBuffer       *pCommandBuffers
+        1,                                     // uint32_t                     signalSemaphoreCount
+        &semaphores.renderingFinished          // const VkSemaphore           *pSignalSemaphores
+      );
+
+      if( presentQueue.handle.submit( 1, &submit_info, submitCompleteFence ) != vk::Result::eSuccess ) {
+        std::cout << "Submit to queue failed!" << std::endl;
+        Error();
+      }
+
+      vk::PresentInfoKHR present_info(
+        1,                                    // uint32_t                     waitSemaphoreCount
+        &semaphores.renderingFinished,        // const VkSemaphore           *pWaitSemaphores
+        1,                                    // uint32_t                     swapchainCount
+        &swapChainInfo.swapChain,             // const VkSwapchainKHR        *pSwapchains
+        &swapChainInfo.acquiredImageIndex,    // const uint32_t              *pImageIndices
+        nullptr                               // VkResult                    *pResults
+      );
+      
+      result = presentQueue.handle.presentKHR( &present_info );
+
+      switch( result ) {
+        case vk::Result::eSuccess:
+          break;
+        case vk::Result::eErrorOutOfDateKHR:
+        case vk::Result::eSuboptimalKHR:
+          RefreshSwapChain();
+          UpdatePixelDimensions();
+          return;
+        default:
+          std::cout << "Problem occurred during image presentation!" << std::endl;
+          Error();
+      }
+    }
+
     void Clear(float r, float g, float b) {
       if( drawingContext.drawing ) {
         EndDrawing();
@@ -1493,8 +1568,11 @@ namespace ls {
         BeginDrawing();
       }
 
-      // Bind line graphics pipeline
-      commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, linePipeline );
+      if(drawingContext.pipelineBinding != PIPELINE_BINDING_LINE) {
+        // Bind line graphics pipeline
+        commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, linePipeline );
+        drawingContext.pipelineBinding = PIPELINE_BINDING_LINE; 
+      }
 
       // Transition image layout from generic read/present
       LinePushConstants pushConstants;
@@ -1518,8 +1596,11 @@ namespace ls {
         BeginDrawing();
       }
 
-      // Bind line graphics pipeline
-      commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, pointPipeline );
+      if(drawingContext.pipelineBinding != PIPELINE_BINDING_POINT) {
+        // Bind line graphics pipeline
+        commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, pointPipeline );
+        drawingContext.pipelineBinding = PIPELINE_BINDING_POINT;
+      }
 
       // Transition image layout from generic read/present
       // TODO: Do I need to push it every time?
@@ -1549,6 +1630,38 @@ namespace ls {
 
     void SetPointSize(float size) {
       drawingContext.pointSize = size;
+    }
+
+    struct {
+      int frameCounter = 0;
+      double fpsTimer = 0.0f;
+      int lastFPS = 0;
+      const double fpsUpdatePeriod = 100.0f;
+      std::chrono::high_resolution_clock::time_point tStart;
+      std::chrono::high_resolution_clock::time_point tEnd;
+      double tDiff;
+    } profilingInfo;
+
+    void BeginProfiling() {
+      profilingInfo.tStart = std::chrono::high_resolution_clock::now();
+    }
+
+    bool EndProfiling() {
+      profilingInfo.frameCounter++;
+      profilingInfo.tEnd = std::chrono::high_resolution_clock::now();
+      profilingInfo.tDiff = std::chrono::duration<double, std::milli>(profilingInfo.tEnd - profilingInfo.tStart).count();
+
+      profilingInfo.fpsTimer += (double)profilingInfo.tDiff;
+      if (profilingInfo.fpsTimer > profilingInfo.fpsUpdatePeriod)
+      {
+        profilingInfo.lastFPS = profilingInfo.frameCounter*(1000.0f/profilingInfo.fpsUpdatePeriod);
+        profilingInfo.fpsTimer = 0.0f;
+        profilingInfo.frameCounter = 0;
+        // indicate to caller that FPS counter updated
+        return true;
+      }
+      // no update
+      return false;
     }
 
     void RenderPointGrid() {
@@ -1608,16 +1721,9 @@ namespace ls {
     }
 
     bool needRender = false;
-    int frameCounter = 0;
-    float fpsTimer = 0.0f;
-    int lastFPS = 0;
-
-    void BeginProfiling() {
-
-    }
 
     bool Update() {
-      auto tStart = std::chrono::high_resolution_clock::now();
+      BeginProfiling();
       needRender = false;
       while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) ) {
         if ( !GetMessage( &msg, NULL, 0, 0 ) ) {
@@ -1628,21 +1734,11 @@ namespace ls {
       }
       if (needRender) {
         Render();
-      
-      frameCounter++;
-      auto tEnd = std::chrono::high_resolution_clock::now();
-      auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
-
-      fpsTimer += (float)tDiff;
-      if (fpsTimer > 100.0f)
-      {
-        //std::cout << frameCounter << std::endl;
-        lastFPS = frameCounter*10.0f;
-        SetWindowText(windowHandle, std::to_string(lastFPS).c_str());
-        fpsTimer = 0.0f;
-        frameCounter = 0;
+        // If EndProfiling is not called for corresponding BeginProfiling, the frame is not counted
+        if(EndProfiling()) {
+          SetWindowText(windowHandle, (std::string("Lustrious Paint - ") + std::to_string(profilingInfo.lastFPS)).c_str());
+        }
       }
-    }
       return true;
     }
 
@@ -1654,11 +1750,11 @@ namespace ls {
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
       }
       // Hide mouse inside client area
-      // if (uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT)
-      // {
-      //   SetCursor(NULL);
-      //   return TRUE;
-      // }
+      if (uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT)
+      {
+        SetCursor(NULL);
+        return TRUE;
+      }
       static int n;
       switch (uMsg) {
         case WM_MOUSEMOVE:
@@ -1694,7 +1790,6 @@ namespace ls {
       case WM_SIZE:
         RefreshSwapChain();
         UpdatePixelDimensions();
-        //Render();
         return FALSE;
         break;
       default:
