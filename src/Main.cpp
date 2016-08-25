@@ -10,6 +10,10 @@
 #include "wt.hpp"
 #include "glm/glm.hpp"
 
+#include <chrono>
+#include <thread>
+using namespace std::chrono_literals;
+
 #define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
 #define PACKETMODE 0
 #include "wintab/PKTDEF.h"
@@ -1598,24 +1602,48 @@ namespace ls {
       BeginFrame();
       Clear(0.1f, 0.1f, 0.1f);
       RenderPointGrid();
-      //RenderPointerFrame();
-      RenderBrushFrame();
+      RenderPointerFrame();
+      //RenderBrushFrame();
       EndFrame();
     }
 
+    bool needRender = false;
+    int frameCounter = 0;
+    float fpsTimer = 0.0f;
+    int lastFPS = 0;
+
+    void BeginProfiling() {
+
+    }
+
     bool Update() {
-      bool running = true;
-      PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE);
-      if (msg.message == WM_QUIT) {
-        running = false;
-      }
-      else {
+      auto tStart = std::chrono::high_resolution_clock::now();
+      needRender = false;
+      while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) ) {
+        if ( !GetMessage( &msg, NULL, 0, 0 ) ) {
+          return false;
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
       }
-      //Render();
-      //RedrawWindow(windowHandle, NULL, NULL, RDW_INTERNALPAINT);
-      return running;
+      if (needRender) {
+        Render();
+      
+      frameCounter++;
+      auto tEnd = std::chrono::high_resolution_clock::now();
+      auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+
+      fpsTimer += (float)tDiff;
+      if (fpsTimer > 100.0f)
+      {
+        //std::cout << frameCounter << std::endl;
+        lastFPS = frameCounter*10.0f;
+        SetWindowText(windowHandle, std::to_string(lastFPS).c_str());
+        fpsTimer = 0.0f;
+        frameCounter = 0;
+      }
+    }
+      return true;
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -1634,18 +1662,18 @@ namespace ls {
       static int n;
       switch (uMsg) {
         case WM_MOUSEMOVE:
+        needRender = true;
         GetCursorPos(&cursor);
         ScreenToClient(windowHandle, &cursor);
         penStatus.position[0] = cursor.x;
         penStatus.position[1] = cursor.y;
-        Render();
         break;
       case WM_CLOSE:
         PostQuitMessage(0);
         break;
-      case WM_PAINT:
-        return FALSE;
-        break;
+      // case WM_PAINT: // Handling WM_PAINT make PeekMessage always return TRUE and event loop gets stuck!
+      //   return TRUE;
+      //   break;
       case WT_PACKET:
         if (WTPacket((HCTX)lParam, wParam, &pkt)) 
         {
@@ -1659,13 +1687,14 @@ namespace ls {
           ScreenToClient(windowHandle, &cursor);
           penStatus.position[0] = cursor.x;
           penStatus.position[1] = cursor.y;
-          std::cout << penStatus.position[0] << std::endl;
+          //std::cout << penStatus.position[0] << std::endl;
         }
+        return FALSE;
         break;
       case WM_SIZE:
         RefreshSwapChain();
         UpdatePixelDimensions();
-        Render();
+        //Render();
         return FALSE;
         break;
       default:
