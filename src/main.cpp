@@ -8,7 +8,8 @@
 #include <cmath>
 #include "assert.h"
 #include "wt.hpp"
-#include "glm/glm.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <chrono>
 #include <thread>
@@ -117,7 +118,7 @@ namespace ls {
       float pressure;
     } penStatus;
 
-    #define PRESSURE_SENSITIVITY 3.0f
+    #define PRESSURE_SENSITIVITY 20.0f //3.0f
 
     struct LinePushConstants {
       float positions[4];
@@ -1696,7 +1697,24 @@ namespace ls {
       DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
     }
 
+    glm::tmat2x2<float> tmat2x2_rotation(float angle) {
+      return { cos(angle), sin(angle), 
+              -sin(angle), cos(angle) };
+    }
+
     void RenderBrushFrame() {
+      glm::tmat2x2<float> rot;
+      glm::vec2 pos(0.0f, 1.0f);
+      // glm::rotate(pos, 0.1f, glm::vec2(1.0f, 0.0f));
+      glm::tmat2x2<float> to_pixels = { pixelDimensions.width, 0.0f, 
+                                        0.0f, pixelDimensions.height };
+
+      glm::tmat2x2<float> extend = { 32.0f, 0.0f, 
+                                     0.0f, 32.0f };
+
+      auto azimuth = tmat2x2_rotation(penStatus.orientation[0])*glm::vec2(0.0f, -32.0f*penStatus.pressure);
+      azimuth = to_pixels*azimuth;
+      
       const float half_width = 32.0f;
       const float half_height = 32.0f;
       float fcursor[2];
@@ -1708,6 +1726,8 @@ namespace ls {
       DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
       SetColor(0.0f, 1.0f, 0.0f);
       DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
+      SetColor(1.0f, 1.0f, 1.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + azimuth[0], fcursor[1] + azimuth[1]);
     }
 
     void Render() {
@@ -1779,6 +1799,7 @@ namespace ls {
       case WT_PACKET:
         if (WTPacket((HCTX)lParam, wParam, &pkt)) 
         {
+          needRender = true;
           AXIS pressureNormal;
           WTInfoA(WTI_DEVICES|0, DVC_NPRESSURE, &pressureNormal);
           penStatus.pressure = static_cast<float>(pkt.pkNormalPressure)/static_cast<float>(pressureNormal.axMax);
