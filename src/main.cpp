@@ -1722,12 +1722,50 @@ namespace ls {
       fcursor[1] = pixelDimensions.height*penStatus.position[1] - 1.0f;
       float fhalf_width = pixelDimensions.width*half_width;
       float fhalf_height = pixelDimensions.height*half_height;
+      // SetColor(1.0f, 0.0f, 0.0f);
+      // DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
+      // SetColor(0.0f, 1.0f, 0.0f);
+      // DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
+      //SetColor(1.0f, 1.0f, 1.0f);
+      //DrawLine(fcursor[0], fcursor[1], fcursor[0] + azimuth[0], fcursor[1] + azimuth[1]);
+
+      float length = 64.0f;
+      glm::vec4 axis_x(1.0f, 0.0f, 0.0f, 1.0f);
+      glm::vec4 axis_y(0.0f, 1.0f, 0.0f, 1.0f);
+      glm::vec4 axis_z(0.0f, 0.0f, 1.0f, 1.0f);
+
+      // apply altitude by rotation around x
+      auto rotX = glm::rotate(glm::tmat4x4<float>(1.0f), -(float)(penStatus.orientation[1] - M_PI/2.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+      axis_x = rotX*axis_x;
+      axis_y = rotX*axis_y;
+      axis_z = rotX*axis_z;
+      // apply azimuth by rotation around z
+      auto rotZ = glm::rotate(glm::tmat4x4<float>(1.0f), (penStatus.orientation[0] + (float)M_PI), glm::vec3(0.0f, 0.0f, 1.0f));
+      axis_x = rotZ*axis_x;
+      axis_y = rotZ*axis_y;
+      axis_z = rotZ*axis_z;
+      // extend to length
+      axis_x *= length;
+      axis_y *= length;
+      axis_z *= length;
+      // transform into screen coordinates
+      auto normalize = glm::scale(glm::tmat4x4<float>(1.0f), glm::vec3(pixelDimensions.width, pixelDimensions.height, 1.0f));
+      axis_x = normalize*axis_x;
+      axis_y = normalize*axis_y;
+      axis_z = normalize*axis_z;
+      SetLineWidth(1.0f);
       SetColor(1.0f, 0.0f, 0.0f);
-      DrawLine(fcursor[0], fcursor[1], fcursor[0], fcursor[1] + fhalf_height);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + axis_x[0], fcursor[1] + axis_x[1]);
+
       SetColor(0.0f, 1.0f, 0.0f);
-      DrawLine(fcursor[0], fcursor[1], fcursor[0] + fhalf_width, fcursor[1]);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + axis_y[0], fcursor[1] + axis_y[1]);
+
+      SetColor(0.0f, 0.0f, 1.0f);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + axis_z[0], fcursor[1] + axis_z[1]);
+
+      axis_z *= penStatus.pressure;
       SetColor(1.0f, 1.0f, 1.0f);
-      DrawLine(fcursor[0], fcursor[1], fcursor[0] + azimuth[0], fcursor[1] + azimuth[1]);
+      DrawLine(fcursor[0], fcursor[1], fcursor[0] + axis_z[0], fcursor[1] + axis_z[1]);
     }
 
     void Render() {
@@ -1806,6 +1844,7 @@ namespace ls {
           penStatus.pressure *= PRESSURE_SENSITIVITY;
           penStatus.orientation[0] = (pkt.pkOrientation.orAzimuth/10)*(M_PI/180.0f);
           penStatus.orientation[1] = (pkt.pkOrientation.orAltitude/10)*(M_PI/180.0f);
+          penStatus.orientation[1] = std::abs(penStatus.orientation[1]); // eraser on wacom gives negative altitude
           // GetCursorPos(&cursor);
           // ScreenToClient(windowHandle, &cursor);
           // penStatus.position[0] = cursor.x;
