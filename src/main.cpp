@@ -36,6 +36,8 @@ using namespace std::chrono_literals;
 /* converts FIX32 to double */
 #define FIX_DOUBLE(x)   ((double)(INT(x))+((double)FRAC(x)/65536))
 
+#define M_PI_F static_cast<float>(M_PI)
+
 std::ostream& operator<<(std::ostream& os, const AXIS& ax)
 {
   os << "AXIS { axMin:" << ax.axMin <<
@@ -114,7 +116,7 @@ namespace ls {
 
     struct {
       float position[2];
-      float orientation[2];
+      float orientation[2] = { M_PI_F, M_PI_F/2.0f };
       float pressure;
     } penStatus;
 
@@ -1735,12 +1737,12 @@ namespace ls {
       glm::vec4 axis_z(0.0f, 0.0f, 1.0f, 1.0f);
 
       // apply altitude by rotation around x
-      auto rotX = glm::rotate(glm::tmat4x4<float>(1.0f), -(float)(penStatus.orientation[1] - M_PI/2.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+      auto rotX = glm::rotate(glm::tmat4x4<float>(1.0f), -(penStatus.orientation[1] - M_PI_F/2.0f), glm::vec3(1.0f, 0.0f, 0.0f));
       axis_x = rotX*axis_x;
       axis_y = rotX*axis_y;
       axis_z = rotX*axis_z;
       // apply azimuth by rotation around z
-      auto rotZ = glm::rotate(glm::tmat4x4<float>(1.0f), (penStatus.orientation[0] + (float)M_PI), glm::vec3(0.0f, 0.0f, 1.0f));
+      auto rotZ = glm::rotate(glm::tmat4x4<float>(1.0f), penStatus.orientation[0] + M_PI_F, glm::vec3(0.0f, 0.0f, 1.0f));
       axis_x = rotZ*axis_x;
       axis_y = rotZ*axis_y;
       axis_z = rotZ*axis_z;
