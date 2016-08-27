@@ -1823,6 +1823,9 @@ namespace ls {
       }
       static int n;
       switch (uMsg) {
+        case WM_CREATE:
+          needRender = true;
+          break;
         case WM_MOUSEMOVE:
         needRender = true;
         GetCursorPos(&cursor);
@@ -1833,9 +1836,10 @@ namespace ls {
       case WM_CLOSE:
         PostQuitMessage(0);
         break;
-      // case WM_PAINT: // WM_PAINT is not removed by GetMessage from queue!
-      //   return TRUE;
-      //   break;
+      case WM_PAINT: // WM_PAINT is not removed by GetMessage from queue!
+        needRender = true;
+        //   return TRUE;
+        break;
       case WT_PACKET:
         if (WTPacket((HCTX)lParam, wParam, &pkt)) 
         {

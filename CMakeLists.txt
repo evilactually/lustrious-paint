@@ -13,9 +13,9 @@ set (VERSION_MAJOR 0)
 set (VERSION_MINOR 1)
 set (VERSION_REVISION 0)
 if (CMAKE_CL_64)
-	set (VERSION_BUILD ${VERSION_BUILD_x86_64})
+  set (VERSION_BUILD ${VERSION_BUILD_x86_64})
 else()
-	set (VERSION_BUILD ${VERSION_BUILD_x86})
+  set (VERSION_BUILD ${VERSION_BUILD_x86})
 endif()
 
 # File info
@@ -48,16 +48,16 @@ configure_file (
 file(GLOB_RECURSE SOURCE_FILES
   "src/*.h"
   "src/*.cpp"
-	"src/*.hpp"
-	"src/*.inl"
-	"${PROJECT_BINARY_DIR}/resources/*.rc"
-	"${PROJECT_BINARY_DIR}/src/*.h"
-	"${PROJECT_BINARY_DIR}/src/*.hpp"
-	"resources/*.rc"
+  "src/*.hpp"
+  "src/*.inl"
+  "${PROJECT_BINARY_DIR}/resources/*.rc"
+  "${PROJECT_BINARY_DIR}/src/*.h"
+  "${PROJECT_BINARY_DIR}/src/*.hpp"
+  "resources/*.rc"
 )
 
 # Include external headers
-include_directories("external/")
+include_directories("include/")
 
 # Definitions
 add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES)
@@ -65,10 +65,10 @@ add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SEC
 # Find Vulkan SDK
 find_package(Vulkan)
 if(VULKAN_FOUND)
-	include_directories(${VULKAN_INCLUDE_DIR})
-	message(${VULKAN_LIBRARY})
+  include_directories(${VULKAN_INCLUDE_DIR})
+  message(${VULKAN_LIBRARY})
 else()
-	message(FATAL_ERROR "Vulkan SDK not found")
+  message(FATAL_ERROR "Vulkan SDK not found")
 endif()
 
 # Include generated headers
