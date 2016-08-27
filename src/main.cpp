@@ -1398,7 +1398,7 @@ namespace ls {
         &semaphores.renderingFinished          // const VkSemaphore           *pSignalSemaphores
       );
 
-      if( presentQueue.handle.submit( 1, &submit_info, submitCompleteFence ) != vk::Result::eSuccess ) {
+      if( graphicsQueue.handle.submit( 1, &submit_info, submitCompleteFence ) != vk::Result::eSuccess ) {
         std::cout << "Submit to queue failed!" << std::endl;
         Error();
       }
