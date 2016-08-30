@@ -10,6 +10,8 @@
 #include "wt.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <FreeImage.h>
+
 
 #include <chrono>
 #include <thread>
@@ -19,9 +21,7 @@ using namespace std::chrono_literals;
 #define PACKETMODE 0
 #include "wintab/PKTDEF.h"
 
-//#include "mesh.h"
-
-//#include "Application.hpp"
+#define GIF_RECORDING
 
 //void assert(bool flag, char *msg = "") {
 //    if (!flag) {
@@ -134,6 +134,322 @@ namespace ls {
       float size = 1.0f;
     };
 
+    vk::PhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+
+    #ifdef GIF_RECORDING
+    vk::Semaphore captureFinished;
+    vk::Image captureBufferImage;
+    vk::DeviceMemory captureBufferImageMemory;
+    vk::CommandBuffer captureFrameCmds;
+    vk::Fence captureCompleteFence;
+    vk::DeviceSize captureMemorySize;
+    HANDLE captureBufferFile;
+    HANDLE captureBufferFileMapping;
+    void* captureBufferFileData;
+    #endif
+
+    // Find a memory type in "memoryTypeBits" that includes all of "properties"
+    int32_t FindProperties(uint32_t memoryTypeBits, vk::MemoryPropertyFlags properties)
+    {
+      for (int32_t i = 0; i < physicalDeviceMemoryProperties.memoryTypeCount; ++i)
+      {
+        if ((memoryTypeBits & (1 << i)) &&
+          ((physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
+          return i;
+      }
+      return -1;
+    }
+
+    void CmdImageBarrier( vk::CommandBuffer cmdBuffer,
+                          vk::AccessFlags srcAccessMask,
+                          vk::AccessFlags dstAccessMask,
+                          vk::ImageLayout oldLayout,
+                          vk::ImageLayout newLayout,
+                          uint32_t srcQueueFamilyIndex,
+                          uint32_t dstQueueFamilyIndex,
+                          vk::Image image,
+                          vk::ImageSubresourceRange subresourceRange,
+                          vk::PipelineStageFlags srcStageMask,
+                          vk::PipelineStageFlags dstStageMask,
+                          vk::DependencyFlags dependencyFlags) {
+      vk::ImageMemoryBarrier barrier(
+        srcAccessMask,              // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
+        dstAccessMask,              // VkAccessFlags            dstAccessMask
+        oldLayout,                  // VkImageLayout            oldLayout
+        newLayout,                  // VkImageLayout            newLayout
+        srcQueueFamilyIndex,        // uint32_t                 srcQueueFamilyIndex
+        dstQueueFamilyIndex,        // uint32_t                 dstQueueFamilyIndex
+        image,                      // VkImage                  image
+        subresourceRange            // VkImageSubresourceRange  subresourceRange
+      );
+
+      cmdBuffer.pipelineBarrier( 
+        srcStageMask,
+        dstStageMask,
+        dependencyFlags,
+        0,
+        nullptr,
+        0,
+        nullptr,
+        1,
+        &barrier);
+
+    }
+
+
+      //   vk::ImageMemoryBarrier barrier_from_present_to_draw(
+    //     vk::AccessFlagBits(),                                   // VkAccessFlags            srcAccessMask
+    //     vk::AccessFlagBits::eMemoryRead,                        // VkAccessFlags            dstAccessMask
+    //     vk::ImageLayout::eUndefined,                            // VkImageLayout            oldLayout // TODO: DO AN INITIAL FILL
+    //     vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
+    //     VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 srcQueueFamilyIndex
+    //     VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 dstQueueFamilyIndex
+    //     swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
+    //     image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
+    //   );
+
+    //   commandBuffer.pipelineBarrier( 
+    //     vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
+    //     vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
+    //     vk::DependencyFlagBits(),
+    //     0,
+
+    #ifdef GIF_RECORDING
+    void CreateCaptureBufferImage() {
+      vk::ImageCreateInfo imageCreateInfo( vk::ImageCreateFlags(), 
+                                           vk::ImageType::e2D,
+                                           //vk::Format::eB8G8R8A8Unorm, // can convert to any same-sized format
+                                           vk::Format::eR8G8B8A8Srgb,
+                                           vk::Extent3D(swapChainInfo.extent.width, swapChainInfo.extent.height, 1),
+                                           1, // mipLevels
+                                           1, // arrayLayers
+                                           vk::SampleCountFlagBits::e1,
+                                           vk::ImageTiling::eLinear, // have to have linear for host access
+                                           vk::ImageUsageFlagBits::eTransferDst,
+                                           vk::SharingMode::eExclusive, // not using from other queues
+                                           0, 
+                                           nullptr, 
+                                           vk::ImageLayout::eUndefined );
+      vk::MemoryRequirements memoryRequirements;
+      if ( device.createImage(&imageCreateInfo, nullptr, &captureBufferImage) != vk::Result::eSuccess ) {
+        std::cout << "Could not create image!" << std::endl;
+        Error();
+      }
+      device.getImageMemoryRequirements(captureBufferImage, &memoryRequirements);
+      // memory requirements give required flags only, not exact type index, we have to find that
+      int32_t memoryType = FindProperties( memoryRequirements.memoryTypeBits, 
+                                           vk::MemoryPropertyFlagBits::eHostVisible |
+                                           vk::MemoryPropertyFlagBits::eHostCoherent );
+      vk::MemoryAllocateInfo memoryAllocationInfo( memoryRequirements.size,
+                                                   memoryType ); // heap index is known implicitly from type index
+      device.allocateMemory( &memoryAllocationInfo, nullptr, &captureBufferImageMemory );
+      device.bindImageMemory( captureBufferImage, captureBufferImageMemory, 0 );
+      captureMemorySize = memoryRequirements.size;
+    }
+
+    //void ()
+
+    void RecordFrameCaptureCmds() {
+      
+      vk::CommandBufferBeginInfo cmd_buffer_begin_info(
+          vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
+          nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
+      );
+
+      captureFrameCmds.begin( &cmd_buffer_begin_info );
+
+      vk::ImageSubresourceRange imageSubresourceRange(
+        vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
+        0,                                              // uint32_t                               baseMipLevel
+        1,                                              // uint32_t                               levelCount
+        0,                                              // uint32_t                               baseArrayLayer
+        1                                               // uint32_t                               layerCount
+      );
+
+      // transition swap chain image into transfer source layout
+      CmdImageBarrier( captureFrameCmds,
+                       vk::AccessFlagBits::eMemoryRead,
+                       vk::AccessFlagBits::eTransferRead,
+                       vk::ImageLayout::ePresentSrcKHR,
+                       vk::ImageLayout::eTransferSrcOptimal,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                       imageSubresourceRange,
+                       vk::PipelineStageFlags(),             // wait for nothing
+                       vk::PipelineStageFlagBits::eTransfer, // block transfer
+                       vk::DependencyFlags() );
+
+      // transition captureBufferImage to transfer destination layout
+      CmdImageBarrier( captureFrameCmds,
+                       vk::AccessFlags(),
+                       vk::AccessFlagBits::eTransferWrite,
+                       vk::ImageLayout::eUndefined,
+                       vk::ImageLayout::eTransferDstOptimal,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       captureBufferImage,
+                       imageSubresourceRange,
+                       vk::PipelineStageFlags(),             // wait for nothing
+                       vk::PipelineStageFlagBits::eTransfer, // block transfer
+                       vk::DependencyFlags() );
+      
+      vk::ImageSubresourceLayers subresourceLayers(
+        vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
+        0,                                              // uint32_t                               mipLevel
+        0,                                              // uint32_t                               baseArrayLayer
+        1                                               // uint32_t                               layerCount
+      );
+
+      vk::ImageCopy region = {
+        subresourceLayers,
+        {0,0,0},
+        subresourceLayers,
+        {0,0,0},
+        {swapChainInfo.extent.width, swapChainInfo.extent.height, 1}
+      };
+
+      captureFrameCmds.copyImage( swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                                  vk::ImageLayout::eTransferSrcOptimal,
+                                  captureBufferImage,
+                                  vk::ImageLayout::eTransferDstOptimal,
+                                  1,
+                                  &region );
+
+      // transition captureBufferImage to host read layout
+      CmdImageBarrier( captureFrameCmds,
+                       vk::AccessFlagBits::eTransferWrite,
+                       vk::AccessFlagBits::eHostRead,        // image memory will be mapped for reading later
+                       vk::ImageLayout::eTransferDstOptimal,
+                       vk::ImageLayout::eGeneral,            // layout that supports host access
+                       VK_QUEUE_FAMILY_IGNORED,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       captureBufferImage,
+                       imageSubresourceRange,
+                       vk::PipelineStageFlagBits::eTransfer, // wait for transfer
+                       vk::PipelineStageFlagBits::eHost,     // guarantee visibility of writes to host
+                       vk::DependencyFlags() );
+
+      // transition swap chain image back to presentation layout
+      CmdImageBarrier( captureFrameCmds,
+                       vk::AccessFlagBits::eTransferRead,
+                       vk::AccessFlagBits::eMemoryRead,
+                       vk::ImageLayout::eTransferSrcOptimal,
+                       vk::ImageLayout::ePresentSrcKHR,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       VK_QUEUE_FAMILY_IGNORED,
+                       swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                       imageSubresourceRange,
+                       vk::PipelineStageFlagBits::eTransfer, // wait for transfer
+                       vk::PipelineStageFlags(),             // block nothing, because nothing comes next
+                       vk::DependencyFlags() );
+
+      captureFrameCmds.end();
+    }
+
+    void OpenBufferFile() {
+      TCHAR tmpPath[MAX_PATH];
+      TCHAR tmpFilePath[MAX_PATH];
+      DWORD result = GetTempPath(MAX_PATH, tmpPath);
+      if ( (result > MAX_PATH) || (result == 0) ) {
+        std::cout << "GetTempPath failed!" << std::endl;
+        Error();
+      }
+      std::cout << "Using temporary path:" << tmpPath << std::endl;
+      result = GetTempFileName( tmpPath, TEXT("ls"), 0, tmpFilePath );
+      std::cout << "Buffer temporary file" << tmpFilePath << std::endl;
+      if ( !result ) {
+        std::cout << "GetTempFileName failed!" << std::endl;
+        Error();
+      }
+      
+      captureBufferFile = CreateFile(tmpFilePath, GENERIC_WRITE | GENERIC_READ, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+      if (captureBufferFile == INVALID_HANDLE_VALUE) {
+        std::cout << "Failed to create a file!" << std::endl;
+        Error(); 
+      }
+
+      // captureBufferFileMapping = CreateFileMapping(captureBufferFile, NULL, PAGE_READWRITE, 0, 4096, NULL);
+      // if (!captureBufferFileMapping) {
+      //   std::cout << "Failed to create file mapping!" << std::endl;
+      //   Error(); 
+      // }
+
+      // captureBufferFileData = MapViewOfFile(captureBufferFileMapping, FILE_MAP_WRITE, 0,0,0);
+      // if (!captureBufferFileData) {
+      //   std::cout << "Failed to create map view of a file!" << std::endl;
+      //   Error(); 
+      // }
+    }
+
+//     char* program_data;
+  
+//   HANDLE hMapping;
+
+    
+//     assert(hFile != INVALID_HANDLE_VALUE);
+//     hMapping = CreateFileMapping(hFile, NULL, PAGE_READWRITE, 0, 0, NULL);
+//     assert(hMapping);
+//     program_data = MapViewOfFile(hMapping, FILE_MAP_WRITE, 0,0,0);
+//     assert(program_data);
+// }
+
+    void SaveCapturedFrame() {
+      void* data;
+      DWORD written;
+
+      device.mapMemory( captureBufferImageMemory, 0, captureMemorySize, vk::MemoryMapFlags(), &data );
+
+      vk::SubresourceLayout subresourceLayout;
+      vk::ImageSubresource imageSubresource = {
+        vk::ImageAspectFlagBits::eColor,
+        0,
+        0
+      };
+
+      device.getImageSubresourceLayout( captureBufferImage,
+                                        &imageSubresource,
+                                        &subresourceLayout );
+      
+      // save frame to temporary file
+      if ( !WriteFile( captureBufferFile, data, captureMemorySize, &written, nullptr ) ){
+        std::cout << GetLastError() << std::endl;
+        Error();
+      }
+
+      if ( written != captureMemorySize )
+      {
+        std::cout << "Failed to save captured frame to file!" << std::endl;
+        Error();
+      }
+
+      // std::cout << subresourceLayout.size << std::endl;
+      // std::cout << subresourceLayout.offset << std::endl;
+      // std::cout << subresourceLayout.rowPitch << std::endl;
+
+      //RGBQUAD color;
+      //BYTE *dataAsBytes = (BYTE*)data;
+      // for (uint32_t y = 0; y < swapChainInfo.extent.height; ++y)
+      // {
+      //      if ( !WriteFile( captureBufferFile, &data, captureMemorySize, &written, nullptr ) ){
+      //   std::cout << GetLastError() << std::endl;
+      //   Error();
+      // }
+
+      //   // for (uint32_t x = 0; x < swapChainInfo.extent.width; ++x)
+      //   // {
+      //   //   uint32_t offset = x*4 + subresourceLayout.rowPitch*y;
+      //   //   color.rgbRed = dataAsBytes[offset];
+      //   //   color.rgbGreen = dataAsBytes[offset + 1];
+      //   //   color.rgbBlue = dataAsBytes[offset + 2];
+      //   // }
+      // }
+
+      device.unmapMemory ( captureBufferImageMemory );
+    }
+
+    #endif
+
     VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback( VkDebugReportFlagsEXT flags, 
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
@@ -142,12 +458,12 @@ namespace ls {
     }
 
     bool CheckExtensionAvailability( const char *extension_name, const std::vector<vk::ExtensionProperties> &available_instance_extensions ) {
-        for( size_t i = 0; i < available_instance_extensions.size(); ++i ) {
-            if( strcmp( available_instance_extensions[i].extensionName, extension_name ) == 0 ) {
-                return true;
-            }
+      for( size_t i = 0; i < available_instance_extensions.size(); ++i ) {
+        if( strcmp( available_instance_extensions[i].extensionName, extension_name ) == 0 ) {
+            return true;
         }
-        return false;
+      }
+      return false;
     }
 
     void CheckValidationAvailability() {
@@ -253,12 +569,11 @@ namespace ls {
             physicalDevice.getSurfaceSupportKHR( i, swapChainInfo.presentationSurface, &queue_present_support[i] );
 
             if( (queue_family_properties[i].queueCount > 0) &&
-                (queue_family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics) ) {
+                (queue_family_properties[i].queueFlags & (vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eTransfer)) ) {
                 // Select first queue that supports graphics
                 if( graphicsQueueFamilyIndex == UINT32_MAX ) {
                     graphicsQueueFamilyIndex = i;
                 }
-
                 // If there is queue that supports both graphics and present - prefer it
                 if( queue_present_support[i] ) {
                     *selected_graphics_queue_family_index = i;
@@ -400,6 +715,8 @@ namespace ls {
         ls::presentQueue.familyIndex = selected_present_queue_family_index;
         ls::physicalDevice = *selected_physical_device;
 
+        physicalDevice.getMemoryProperties(&physicalDeviceMemoryProperties);
+
         CheckPushConstantsLimits();
     }
 
@@ -431,6 +748,13 @@ namespace ls {
             std::cout << "Could not create semaphores!" << std::endl;
             Error();
         }
+
+        #ifdef GIF_RECORDING
+        if (device.createSemaphore( &semaphore_create_info, nullptr, &captureFinished ) != vk::Result::eSuccess) {
+            std::cout << "Could not create semaphores!" << std::endl;
+            Error();
+        }
+        #endif
     }
 
     uint32_t GetSwapChainNumImages( vk::SurfaceCapabilitiesKHR &surface_capabilities, vk::PresentModeKHR chosen_present_mode) {
@@ -519,10 +843,14 @@ namespace ls {
     Optional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
       // Color attachment flag must always be supported, don't have to check
       // We can define other usage flags but we always need to check if they are supported
-      if( surface_capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) { // TODO: Why can't I get eTransferDst?
-        return vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
+      vk::ImageUsageFlags additionalImageUsageFlags = vk::ImageUsageFlagBits::eTransferDst;
+      #ifdef GIF_RECORDING
+      additionalImageUsageFlags |= vk::ImageUsageFlagBits::eTransferSrc;
+      #endif
+      if( surface_capabilities.supportedUsageFlags & additionalImageUsageFlags ) {
+        return vk::ImageUsageFlagBits::eColorAttachment | additionalImageUsageFlags;
       }
-      std::cout << "VK_IMAGE_USAGE_TRANSFER_DST image usage is not supported by the swap chain!" << std::endl;    
+      std::cout << "Image usage flags are not supported by the swap chain:" << vk::to_string(additionalImageUsageFlags) << std::endl;
       return Optional<vk::ImageUsageFlags>::None();
     }
 
@@ -709,15 +1037,22 @@ namespace ls {
             Error();
         }
 
-        vk::CommandBufferAllocateInfo cmd_buffer_allocate_info_2(
+        vk::CommandBufferAllocateInfo cmd_buffer_allocate_info(
           graphicsCommandPool,                               // VkCommandPool                commandPool
           vk::CommandBufferLevel::ePrimary,                  // VkCommandBufferLevel         level
           1);                                                // uint32_t                     bufferCount
 
-        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info_2, &commandBuffer ) != vk::Result::eSuccess ) {
+        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info, &commandBuffer ) != vk::Result::eSuccess ) {
             std::cout << "Could not allocate command buffer!" << std::endl;
             Error();
         }
+
+        #ifdef GIF_RECORDING
+        if( device.allocateCommandBuffers( &cmd_buffer_allocate_info, &captureFrameCmds ) != vk::Result::eSuccess ) {
+            std::cout << "Could not allocate command buffer!" << std::endl;
+            Error();
+        }
+        #endif
     }
     
     void FreeCommandBuffers() {
@@ -1083,6 +1418,14 @@ namespace ls {
         std::cout << "Could not create a fence!" << std::endl;
         Error();
       }
+
+      #ifdef GIF_RECORDING
+      fence_create_info.flags = vk::FenceCreateFlags();
+      if( device.createFence( &fence_create_info, nullptr, &captureCompleteFence ) != vk::Result::eSuccess ) {
+        std::cout << "Could not create a fence!" << std::endl;
+        Error();
+      }      
+      #endif
     }
 
     void DestroyFence() {
@@ -1185,6 +1528,11 @@ namespace ls {
         CreateFramebuffers();
         CreatePipeline();
         CreateCommandBuffers();
+
+        #ifdef GIF_RECORDING
+        CreateCaptureBufferImage();
+        RecordFrameCaptureCmds();
+        #endif
 
         std::cout << "Swap chain extent " << swapChainInfo.extent.width << "x" << swapChainInfo.extent.height << std::endl;
       }
@@ -1386,6 +1734,7 @@ namespace ls {
         Error();
       }
 
+      // stall these stages until image is available
       vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
                                                    vk::PipelineStageFlagBits::eTransfer;
       vk::SubmitInfo submit_info(
@@ -1402,16 +1751,38 @@ namespace ls {
         std::cout << "Submit to queue failed!" << std::endl;
         Error();
       }
-
+      #ifdef GIF_RECORDING
+      // stall transfer stage until rendering is finished 
+      wait_dst_stage_mask = vk::PipelineStageFlagBits::eTransfer;
+      submit_info = {
+        1,                                     // uint32_t                     waitSemaphoreCount
+        &semaphores.renderingFinished,         // const VkSemaphore           *pWaitSemaphores
+        &wait_dst_stage_mask,                  // const VkPipelineStageFlags  *pWaitDstStageMask;
+        1,                                     // uint32_t                     commandBufferCount
+        &captureFrameCmds,                     // const VkCommandBuffer       *pCommandBuffers
+        1,                                     // uint32_t                     signalSemaphoreCount
+        &captureFinished                       // const VkSemaphore           *pSignalSemaphores
+      };
+      device.resetFences( 1, &captureCompleteFence );
+      if( graphicsQueue.handle.submit( 1, &submit_info, captureCompleteFence ) != vk::Result::eSuccess ) {
+        std::cout << "Submit to queue failed!" << std::endl;
+        Error();
+      }
+      // let present start now, it has captureFinished semaphore to synchronize it
+      #endif
       vk::PresentInfoKHR present_info(
         1,                                    // uint32_t                     waitSemaphoreCount
+        #ifdef GIF_RECORDING
+        &captureFinished,
+        #else
         &semaphores.renderingFinished,        // const VkSemaphore           *pWaitSemaphores
+        #endif
         1,                                    // uint32_t                     swapchainCount
         &swapChainInfo.swapChain,             // const VkSwapchainKHR        *pSwapchains
         &swapChainInfo.acquiredImageIndex,    // const uint32_t              *pImageIndices
         nullptr                               // VkResult                    *pResults
       );
-      
+
       vk::Result result = presentQueue.handle.presentKHR( &present_info );
 
       switch( result ) {
@@ -1426,6 +1797,16 @@ namespace ls {
           std::cout << "Problem occurred during image presentation!" << std::endl;
           Error();
       }
+
+      // resume processing captured frame
+      #ifdef GIF_RECORDING
+      if( device.waitForFences( 1, &captureCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
+        std::cout << "Waiting for fence takes too long!" << std::endl;
+        Error();
+      }
+      
+      SaveCapturedFrame();
+      #endif
     }
 
     void RepeatLastFrame() {
@@ -2113,6 +2494,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     ls::CreateMainWindow();
     AttachConsole();
 
+    #ifdef GIF_RECORDING
+    FreeImage_Initialise();
+    ls::OpenBufferFile();
+    #endif
+
     wt::LoadWintabLibrary();
     wt::LoadEntryPoints();
     ls::WintabReport();
@@ -2149,6 +2535,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     ShowWindow(ls::windowHandle, SW_SHOW);
 
+    #ifdef GIF_RECORDING
+    ls::CreateCaptureBufferImage();
+    ls::RecordFrameCaptureCmds();
+    #endif
+
     while (ls::Run()) {};
   }
   catch (...) {}; // run clean-up on errors
@@ -2171,5 +2562,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   ls::FreeInstance();
 
   vk::UnloadVulkanLibrary();
+
+  FreeImage_DeInitialise();
   return ls::msg.wParam;
 }

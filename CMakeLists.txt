@@ -74,8 +74,26 @@ endif()
 # Include generated headers
 include_directories("${PROJECT_BINARY_DIR}/src/")
 
+# Set link path
+if(CMAKE_CL_64) # TODO: Why does CMAKE_SYSTEM_PROCESSOR return AMD64 even for 32 bit?
+  set(LIBRARY_DIRECTORY "${CMAKE_SOURCE_DIR}/lib/x64/")
+else()
+  set(LIBRARY_DIRECTORY "${CMAKE_SOURCE_DIR}/lib/x32/")
+endif()
+
+link_directories("${LIBRARY_DIRECTORY}")
+
 add_executable(LustriousPaint WIN32 ${SOURCE_FILES})
 target_link_libraries (LustriousPaint ${VULKAN_LIBRARY})
+
+# Link FreeImage
+target_link_libraries (LustriousPaint "FreeImage")
+
+# Copy Freemake.dll
+add_custom_command(TARGET LustriousPaint POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy
+    "${LIBRARY_DIRECTORY}/FreeImage.dll"
+    "$<TARGET_FILE_DIR:LustriousPaint>/")
 
 ### Shaders Target ###
 
