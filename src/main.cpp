@@ -158,6 +158,20 @@ namespace ls {
       std::chrono::high_resolution_clock::time_point startTime; // time when capture was started(used to estimate framerate)
     } captureInfo;
 
+    BOOL ShowSaveAsDialog(LPTSTR fileName, DWORD fileNameLength, LPTSTR filter, LPTSTR defaultExtension = NULL) {
+      fileName[0] = '\0';
+      OPENFILENAME dialogInfo = {};
+      dialogInfo.lStructSize = sizeof(OPENFILENAME);
+      dialogInfo.hwndOwner = windowHandle;
+      dialogInfo.hInstance = hInstance;
+      dialogInfo.lpstrFilter = filter;
+      dialogInfo.lpstrFile = fileName; 
+      dialogInfo.nMaxFile = fileNameLength;
+      dialogInfo.lpstrDefExt = defaultExtension;
+      dialogInfo.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_OVERWRITEPROMPT;
+      return GetSaveFileName(&dialogInfo);
+    }
+
     // Find a memory type in "memoryTypeBits" that includes all of "properties"
     int32_t FindProperties(uint32_t memoryTypeBits, vk::MemoryPropertyFlags properties)
     {
@@ -425,17 +439,30 @@ namespace ls {
     }
 
     void StopCapturing() {
-      std::cout << "Recording stopped" << std::endl;
-
       std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
-      double captureDuration = std::chrono::duration<double, std::milli>(endTime - captureInfo.startTime).count()/1000.0;
-      double fps = 30.0f;//((double)captureInfo.captureFrameCount)/captureDuration;
+      BYTE* captureData = (BYTE*)malloc(captureInfo.capturedFrameImage.size);
+      DWORD bytesRead;
 
-      HANDLE hMapping = CreateFileMapping(captureInfo.hCaptureBufferFile, NULL, PAGE_READONLY, 0, 0, NULL);
-      BYTE* captureData = (BYTE*)MapViewOfFile(hMapping, FILE_MAP_READ, 0,0,0);
+      std::cout << "Recording stopped" << std::endl;
+      SetFilePointer( captureInfo.hCaptureBufferFile, // hFile
+                      0,                              // lDistanceToMove
+                      0,                              // lpDistanceToMoveHigh
+                      FILE_BEGIN );                   // dwMoveMethod
+
+      char fileName[1024];
+      BOOL dialogResult = ShowSaveAsDialog(fileName, sizeof(fileName), "*.gif", "gif");
+
+      if (!dialogResult) {
+        free(captureData);
+        CloseHandle(captureInfo.hCaptureBufferFile);
+        captureInfo.capturing = false;
+        return;
+      }
+
+      std::cout << "Saving to " << fileName << std::endl;
 
       FIMULTIBITMAP* multibitmap = FreeImage_OpenMultiBitmap( FIF_GIF,
-                                                              "out.gif",
+                                                              fileName,
                                                               TRUE,
                                                               FALSE );
 
@@ -445,6 +472,8 @@ namespace ls {
         Error();
       }
 
+      double captureDuration = std::chrono::duration<double, std::milli>(endTime - captureInfo.startTime).count()/1000.0;
+      double fps = 30.0f;//((double)captureInfo.captureFrameCount)/captureDuration;
       DWORD frameTimeMs = (DWORD)((1000.0 / fps) + 0.5);
       //DWORD frameTimeMs = (DWORD)( ((double)captureInfo.captureFrameCount)/captureDuration + 0.5);
       //std::cout << ((double)captureInfo.captureFrameCount)/captureDuration << std::endl;
@@ -458,9 +487,21 @@ namespace ls {
       FreeImage_SetTagValue(tag, &frameTimeMs);
 
       while ( captureInfo.captureFrameCount ) {
-        FIBITMAP* bitmap = FreeImage_Allocate(captureInfo.capturedFrameImage.extent.width, 
-                                              captureInfo.capturedFrameImage.extent.height,
-                                              24);
+        // read next captured frame
+        BOOL readResult = ReadFile( captureInfo.hCaptureBufferFile,
+                                  captureData,
+                                  captureInfo.capturedFrameImage.size,
+                                  &bytesRead,
+                                  nullptr );
+
+        if ( !readResult || (bytesRead != captureInfo.capturedFrameImage.size) ) {
+          std::cout << "ReadFile failed:" << GetLastError() << std::endl;
+          Error();
+        }
+
+        FIBITMAP* bitmap = FreeImage_Allocate( captureInfo.capturedFrameImage.extent.width, 
+                                               captureInfo.capturedFrameImage.extent.height,
+                                               24 );
         RGBQUAD color;
 
         for (int y = 0; y < captureInfo.capturedFrameImage.extent.height; ++y)
@@ -490,13 +531,14 @@ namespace ls {
         FreeImage_Unload(bitmap);
 
         captureInfo.captureFrameCount--;
-        captureData += captureInfo.capturedFrameImage.size;
+        //captureData += captureInfo.capturedFrameImage.size;
       }
 
       FreeImage_CloseMultiBitmap(multibitmap);
 
-      UnmapViewOfFile(captureData);
-      CloseHandle(hMapping);
+      free(captureData);
+      //UnmapViewOfFile(captureData);
+      //CloseHandle(hMapping);
       CloseHandle(captureInfo.hCaptureBufferFile);
       captureInfo.capturing = false;
     }
