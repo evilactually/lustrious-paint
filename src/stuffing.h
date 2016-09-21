@@ -33,6 +33,7 @@
 #pragma once
 #include "Optional.hpp"
 #include <algorithm>
+#include <iterator>
 #include "tuples.h"
 #include "math.h"
 #include "BBox3f.h"
@@ -58,9 +59,9 @@ public:
   };
 
   struct NodeOffset {
-    int xOffset;
-    int yOffset;
-    int zOffset;
+    int dx;
+    int dy;
+    int dz;
   };
 
   struct Node {
@@ -81,56 +82,91 @@ public:
     Node n4;
   };
 
-  class EdgeIterator {
-
-  };
-
-  void GetTetrahedronIterator();
-  void GetVertexIterator();
-  void GetEdgeIterator();
-
-  // Node info
-  glm::vec3 GetNodePosition(Node node);
-  Color GetNodeColor(Node node);
-  Value GetNodeValue(Node node);
-
-  // Node actions
-  void SetNodeValue(Node node, Value value);
-  void DeleteNode(Node node);
-  void UndeleteNode(Node node);
-  void WarpNode(Node node, glm::vec3 position);
-  void DeleteNodeCutPoints(Node node);
-
-  // Edge info
-  Optional<glm::vec3> GetEdgeCutPoint(Edge edge);
-  Color GetEdgeColor(Edge edge);
-
-  // Edge actions
-  void SetEdgeCutPoint(Edge edge, glm::vec3 position);
-
-//public:
   struct EdgeMetaData {
     Optional<glm::vec3> cutPoint;
   };
 
-  struct Nexus
-  {
-    EdgeMetaData data[7];
-  };
-
   struct NodeMetaData {
-    Nexus nexus;
+    Node coordinates;
     glm::vec3 position;
     Value value;
+    EdgeMetaData edgeNexus[7];
   };
 
+  class NodeIterator {
+  friend BCCLattice;
+  public:
+    Optional<Node> Next() {
+      if ( currentIndex >= nodeMetaData.size() )
+      {
+        return Optional<Node>::None();
+      }
+      return nodeMetaData[currentIndex++].coordinates;
+    }
+  private:
+    NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
+    std::vector<NodeMetaData> const& nodeMetaData;
+    size_t currentIndex = 0;
+  };
+
+  // class NodeIterator: public std::iterator<std::forward_iterator_tag, Node> {
+  // public:
+  //   NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
+  //   NodeIterator& operator++() { currentIndex++; return *this; }
+  //   Node const& operator*() { return nodeMetaData[currentIndex].coordinates; }
+  // private:
+  //   std::vector<NodeMetaData> const& nodeMetaData;
+  //   size_t currentIndex = 0;
+  // };
+
+  // class NodeIterator {
+  // public:
+  //   typedef NodeIterator self_type;
+  //   typedef Node value_type;
+  //   typedef std::forward_iterator_tag iterator_category;
+  //   self_type operator++() { self_type i = *this; currentIndex++; return i; }
+  //   value_type operator*() { return nodeMetaData[currentIndex].coordinates; }
+  // private:
+  //   NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
+  //   std::vector<NodeMetaData> const& nodeMetaData;
+  //   size_t currentIndex = 0;
+  // };
+
+  void GetTetrahedronIterator(); // TODO: ???
+  NodeIterator GetNodeIterator();
+  void GetNodeEdgeIterator();  //   TODO:
+  void GetEdgeIterator();      //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+
+
+
+  // Node info
+  glm::vec3 GetNodePosition(Node node) const;
+  Color GetNodeColor(Node node) const;
+  Value GetNodeValue(Node node) const;
+  void SetNodeValue(Node node, Value value);
+  void SetNodePosition(Node node, glm::vec3 position);
+  void DeleteNodeCutPoints(Node node);
+ 
+  // Edge info
+  Optional<glm::vec3> GetEdgeCutPoint(Edge edge) const;
+  Color GetEdgeColor(Edge edge) const;
+  void SetEdgeCutPoint(Edge edge, glm::vec3 position);
+
+//public:
+  
+
+  const NodeOffset nexusOffsets[7] = {{1,1,1},{1,1,-1},{-1,1,-1},{-1,1,1},{2,0,0},{0,2,0},{0,0,2}};
   std::vector<NodeMetaData> nodeMetaData;
   BBox3i latticeBounds;
   
-  void GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z);
-  Node GetEdgeNexusNode(Edge edge);
-  BBox3i ComputeGridBounds(BBox3f box3f); // move this out
-  int GetNodeIndex(int x, int y, int z);
+  //void GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z);
+  Optional<int> GetEdgeIndexInNexus(BCCLattice::Edge edge) const;
+  Node GetEdgeNexusNode(Edge edge) const;
+  NodeMetaData& GetNodeMetaDataReference(Node node);
+  NodeMetaData const& GetNodeMetaDataConstReference(Node node) const;
+  EdgeMetaData& GetEdgeMetaDataReference(Edge edge);
+  EdgeMetaData const& GetEdgeMetaDataConstReference(Edge edge) const;
+  int GetNodeIndex(int x, int y, int z) const;
 };
 
 // void ComputeGridBounds(int3_t* min) {
@@ -138,7 +174,7 @@ public:
 // }
 
 bool operator==(BCCLattice::NodeOffset const & o1, BCCLattice::NodeOffset const & o2) {
-  return o2.xOffset == o1.xOffset && o2.yOffset == o1.yOffset && o2.zOffset == o1.zOffset;
+  return o2.dx == o1.dx && o2.dy == o1.dy && o2.dz == o1.dz;
 }
 
 std::ostream& operator<<(std::ostream& os, const BCCLattice::Node& n)
@@ -149,7 +185,7 @@ std::ostream& operator<<(std::ostream& os, const BCCLattice::Node& n)
 
 std::ostream& operator<<(std::ostream& os, const BCCLattice::NodeOffset& n)
 {
-  os << "( " << n.xOffset << ", " << n.yOffset << ", " << n.zOffset << " )";
+  os << "( " << n.dx << ", " << n.dy << ", " << n.dz << " )";
   return os;
 }
 
@@ -159,7 +195,7 @@ BCCLattice::NodeOffset operator-(BCCLattice::Node const & n1, BCCLattice::Node c
   return {n1.x - n2.x, n1.y - n2.y, n1.z - n2.z};
 }
 
-BBox3i BCCLattice::ComputeGridBounds(BBox3f box3f) {
+BBox3i ComputeGridBounds(BBox3f box3f) {
   BBox3i box3i;
   // Shrink floating point bounding box to integer grid
   box3i.minX = std::ceil(box3f.minX);
@@ -180,32 +216,100 @@ BBox3i BCCLattice::ComputeGridBounds(BBox3f box3f) {
 }
 
 // Unpacks storage efficient three-dimensional indecies into three-dimensional cartesian coordinates
-void BCCLattice::GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z) {
-  int zigZag;
+// void BCCLattice::GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z) {
+//   int zigZag;
 
-  // Initialize
-  x = n1.x;
-  y = n1.y;
-  z = n1.z;
+//   // Initialize
+//   x = n1.x;
+//   y = n1.y;
+//   z = n1.z;
 
-  // Offset z and x by half grid length if y is odd
-  if ( y % 2 )
+//   // Offset z and x by half grid length if y is odd
+//   if ( y % 2 )
+//   {
+//     zigZag = 1;
+//   } else {
+//     zigZag = 0;
+//   }
+
+//   // Expand grid to size 2, so that half grid offset is 1
+//   x *= 2;
+//   z *= 2;
+
+//   // Apply half grid size offset if needed
+//   x += zigZag;
+//   z += zigZag;
+// }
+
+BCCLattice::BCCLattice(BBox3i bounds, float step) {
+  latticeBounds = bounds;
+  for (int z = bounds.minZ; z <= bounds.maxZ; ++z)
   {
-    zigZag = 1;
-  } else {
-    zigZag = 0;
+    for (int y = bounds.minY; y <= bounds.maxY; ++y)
+    {
+      for (int x = bounds.minX; x <= bounds.maxX; ++x)
+      {
+        NodeMetaData nodeInfo;
+        nodeInfo.coordinates = {x,y,z};
+        nodeInfo.position = glm::vec3((x - bounds.minX)*step, (y - bounds.minY)*step, (z - bounds.minZ)*step);
+        nodeInfo.value = Value::eUnassigned;
+        if ( even(y) && even(x) && even(z) || odd(y) && odd(x) && odd(z) )
+        {
+          nodeMetaData.push_back(nodeInfo);
+          char c;
+          if ( even(y) && even(x) && even(z) )
+          {
+            c = 'b';
+          } else {
+            c = 'r';
+          }
+          std::cout << c;
+        } else {
+          std::cout << "_";
+        }
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
   }
-
-  // Expand grid to size 2, so that half grid offset is 1
-  x *= 2;
-  z *= 2;
-
-  // Apply half grid size offset if needed
-  x += zigZag;
-  z += zigZag;
 }
 
-int BCCLattice::GetNodeIndex(int x, int y, int z) {
+BCCLattice::NodeIterator BCCLattice::GetNodeIterator() {
+  return NodeIterator(nodeMetaData);
+}
+
+glm::vec3 BCCLattice::GetNodePosition(Node node) const {
+  return GetNodeMetaDataConstReference(node).position;
+}
+
+BCCLattice::Value BCCLattice::GetNodeValue(Node node) const {
+  return GetNodeMetaDataConstReference(node).value;
+}
+
+BCCLattice::Color BCCLattice::GetNodeColor(BCCLattice::Node node) const {
+  assert(even(node.y) && even(node.x) && even(node.z) || odd(node.y) && odd(node.x) && odd(node.z));
+  // Node is black iff all of it's coordinates are even
+  if ( even(node.x) )
+  {
+    return BCCLattice::Color::eBlack;
+  } else {
+    return BCCLattice::Color::eRed;
+  }
+}
+
+void BCCLattice::SetNodeValue(Node node, Value value) {
+  GetNodeMetaDataReference(node).value = value;
+}
+
+void BCCLattice::SetNodePosition(Node node, glm::vec3 position) {
+  GetNodeMetaDataReference(node).position = position;
+}
+
+void BCCLattice::DeleteNodeCutPoints(Node node) {
+  // TODO: iterate over edges of a vertex
+}
+
+int BCCLattice::GetNodeIndex(int x, int y, int z) const {
   assert(even(y) && even(x) && even(z) || odd(y) && odd(x) && odd(z));
   int evenPlanesCount = intervalEvenCount(latticeBounds.minZ, z - 1);
   int oddPlanesCount = intervalOddCount(latticeBounds.minZ, z - 1);
@@ -228,44 +332,26 @@ int BCCLattice::GetNodeIndex(int x, int y, int z) {
   return planeOffset + rowOffset + columnOffset;
 }
 
-BCCLattice::BCCLattice(BBox3i bounds, float step) {
-  latticeBounds = bounds;
-  std::cout << "BPR " << intervalEvenCount(bounds.minX,bounds.maxX) << std::endl;
-  std::cout << "RPR " << intervalOddCount(bounds.minX,bounds.maxX) << std::endl;
-  std::cout << "BPC " << intervalEvenCount(bounds.minY,bounds.maxY) << std::endl;
-  std::cout << "RPC " << intervalOddCount(bounds.minY,bounds.maxY) << std::endl;
-  for (int z = bounds.minZ; z <= bounds.maxZ; ++z)
-  {
-    for (int y = bounds.minY; y <= bounds.maxY; ++y)
-    {
-      for (int x = bounds.minX; x <= bounds.maxX; ++x)
-      {
-        NodeMetaData nodeInfo;
-        nodeInfo.position = glm::vec3(x,y,z);
-        nodeInfo.value = Value::eUnassigned;
-        if ( even(y) && even(x) && even(z) || odd(y) && odd(x) && odd(z) )
-        {
-          nodeMetaData.push_back(nodeInfo);
-          char c;
-          if ( even(y) && even(x) && even(z) )
-          {
-            c = '*';
-          } else {
-            c = '+';
-          }
-          if ( y == 0 )
-          {
-            //std::cout << "(" << x << " " << y << " " << z << ")" << std::endl;
-          }
-          std::cout << c;
-        } else {
-          std::cout << "_";
-        }
-      }
-      std::cout << std::endl;
-    }
-    std::cout << std::endl;
-  }
+BCCLattice::NodeMetaData& BCCLattice::GetNodeMetaDataReference(Node node) {
+  return nodeMetaData[GetNodeIndex(node.x, node.y, node.z)];
+}
+
+BCCLattice::NodeMetaData const& BCCLattice::GetNodeMetaDataConstReference(Node node) const {
+  return nodeMetaData[GetNodeIndex(node.x, node.y, node.z)]; 
+}
+
+BCCLattice::EdgeMetaData& BCCLattice::GetEdgeMetaDataReference(Edge edge) {
+  Node nexusNode = GetEdgeNexusNode(edge);
+  int edgeIndex = GetEdgeIndexInNexus(edge);
+  return GetNodeMetaDataReference(nexusNode).edgeNexus[edgeIndex];
+}
+
+BCCLattice::EdgeMetaData const& BCCLattice::GetEdgeMetaDataConstReference(Edge edge) const {
+  Node nexusNode = GetEdgeNexusNode(edge);
+  int edgeIndex = GetEdgeIndexInNexus(edge);
+  return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex]; 
+}
+
 
 
   // First row Red or Black?
@@ -309,17 +395,17 @@ BCCLattice::BCCLattice(BBox3i bounds, float step) {
   // std::cout << "yMaxIn " << yMaxIn << std::endl;
   // std::cout << "yMaxOut " << yMaxOut << std::endl;
 
-  float aaa[3];
+//  float aaa[3];
   //ComputeGridBounds(&aaa);
 
   // * * * *
   //  * * * *
   // * * * *
   //  * * * *
-  int width = 10;
-  int height = 10;
-  int depth = 10;
-  nodeMetaData.reserve(width*height*depth);
+  // int width = 10;
+  // int height = 10;
+  // int depth = 10;
+  // nodeMetaData.reserve(width*height*depth);
 
   //nodeMetaData[x+y*width+z*depth]
 
@@ -349,7 +435,7 @@ BCCLattice::BCCLattice(BBox3i bounds, float step) {
   //     }
   //     zf += step;
   //     yf = 0.0f;
-}
+
 
     // first row xf += step, yf = 0.0
     // second row xf += 0.5*step + step, yf += 0.5*step
@@ -364,42 +450,26 @@ BCCLattice::BCCLattice(BBox3i bounds, float step) {
 
   //}
 
-BCCLattice::Node BCCLattice::GetEdgeNexusNode(BCCLattice::Edge edge) {
-  BCCLattice::Color color = GetEdgeColor(edge);
-  int x1, y1, z1;
-  int x2, y2, z2;
-
-  GetNodeGridCoordinates(edge.n1, x1, y1, z1);
-  GetNodeGridCoordinates(edge.n2, x2, y2, z2);
-
-  // Black edges only have one coordinate that's different.
-  // Node having the smaller coordinates is the nexus.
-  if ( color == Color::eBlack )
-  {
-    if ( x1 < x2 || 
-         y1 < y2 || 
-         z1 < z2 ) {
-      return edge.n1;
-    } else {
-      return edge.n2;
-    }
-  }
-
-  // Red edges
-  int offset[3] = {x2 - x1, y2 - y1, z2 - z1};
-
-  int pattern[4][3] = {{1,1,1}, {1,1,-1}, {-1,1,-1}, {-1,1,1}};
+Optional<int> BCCLattice::GetEdgeIndexInNexus(BCCLattice::Edge edge) const {
+  // Get vector representing an edge
+  NodeOffset offset = edge.n2 - edge.n1;
 
   // Test if edge matches one of nexus pattern edges
-  for (int i = 0; i < 4; ++i)
+  for (int i = 0; i < sizeof(nexusOffsets); ++i)
   {
-    if( pattern[i][0] == offset[0] &&
-        pattern[i][1] == offset[1] &&
-        pattern[i][2] == offset[2] ) {
-      return edge.n1;
+    if( nexusOffsets[i] == offset ) {
+      return i;
     }
   }
-  std::cout << "flipped" << std::endl;
+  return Optional<int>::None();
+}
+
+// Every edge has one of it's nodes designated to be used as storage of edge information, called nexus node
+BCCLattice::Node BCCLattice::GetEdgeNexusNode(BCCLattice::Edge edge) const {
+  if ( GetEdgeIndexInNexus(edge) )
+  {
+    return edge.n1;
+  }
   // If edge didn't match any pattern it must be flipped
   return edge.n2;
 }
@@ -427,33 +497,8 @@ BCCLattice::Node BCCLattice::GetEdgeNexusNode(BCCLattice::Edge edge) {
 // 2. Determine Nexus Point
 // 3. Look-up Nexus Entry
 // 4. Look-up Edge Entry
-void BCCLattice::SetEdgeCutPoint(BCCLattice::Edge edge, glm::vec3 position) {
-  BCCLattice::Color color = GetEdgeColor(edge);
-  //Node n = std::min(edge.n1, edge.n2);
-  //std::cout << n << std::endl;
-  // if ( color == BCCLattice::Color::eBlack ) {
-  //   // Pick the smallest node to represent nexus node of the edge
-  //   Node n = std::min(edge.n1, edge.n2);
-  //   // look-up black nexus at those x y z
-  //   // width*height*z + width*y + x
-  //   NodeOffset offset = edge.n1 - edge.n2;
-  //   //NodeOffset  = {0,0,0};
-    
 
-  // }
-}
-
-BCCLattice::Color BCCLattice::GetNodeColor(BCCLattice::Node node) {
-  // Node is red iff it's y index coordinate is odd
-  if ( node.y % 2 )
-  {
-    return BCCLattice::Color::eRed;
-  } else {
-    return BCCLattice::Color::eBlack;
-  }
-}
-
-BCCLattice::Color BCCLattice::GetEdgeColor(BCCLattice::Edge edge) {
+BCCLattice::Color BCCLattice::GetEdgeColor(BCCLattice::Edge edge) const {
   // Edge is black if both it's points are red or both it's points are black, otherwise it's red
   BCCLattice::Color color1 = GetNodeColor(edge.n1);
   BCCLattice::Color color2 = GetNodeColor(edge.n2);
@@ -465,6 +510,10 @@ BCCLattice::Color BCCLattice::GetEdgeColor(BCCLattice::Edge edge) {
   } else {
     return BCCLattice::Color::eRed;
   }
+}
+
+void BCCLattice::SetEdgeCutPoint(BCCLattice::Edge edge, glm::vec3 position) {
+  GetEdgeMetaDataReference(edge).cutPoint = position;
 }
 
 typedef float(*LevelFunctionPfn)(glm::vec3);
@@ -481,32 +530,46 @@ void fff() {
   //BCCLattice::Node n1 = {1,0,0};
   //BCCLattice::Edge eee = {{0,0,0}, {1,1,1}};
   
+  // Black
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {2,0,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,2,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,0,2}}) << std::endl;
+
+  // Black flipped
+  std::cout << aaa.GetEdgeNexusNode({{-2,0,0}, {0,0,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,-2,0}, {0,0,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,-2}, {0,0,0}}) << std::endl;
+
   // Normal reds
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,1,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,1,-1}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {1,1,1}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {1,1,-1}}) << std::endl;
   std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,1,-1}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,1,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,1,1}}) << std::endl;
 
-  // Changed order(should not change)
-  std::cout << aaa.GetEdgeNexusNode({{0,1,0}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,1,-1}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{-1,1,-1}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{-1,1,0}, {0,0,0}}) << std::endl;
-
-  // Changed signs (will change)
-  std::cout << aaa.GetEdgeNexusNode({{0,-1,0}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,-1,-1}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{-1,-1,-1}, {0,0,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{-1,-1,0}, {0,0,0}}) << std::endl;
-
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,-1,0}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,-1,-1}}) << std::endl;
   std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,-1,-1}}) << std::endl;
-  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,-1,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-2,0,0}}) << std::endl;
+  std::cout << aaa.GetEdgeNexusNode({{2,0,0}, {0,0,0}}) << std::endl;
+
+  // // Changed order(should not change)
+  // std::cout << aaa.GetEdgeNexusNode({{0,1,0}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{0,1,-1}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{-1,1,-1}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{-1,1,0}, {0,0,0}}) << std::endl;
+
+  // // Changed signs (will change)
+  // std::cout << aaa.GetEdgeNexusNode({{0,-1,0}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{0,-1,-1}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{-1,-1,-1}, {0,0,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{-1,-1,0}, {0,0,0}}) << std::endl;
+
+  // std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,-1,0}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {0,-1,-1}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,-1,-1}}) << std::endl;
+  // std::cout << aaa.GetEdgeNexusNode({{0,0,0}, {-1,-1,0}}) << std::endl;
 
   floatx3_t hhh = {-10.1f,-10.1f,-10.0f};
   floatx3_t jjj = {10.0f,10.1f,10.0f};
-  BCCLattice bbb(BBox3i(1, 1, 1, 7, 4, 4), 1.0f);
+  BCCLattice bbb(BBox3i(1, 1, 1, 70, 40, 40), 1.0f);
 
   std::cout << "offset " << bbb.GetNodeIndex(3,1,3) << std::endl;
   // bbb.GetNodeIndex(2,3,1);
@@ -550,5 +613,19 @@ void fff() {
   std::cout << intervalEvenCount(0,6) << std::endl;
   std::cout << intervalEvenCount(0,8) << std::endl;
 
-  std::cout << (float)2 << std::endl;  
+  std::cout << (float)2 << std::endl;
+
+  auto nodeIterator = bbb.GetNodeIterator();
+  Optional<BCCLattice::Node> node;
+  while( node = nodeIterator.Next() ) {
+    //std::cout << node << std::endl;
+    BCCLattice::Node n = node;
+  }
+
+  //auto iter = std::iterator<std::forward_iterator_tag, BCCLattice::Node>::begin();
+  // auto iter = bbb.GetNodeIterator();
+  // for (std::vector<>::iterator i = .begin(); i != .end(); ++i)
+  // {
+    
+  // }
 }
