@@ -75,7 +75,7 @@ public:
     Node n2;
   };
 
-  struct Tetrahedra {
+  struct Tetrahedron {
     Node n1;
     Node n2;
     Node n3;
@@ -96,48 +96,43 @@ public:
   class NodeIterator {
   friend BCCLattice;
   public:
-    Optional<Node> Next() {
-      if ( currentIndex >= nodeMetaData.size() )
-      {
-        return Optional<Node>::None();
-      }
-      return nodeMetaData[currentIndex++].coordinates;
-    }
+    Optional<Node> Next();
   private:
     NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
     std::vector<NodeMetaData> const& nodeMetaData;
     size_t currentIndex = 0;
   };
 
-  // class NodeIterator: public std::iterator<std::forward_iterator_tag, Node> {
-  // public:
-  //   NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
-  //   NodeIterator& operator++() { currentIndex++; return *this; }
-  //   Node const& operator*() { return nodeMetaData[currentIndex].coordinates; }
-  // private:
-  //   std::vector<NodeMetaData> const& nodeMetaData;
-  //   size_t currentIndex = 0;
-  // };
+  class TetrahedronIterator {
+  public:
+    TetrahedronIterator(BCCLattice const& lattice):lattice(lattice) { };
+    Optional<Tetrahedron> Next() { return Optional<Tetrahedron>::None(); };
+  private:
+    BCCLattice const& lattice;
+  };
 
-  // class NodeIterator {
-  // public:
-  //   typedef NodeIterator self_type;
-  //   typedef Node value_type;
-  //   typedef std::forward_iterator_tag iterator_category;
-  //   self_type operator++() { self_type i = *this; currentIndex++; return i; }
-  //   value_type operator*() { return nodeMetaData[currentIndex].coordinates; }
-  // private:
-  //   NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
-  //   std::vector<NodeMetaData> const& nodeMetaData;
-  //   size_t currentIndex = 0;
-  // };
+  class NodeEdgeIterator {
+  public:
+    NodeEdgeIterator(BCCLattice const& lattice):lattice(lattice) { };
+    Optional<Edge> Next() { return Optional<Edge>::None(); };
+  private:
+    BCCLattice const& lattice;
+  };
 
-  void GetTetrahedronIterator(); // TODO: ???
+  class EdgeIterator {
+  public:
+    EdgeIterator(BCCLattice const& lattice):lattice(lattice) { };
+    Optional<Edge> Next();
+  private:
+    BCCLattice const& lattice;
+    size_t currentNodeIndex = 0;
+    int currentNexusIndex = 0;
+  };
+
+  TetrahedronIterator GetTetrahedronIterator(); // TODO: ???
   NodeIterator GetNodeIterator();
-  void GetNodeEdgeIterator();  //   TODO:
-  void GetEdgeIterator();      //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
-
-
+  NodeEdgeIterator GetNodeEdgeIterator();       //   TODO:
+  EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
 
   // Node info
   glm::vec3 GetNodePosition(Node node) const;
@@ -154,8 +149,8 @@ public:
 
 //public:
   
-
-  const NodeOffset nexusOffsets[7] = {{1,1,1},{1,1,-1},{-1,1,-1},{-1,1,1},{2,0,0},{0,2,0},{0,0,2}};
+  static const int NEXUS_SIZE = 7;
+  const NodeOffset nexusOffsets[NEXUS_SIZE] = {{1,1,1},{1,1,-1},{-1,1,-1},{-1,1,1},{2,0,0},{0,2,0},{0,0,2}};
   std::vector<NodeMetaData> nodeMetaData;
   BBox3i latticeBounds;
   
@@ -166,7 +161,8 @@ public:
   NodeMetaData const& GetNodeMetaDataConstReference(Node node) const;
   EdgeMetaData& GetEdgeMetaDataReference(Edge edge);
   EdgeMetaData const& GetEdgeMetaDataConstReference(Edge edge) const;
-  int GetNodeIndex(int x, int y, int z) const;
+  int GetNodeIndex(Node node) const;
+  bool NodeExists(Node node) const;
 };
 
 // void ComputeGridBounds(int3_t* min) {
@@ -190,9 +186,52 @@ std::ostream& operator<<(std::ostream& os, const BCCLattice::NodeOffset& n)
 }
 
 BCCLattice::NodeOffset operator-(BCCLattice::Node const & n1, BCCLattice::Node const & n2) {
-  //std::cout << "*n1:" << n1  << std::endl;
-  //std::cout << "*n2:" << n2  << std::endl;
   return {n1.x - n2.x, n1.y - n2.y, n1.z - n2.z};
+}
+
+BCCLattice::Node operator+(BCCLattice::Node const & node, BCCLattice::NodeOffset const & offset) {
+  return {node.x + offset.dx, node.y + offset.dy, node.z + offset.dz};
+}
+
+BCCLattice::Node operator+(BCCLattice::NodeOffset const & offset, BCCLattice::Node const & node) {
+  return node + offset;
+}
+
+BCCLattice::NodeOffset operator-(BCCLattice::NodeOffset const & o1, BCCLattice::NodeOffset const & o2) {
+  return {o1.dx - o2.dx, o1.dy - o2.dy, o1.dz - o2.dz};
+}
+
+BCCLattice::Node operator+(BCCLattice::NodeOffset const & o1, BCCLattice::NodeOffset const & o2) {
+  return {o1.dx + o2.dx, o1.dy + o2.dy, o1.dz + o2.dz};
+}
+
+Optional<BCCLattice::Node> BCCLattice::NodeIterator::Next() {
+  if ( currentIndex >= nodeMetaData.size() )
+  {
+    return Optional<Node>::None();
+  }
+  return nodeMetaData[currentIndex++].coordinates;
+}
+
+Optional<BCCLattice::Edge> BCCLattice::EdgeIterator::Next() {
+  if ( currentNodeIndex >= lattice.nodeMetaData.size() )
+  {
+    return Optional<Edge>::None();
+  }
+  Node n2;
+  Edge e;
+  do {
+    Node n1 = lattice.nodeMetaData[currentNodeIndex].coordinates;
+    NodeOffset offset = lattice.nexusOffsets[currentNexusIndex];
+    n2 = n1 + offset;
+    e = {n1, n2};
+    currentNexusIndex = currentNexusIndex + 1;
+    if ( currentNexusIndex >= NEXUS_SIZE ) {
+      currentNexusIndex = 0;
+      currentNodeIndex++;
+    }
+  } while (!lattice.NodeExists(n2));
+  return e;
 }
 
 BBox3i ComputeGridBounds(BBox3f box3f) {
@@ -214,32 +253,6 @@ BBox3i ComputeGridBounds(BBox3f box3f) {
 
   return box3i;
 }
-
-// Unpacks storage efficient three-dimensional indecies into three-dimensional cartesian coordinates
-// void BCCLattice::GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z) {
-//   int zigZag;
-
-//   // Initialize
-//   x = n1.x;
-//   y = n1.y;
-//   z = n1.z;
-
-//   // Offset z and x by half grid length if y is odd
-//   if ( y % 2 )
-//   {
-//     zigZag = 1;
-//   } else {
-//     zigZag = 0;
-//   }
-
-//   // Expand grid to size 2, so that half grid offset is 1
-//   x *= 2;
-//   z *= 2;
-
-//   // Apply half grid size offset if needed
-//   x += zigZag;
-//   z += zigZag;
-// }
 
 BCCLattice::BCCLattice(BBox3i bounds, float step) {
   latticeBounds = bounds;
@@ -278,6 +291,10 @@ BCCLattice::NodeIterator BCCLattice::GetNodeIterator() {
   return NodeIterator(nodeMetaData);
 }
 
+BCCLattice::EdgeIterator BCCLattice::GetEdgeIterator() {
+  return EdgeIterator(*this);
+}
+
 glm::vec3 BCCLattice::GetNodePosition(Node node) const {
   return GetNodeMetaDataConstReference(node).position;
 }
@@ -309,10 +326,10 @@ void BCCLattice::DeleteNodeCutPoints(Node node) {
   // TODO: iterate over edges of a vertex
 }
 
-int BCCLattice::GetNodeIndex(int x, int y, int z) const {
-  assert(even(y) && even(x) && even(z) || odd(y) && odd(x) && odd(z));
-  int evenPlanesCount = intervalEvenCount(latticeBounds.minZ, z - 1);
-  int oddPlanesCount = intervalOddCount(latticeBounds.minZ, z - 1);
+int BCCLattice::GetNodeIndex(Node node) const {
+  assert(NodeExists(node));
+  int evenPlanesCount = intervalEvenCount(latticeBounds.minZ, node.z - 1);
+  int oddPlanesCount = intervalOddCount(latticeBounds.minZ, node.z - 1);
   int evenPlaneRowSize = intervalEvenCount(latticeBounds.minX,latticeBounds.maxX);
   int oddPlaneRowSize = intervalOddCount(latticeBounds.minX,latticeBounds.maxX);
   int evenPlaneRowCount = intervalEvenCount(latticeBounds.minY,latticeBounds.maxY);
@@ -322,22 +339,27 @@ int BCCLattice::GetNodeIndex(int x, int y, int z) const {
   int planeOffset = evenPlaneSize*evenPlanesCount + oddPlaneSize*oddPlanesCount;
   int rowOffset;
   int columnOffset;
-  if ( even(z) ) {
-    rowOffset = intervalEvenCount(latticeBounds.minY, y - 1)*evenPlaneRowSize;
-    columnOffset = intervalEvenCount(latticeBounds.minX, x - 1);
+  if ( even(node.z) ) {
+    rowOffset = intervalEvenCount(latticeBounds.minY, node.y - 1)*evenPlaneRowSize;
+    columnOffset = intervalEvenCount(latticeBounds.minX, node.x - 1);
   } else {
-    rowOffset = intervalOddCount(latticeBounds.minY, y - 1)*oddPlaneRowSize;
-    columnOffset = intervalOddCount(latticeBounds.minX, x - 1);
+    rowOffset = intervalOddCount(latticeBounds.minY, node.y - 1)*oddPlaneRowSize;
+    columnOffset = intervalOddCount(latticeBounds.minX, node.x - 1);
   }
   return planeOffset + rowOffset + columnOffset;
 }
 
+bool BCCLattice::NodeExists(Node node) const {
+  return latticeBounds.in(node.x, node.y, node.z) && 
+         (even(node.y) && even(node.x) && even(node.z) || odd(node.y) && odd(node.x) && odd(node.z));
+}
+
 BCCLattice::NodeMetaData& BCCLattice::GetNodeMetaDataReference(Node node) {
-  return nodeMetaData[GetNodeIndex(node.x, node.y, node.z)];
+  return nodeMetaData[GetNodeIndex(node)];
 }
 
 BCCLattice::NodeMetaData const& BCCLattice::GetNodeMetaDataConstReference(Node node) const {
-  return nodeMetaData[GetNodeIndex(node.x, node.y, node.z)]; 
+  return nodeMetaData[GetNodeIndex(node)]; 
 }
 
 BCCLattice::EdgeMetaData& BCCLattice::GetEdgeMetaDataReference(Edge edge) {
@@ -352,110 +374,12 @@ BCCLattice::EdgeMetaData const& BCCLattice::GetEdgeMetaDataConstReference(Edge e
   return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex]; 
 }
 
-
-
-  // First row Red or Black?
-  //even(minGridBound[1]);
-
-  // Red nodes lay on odd coordinates
-  //int redRowWidth = 
-
-
-  // Grid bounds from bounding box
-  // Expand grid bounds to include neighboring edges, by padding it by 2 on each side
-
-  // How many vertecies - can be determined from bounds, since every vertex has a coordinate in space
-  
-  // how much to allocate?
-
-  // * * * *
-  //  * * * 
-  // * * * *
-  //  * * * 
-
-  // gridWidth per row divided by 2?
-
-
-
-  // int xMinIn = std::ceil(min.x);
-  // int xMinOut = std::floor(min.x);
-  // int xMaxIn = std::floor(max.x);
-  // int xMaxOut = std::ceil(max.x);
-  // int yMinIn = std::ceil(min.y);
-  // int yMinOut = std::floor(min.y);
-  // int yMaxIn = std::floor(max.y);
-  // int yMaxOut = std::ceil(max.y);
-
-  // std::cout << "xMinIn " << xMinIn << std::endl;
-  // std::cout << "xMinOut " << xMinOut << std::endl;
-  // std::cout << "xMaxIn " << xMaxIn << std::endl;
-  // std::cout << "xMaxOut " << xMaxOut << std::endl;
-  // std::cout << "yMinIn " << yMinIn << std::endl;
-  // std::cout << "yMinOut " << yMinOut << std::endl;
-  // std::cout << "yMaxIn " << yMaxIn << std::endl;
-  // std::cout << "yMaxOut " << yMaxOut << std::endl;
-
-//  float aaa[3];
-  //ComputeGridBounds(&aaa);
-
-  // * * * *
-  //  * * * *
-  // * * * *
-  //  * * * *
-  // int width = 10;
-  // int height = 10;
-  // int depth = 10;
-  // nodeMetaData.reserve(width*height*depth);
-
-  //nodeMetaData[x+y*width+z*depth]
-
-  // even y -> even vertecies
-  // odd y -> odd vertecies
-
-  //   float xf = 0.0f;
-  //   float yf = 0.0f;
-  //   float zf = 0.0f;
-  //   for (int z = 0; z < 2; ++z)
-  //   {
-  //     for (int y = 0; y < 3; ++y)
-  //     {
-  //       for (int x = 0; x < 2; ++x)
-  //       {
-  //         //std::cout << y << "(" << xf << ", " << yf << ", " << zf << ")" << std::endl;
-
-  //         xf += step;
-  //       }
-  //       yf += 0.5*step;
-  //       if ( (y + 1) % 2 )
-  //       {
-  //         xf = 0.5f*step;
-  //       } else {
-  //         xf = 0.0f;
-  //       }
-  //     }
-  //     zf += step;
-  //     yf = 0.0f;
-
-
-    // first row xf += step, yf = 0.0
-    // second row xf += 0.5*step + step, yf += 0.5*step
-    // third row xf += step, yf += 0.5*step
-    // forth row xf += 0.5*step + step, yf += 0.5*step
-    // ...
-    // zf += step
-
-    // steps in x are whole steps starting with half step as initial value for even rows, and from zero for odd
-    // vertical steps are always half the step, starting from zero
-    // depth steps are whole steps, always
-
-  //}
-
 Optional<int> BCCLattice::GetEdgeIndexInNexus(BCCLattice::Edge edge) const {
   // Get vector representing an edge
   NodeOffset offset = edge.n2 - edge.n1;
 
   // Test if edge matches one of nexus pattern edges
-  for (int i = 0; i < sizeof(nexusOffsets); ++i)
+  for (int i = 0; i < NEXUS_SIZE; ++i)
   {
     if( nexusOffsets[i] == offset ) {
       return i;
@@ -473,30 +397,6 @@ BCCLattice::Node BCCLattice::GetEdgeNexusNode(BCCLattice::Edge edge) const {
   // If edge didn't match any pattern it must be flipped
   return edge.n2;
 }
-
-// bool operator>=(BCCLattice::Node const & n1, BCCLattice::NodeOffset const & n2) {
-//   return n1.x >= n2.x && n1.y >= n2.y && n1.z >= n2.z;
-// }
-
-// edge information is stored in blocks of 7 (because that's the tiling element size)
-// edge is specified as two vertecies
-// each edge is stored in a unique nexus
-// only one of the vertecies lays at the "storage" vertex of the edge
-// of the two vertecies the one closer to origin is the nexus
-
-// edge type
-// nexus determination rule
-// both edges black, 
-
-// for each node on main grid there's a nexus for three black edges, that includes the red points
-// in addition to that each point(both red and black) has a second nexus for three red edges
-// nexus size = 2*(black points + red points) 
-// each nexus entry stores 3 edges
-
-// 1. Determine color of the edge
-// 2. Determine Nexus Point
-// 3. Look-up Nexus Entry
-// 4. Look-up Edge Entry
 
 BCCLattice::Color BCCLattice::GetEdgeColor(BCCLattice::Edge edge) const {
   // Edge is black if both it's points are red or both it's points are black, otherwise it's red
@@ -521,6 +421,10 @@ typedef float(*LevelFunctionPfn)(glm::vec3);
 void EvaluateLevelFunction(BCCLattice& lattice, LevelFunctionPfn fn) {
   // iterate over nodes
   // set function values
+}
+
+void DetermineCutPoints() {
+  
 }
 
 void fff() {
@@ -569,9 +473,9 @@ void fff() {
 
   floatx3_t hhh = {-10.1f,-10.1f,-10.0f};
   floatx3_t jjj = {10.0f,10.1f,10.0f};
-  BCCLattice bbb(BBox3i(1, 1, 1, 70, 40, 40), 1.0f);
+  BCCLattice bbb(BBox3i(1, 1, 1, 7, 4, 4), 1.0f);
 
-  std::cout << "offset " << bbb.GetNodeIndex(3,1,3) << std::endl;
+  std::cout << "offset " << bbb.GetNodeIndex({3,1,3}) << std::endl;
   // bbb.GetNodeIndex(2,3,1);
   // bbb.GetNodeIndex(2,3,2);
   // bbb.GetNodeIndex(2,3,3);
