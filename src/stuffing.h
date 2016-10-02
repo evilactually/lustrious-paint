@@ -39,6 +39,19 @@
 #include "BBox3f.h"
 #include "BBox3i.h"
 
+template< class InputIt, class UnaryPredicate>
+Optional<int> find_index_if( InputIt first, InputIt last, UnaryPredicate q) {
+  auto found_iter = find_if(first, last, q);
+  if ( found_iter != last )
+  {
+    return Optional<int>(found_iter - first);
+  }
+  else 
+  {
+    return Optional<int>::None();
+  }
+}
+
 class BCCLattice {
 public:
   BCCLattice() { }
@@ -52,10 +65,10 @@ public:
   
   enum class Value
   {
-    ePositive,
-    eNegative,
-    eZero,
-    eUnassigned
+    eUnassigned = 0,
+    eNegative = 1,
+    eZero = 2,
+    ePositive = 3
   };
 
   struct NodeOffset {
@@ -75,6 +88,7 @@ public:
     Node n2;
   };
 
+  // Specifies the coordinates defining a tetrahedron
   struct Tetrahedron {
     Node n1;
     Node n2;
@@ -139,8 +153,8 @@ public:
   Color GetNodeColor(Node node) const;
   Value GetNodeValue(Node node) const;
   void SetNodeValue(Node node, Value value);
-  void SetNodePosition(Node node, glm::vec3 position);
-  void DeleteNodeCutPoints(Node node);
+  void SetNodePosition(Node node, glm::vec3 position); 
+  void DeleteNodeCutPoints(Node node); // DeleteAdjacentCutPoints
  
   // Edge info
   Optional<glm::vec3> GetEdgeCutPoint(Edge edge) const;
@@ -295,6 +309,10 @@ BCCLattice::EdgeIterator BCCLattice::GetEdgeIterator() {
   return EdgeIterator(*this);
 }
 
+BCCLattice::TetrahedronIterator BCCLattice::GetTetrahedronIterator() {
+  return TetrahedronIterator(*this);
+}
+
 glm::vec3 BCCLattice::GetNodePosition(Node node) const {
   return GetNodeMetaDataConstReference(node).position;
 }
@@ -427,7 +445,141 @@ void DetermineCutPoints() {
   
 }
 
+
+// 1. Match the stencil to tetrahedra
+// a) match by signs
+// b) match by black edges
+
+
+// struct ValuePattern {
+//   BCCLattice::Value values[4];
+// };
+
+// bool operator==(ValuePattern const & p1, ValuePattern const & p2) {
+//   return std::equal(&p1.values[0], &p1.values[3], &p2.values[0]);
+// }
+
+// ValuePattern GetTerahedronValuePattern(BCCLattice const& lattice, Tetrahedron)
+
+// // int MatchStencil(Tetrahedron t, BCCLattice const& lattice) {
+
+// //   return 0;
+// // }
+
+class Stencil {
+public:
+  Stencil();
+  void Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron, std::vector<glm::vec3>* tetrahedra);
+  bool Match(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron);
+};
+
+
+// Quadratic-time repack routine
+// Take single list of vertecies and convert them into a list of vertecies and indecies
+// removing duplicate vertecies along the way
+
+
+
+// auto v_duplicate = find_if(tetrahedra.begin(), tetrahedra.end(), eq_pred);
+//     if ( v_duplicate != tetrahedra.end() )
+//     {
+//       return Optional<int>(v_duplicate - tetrahedra.begin());
+//     } else {
+//       Optional<int>::None();
+//     }
+
+void BuildMeshBuffers(std::vector<glm::vec3>const& tetrahedra, std::vector<glm::vec3>& vertecies, std::vector<int>& indecies) {
+  indecies.reserve(tetrahedra.size());
+  for (auto v_src:tetrahedra)
+  {
+    auto epsilon_eq = [](float a, float b) { return float_near_eq(a, b, 0.00001f); };
+    auto eq_pred = [&](glm::vec3 v_dst) { return epsilon_eq(v_dst[0], v_src[0]) && 
+                                                 epsilon_eq(v_dst[1], v_src[1]) &&
+                                                 epsilon_eq(v_dst[2], v_src[2]); };
+    auto maybeIndex = find_index_if(tetrahedra.begin(), tetrahedra.end(), eq_pred);
+    int finalIndex;
+    if ( !maybeIndex )
+    {
+      vertecies.push_back(v_src);
+      finalIndex = vertecies.size() - 1;
+    } else {
+      finalIndex = maybeIndex;
+    }
+    indecies.push_back(finalIndex);
+  }
+}
+
+
+// For each vertex of tetrahedra
+//   Is it equal to any other in the vertex array?
+//   No? Push it to vertex array and get it's index.
+//   Yes? Get it's index.
+//   Put index in place of vertex.
+
+//   a a a b b b c c c
+//   1 4 5 1 2 4 5 1 3 
+
+//   a a a b b b c c c
+//         _
+
+//   1 4 5 _ 2 _ _ _
+
+
+class StencilA;
+class StencilB;
+class StencilC;
+
+class Tetrahedron {
+  // edges
+  // cut points
+  // values
+  // nodes
+};
+
+
+class IsosurfaceStuffer {
+public:
+bool MatchValuePattern(BCCLattice::Tetrahedron tetrahedron, std::array<BCCLattice::Value, 4> pattern) {
+  BCCLattice::Value tetrahedronValues[4];
+  tetrahedronValues[0] = lattice.GetNodeValue(tetrahedron.n1);
+  tetrahedronValues[1] = lattice.GetNodeValue(tetrahedron.n2);
+  tetrahedronValues[2] = lattice.GetNodeValue(tetrahedron.n3);
+  tetrahedronValues[3] = lattice.GetNodeValue(tetrahedron.n4);
+  std::sort(&tetrahedronValues[0], &tetrahedronValues[3]);
+  std::sort(&pattern[0], &pattern[3]); // TODO: why do i sort it every time? Move in a class, pre-sort?
+  return std::equal(&pattern[0], &pattern[3], &tetrahedronValues[0]);
+}
+void TriangulateLattice() {
+  BCCLattice::TetrahedronIterator tetrahedronIterator = lattice.GetTetrahedronIterator();
+  Optional<BCCLattice::Tetrahedron> maybeTetrahedron;
+  while ( maybeTetrahedron = tetrahedronIterator.Next() ) {
+    BCCLattice::Tetrahedron tetrahedron = maybeTetrahedron;
+    if (MatchValuePattern(tetrahedron, { BCCLattice::Value::ePositive,
+                                         BCCLattice::Value::ePositive,
+                                         BCCLattice::Value::ePositive,
+                                         BCCLattice::Value::ePositive })) {
+
+    } else if (MatchValuePattern(tetrahedron, { BCCLattice::Value::ePositive,
+                                                BCCLattice::Value::ePositive,
+                                                BCCLattice::Value::ePositive,
+                                                BCCLattice::Value::eZero })) {
+
+    }
+  }
+}
+std::vector<glm::vec3> vertecies;
+BCCLattice& lattice;
+};
+
+//bool MatchTetrahedronValues(BCCLattice)
+
+
 void fff() {
+  assert(BCCLattice::Value::ePositive > BCCLattice::Value::eNegative);
+  assert(BCCLattice::Value::ePositive > BCCLattice::Value::eZero);
+  assert(BCCLattice::Value::eNegative < BCCLattice::Value::eZero);
+  assert(BCCLattice::Value::eNegative < BCCLattice::Value::ePositive);
+
   floatx3_t dd = {1.0f, 1.0f, 1.0f};
   BCCLattice aaa;
   //BCCLattice::Node n1 = {0,0,0};
