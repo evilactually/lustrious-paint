@@ -1,6 +1,18 @@
 cmake_minimum_required (VERSION 3.5.2)
 project (LustriousPaint)
 
+# Return a list of all subdirectories containing headers
+MACRO(HEADER_DIRECTORIES scan_dir return_list )
+    FILE(GLOB_RECURSE new_list "${scan_dir}/*.h" "${scan_dir}/*.hpp")
+    SET(dir_list "")
+    FOREACH(file_path ${new_list})
+        GET_FILENAME_COMPONENT(dir_path ${file_path} PATH)
+        SET(dir_list ${dir_list} ${dir_path})
+    ENDFOREACH()
+    LIST(REMOVE_DUPLICATES dir_list)
+    SET(${return_list} ${dir_list})
+ENDMACRO()
+
 # Custom modules
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
@@ -56,8 +68,14 @@ file(GLOB_RECURSE SOURCE_FILES
   "resources/*.rc"
 )
 
+# Include all directories from sources that contain headers
+HEADER_DIRECTORIES("src" INCLUDE_DIRS)
+include_directories(${INCLUDE_DIRS})
+
 # Include external headers
 include_directories("include/")
+
+message("${INCLUDE_DIRS}")
 
 # Definitions
 add_definitions(-DVK_USE_PLATFORM_WIN32_KHR -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES)
