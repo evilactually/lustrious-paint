@@ -1,7 +1,7 @@
 //===============================================================================
 // @ LsTetrahedronMesh.h
 // 
-// A class for constructing tetrahedron mesh
+// A general class for constructing tetrahedron mesh
 //
 //===============================================================================
 
@@ -11,6 +11,7 @@
 
 #include "LsVector3.h"
 #include "LsOptional.h"
+#include "LsTuple.h"
 #include <vector>
 
 //-------------------------------------------------------------------------------
@@ -30,9 +31,9 @@ public:
   void RemoveNode(int node);
   void GetNodePosition(int node);
   void Optimize();
-  const std::vector<int>& GetIndecies();
-  const std::vector<LsVector3>& GetVertecies();
+  const std::vector<LsOptional<LsVector3>>& GetVertecies();
+  const std::vector<LsOptional<LsTuple<int, 4>>>& GetIndecies();
 private:
-  std::vector<LsVector3> vertexBuffer;
-  std::vector<int> indexBuffer;
+  std::vector<LsOptional<LsVector3>> vertexBuffer;
+  std::vector<LsOptional<LsTuple<int, 4>>> indexBuffer;
 };
