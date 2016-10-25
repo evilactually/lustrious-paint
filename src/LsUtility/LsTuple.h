@@ -16,6 +16,9 @@ public:
   inline T& operator[]( unsigned int i ) {
     return components[i];
   }
+  inline const T& operator[]( unsigned int i ) const {
+    return components[i];
+  }
 private:
   T components[C];
 };

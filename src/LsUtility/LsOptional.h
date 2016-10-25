@@ -32,6 +32,13 @@ public:
     }
     return m_value;
   }
+  // Access to stored value
+  T& GetValue() {
+    return m_value; 
+  }
+  bool IsEmpty() {
+    return m_empty;
+  }
   static LsOptional<T> None() {
     return LsOptional<T>();
   }
