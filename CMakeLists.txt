@@ -153,3 +153,26 @@ add_custom_command(TARGET LustriousPaint POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${PROJECT_BINARY_DIR}/shaders"
         "$<TARGET_FILE_DIR:LustriousPaint>/shaders")
+
+### Tests ###
+
+file(GLOB_RECURSE TESTS_SOURCE_FILES
+  "tests/*.h"
+  "tests/*.cpp"
+  "tests/*.hpp"
+  "tests/*.inl"
+)
+
+list(APPEND TESTS_SOURCE_FILES ${SOURCE_FILES})
+
+add_executable(Tests ${TESTS_SOURCE_FILES})
+set_property(TARGET Tests PROPERTY COMPILE_DEFINITIONS "TESTING")
+
+# Link FreeImage
+target_link_libraries (Tests "FreeImage")
+
+# Copy Freemake.dll
+add_custom_command(TARGET Tests POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy
+    "${LIBRARY_DIRECTORY}/FreeImage.dll"
+    "$<TARGET_FILE_DIR:LustriousPaint>/")
