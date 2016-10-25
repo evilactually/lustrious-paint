@@ -16,24 +16,26 @@
 
 //-------------------------------------------------------------------------------
 //-- Classes --------------------------------------------------------------------
-//-------------------------------------------------------------------------------
+//------------------------------------------------------------------------------- 
 
 class LsTetrahedronMesh
 {
 public:
+  typedef LsTuple<int, 4> LsTetrahedron;
   LsTetrahedronMesh();
   ~LsTetrahedronMesh();
-  void AddTetrahedron(int node1, int node2, int node3, int node4);
-  void AddTetrahedron(const LsVector3& node1, const LsVector3& node2, const LsVector3& node3, const LsVector3& node4);
-  void RemoveTetrahedron(int node1, int node2, int node3, int node4);
+  int AddTetrahedron(int node1, int node2, int node3, int node4);
+  int AddTetrahedron(const LsVector3& node1, const LsVector3& node2, const LsVector3& node3, const LsVector3& node4);
+  void RemoveTetrahedron(int tetrahedronIndex);
   LsOptional<int> FindNodeIndex(const LsVector3& node);
   int AddNode(const LsVector3& node);
   void RemoveNode(int node);
-  void GetNodePosition(int node);
+  LsVector3 GetNodePosition(int node);
   void Optimize();
-  const std::vector<LsOptional<LsVector3>>& GetVertecies();
-  const std::vector<LsOptional<LsTuple<int, 4>>>& GetIndecies();
+  const std::vector<LsVector3>& GetVertecies();
+  const std::vector<LsTetrahedron>& GetIndecies();
 private:
-  std::vector<LsOptional<LsVector3>> vertexBuffer;
-  std::vector<LsOptional<LsTuple<int, 4>>> indexBuffer;
+  void RemoveUnusedNode(int node);
+  std::vector<LsVector3> vertexBuffer;
+  std::vector<LsTetrahedron> indexBuffer;
 };
