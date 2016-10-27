@@ -11,6 +11,7 @@
 
 #include "LsBCCLattice.h"
 #include "LsMath.h"
+#include "assert.h"
 
 //-------------------------------------------------------------------------------
 //-- Typedefs -------------------------------------------------------------------
@@ -35,6 +36,23 @@ static const LsBCCNodeOffset nexusOffsets[7] = {
   {2,0,0},
   {0,2,0},
   {0,0,2}
+};
+
+static const LsBCCNodeOffset adjacentOffsets[14] = {
+  {1,1,1},
+  {1,1,-1},
+  {-1,1,-1},
+  {-1,1,1},
+  {2,0,0},
+  {0,2,0},
+  {0,0,2},
+  {-1,-1,-1},
+  {-1,-1,1},
+  {1,-1,1},
+  {1,-1,-1},
+  {-2,0,0},
+  {0,-2,0},
+  {0,0,-2}
 };
 
 //-------------------------------------------------------------------------------
@@ -77,10 +95,25 @@ LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
   throw 1;
 };
 
-LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(lattice) { };
+LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(lattice),n1(node) {
+  LsBCCNode n2 = AddNodeOffset(n1, adjacentOffsets[currentAdjacentIndex]);
+  current = LsBCCEdge(n1, n2);
+};
 
-LsOptional<LsBCCEdge> LsBCCLattice::NodeEdgeIterator::Next() { 
-  throw 1;
+LsBCCLattice::NodeEdgeIterator::operator LsBCCEdge() const {
+  return current;
+}
+
+bool LsBCCLattice::NodeEdgeIterator::Next() {
+  ++currentAdjacentIndex;
+  if ( currentAdjacentIndex < 14 )
+  {
+    LsBCCNode n2 = AddNodeOffset(n1, adjacentOffsets[currentAdjacentIndex]);
+    current = LsBCCEdge(n1, n2);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(lattice) { };
@@ -89,6 +122,11 @@ LsOptional<LsBCCEdge> LsBCCLattice::EdgeIterator::Next() {
   throw 1;
 }
 
+//-------------------------------------------------------------------------------
+// @ LsBCCLattice::LsBCCLattice()
+//-------------------------------------------------------------------------------
+// Initialize lattice bounded by inclusive interval
+//-------------------------------------------------------------------------------
 LsBCCLattice::LsBCCLattice(LsTuple<int,3> minima,
                            LsTuple<int,3> maxima,
                            float step):minima(minima), maxima(maxima) {
@@ -98,15 +136,13 @@ LsBCCLattice::LsBCCLattice(LsTuple<int,3> minima,
     {
       for (int x = minima[0]; x <= maxima[0]; ++x)
       {
-        LsBCCNodeMetaData nodeInfo;
-        nodeInfo.coordinates = {x,y,z};
-        nodeInfo.position = step*LsVector3(x,y,z); // Vertex coordinates correspond to 
-        nodeInfo.value = LsBCCValue::eUnassigned;  // BCC grid coordinates scaled by step
-        
-        // Node are either have all coordinates even(black) or odd(red).
-        // All other coordinates don't represent any node.
-        if ( LsEven(y) && LsEven(x) && LsEven(z) || LsOdd(y) && LsOdd(x) && LsOdd(z) )
+        LsBCCNode node = {x,y,z};
+        if ( Valid(node) )
         {
+          NodeMetaData nodeInfo;
+          nodeInfo.coordinates = node;
+          nodeInfo.position = step*LsVector3(x,y,z); // Vertex coordinates correspond to 
+          nodeInfo.value = LsBCCValue::eUnassigned;  // BCC grid coordinates scaled by step
           nodeMetaData.push_back(nodeInfo);
         }
       }
@@ -118,29 +154,130 @@ LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() {   // 
   return TetrahedronIterator(*this);
 }
 
-
 // BCCLattice::NodeIterator BCCLattice::GetNodeIterator();
-// BCCLattice::NodeEdgeIterator BCCLattice::GetNodeEdgeIterator();       //   TODO:
+
+LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node) {
+  return NodeEdgeIterator(*this, node);
+}
+
 // BCCLattice::EdgeIterator BCCLattice::GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
 
-// // Node info
-// LsVector3 BCCLattice::GetNodePosition(LsNode node) const;
-// LsNodeColor BCCLattice::GetNodeColor(LsNode node) const;
-// LsNodeValue BCCLattice::GetNodeValue(LsNode node) const;
-// void BCCLattice::SetNodeValue(LsNode node, Value value);
-// void BCCLattice::SetNodePosition(LsNode node, LsVector3 position); 
-// void BCCLattice::DeleteNodeCutPoints(LsNode node);
+LsVector3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
+  return GetNodeMetaDataConstReference(node).position;
+}
+
+LsBCCColor LsBCCLattice::GetNodeColor(LsBCCNode node) const {
+  assert(Valid(node));
+  if ( LsEven(node[0]) ) // Node is black iff all of it's coordinates are even
+    return LsBCCColor::eBlack;
+  else
+    return LsBCCColor::eRed;
+}
+
+LsBCCValue LsBCCLattice::GetNodeValue(LsBCCNode node) const {
+  return GetNodeMetaDataConstReference(node).value;
+}
+
+void LsBCCLattice::SetNodeValue(LsBCCNode node, LsBCCValue value) {
+  GetNodeMetaDataReference(node).value = value;
+}
+
+void LsBCCLattice::SetNodePosition(LsBCCNode node, LsVector3 position) {
+  GetNodeMetaDataReference(node).position = position;
+}
+
+void LsBCCLattice::DeleteNodeCutPoints(LsBCCNode node) {
+  NodeEdgeIterator nodeEdges = GetNodeEdgeIterator(node);
+  LsBCCEdge edge = nodeEdges;
+  GetEdgeMetaDataReference(edge);
+}
  
 // // Edge info
-// LsOptional<LsVector3> BCCLattice::GetEdgeCutPoint(LsEdge edge) const;
-// LsColor BCCLattice::GetEdgeColor(LsEdge edge) const;
-// void BCCLattice::SetEdgeCutPoint(LsEdge edge, LsVector3 position);
+// LsOptional<LsVector3> LsBCCLattice::GetEdgeCutPoint(LsEdge edge) const;
+// LsColor LsBCCLattice::GetEdgeColor(LsEdge edge) const;
+// void LsBCCLattice::SetEdgeCutPoint(LsEdge edge, LsVector3 position);
 
-// Optional<int> GetEdgeIndexInNexus(BCCLattice::LsEdge edge) const;
-// LsNode GetEdgeNexusNode(LsEdge edge) const;
-// LsNodeMetaData& GetNodeMetaDataReference(Node node);
-// LsNodeMetaData const& GetNodeMetaDataConstReference(Node node) const;
-// LsEdgeMetaData& GetEdgeMetaDataReference(LsEdge edge);
-// LsEdgeMetaData const& GetEdgeMetaDataConstReference(LsEdge edge) const;
-// int GetNodeIndex(LsNode node) const;
-// bool NodeExists(LsNode node) const;
+LsOptional<int> LsBCCLattice::GetEdgeIndexInNexus(LsBCCEdge edge) const {
+  // Get vector representing an edge
+  LsBCCNodeOffset offset = SubtractNodes(edge[1], edge[0]);
+
+  // Test if edge matches one of nexus pattern edges
+  for (int i = 0; i < 7; ++i)
+  {
+    if( NodeOffsetsEqual(nexusOffsets[i], offset) ) {
+      return i;
+    }
+  }
+  return LsOptional<int>::None();
+}
+
+// Every edge has one of it's nodes designated to be used as storage of edge information, called nexus node
+LsBCCNode LsBCCLattice::GetEdgeNexusNode(LsBCCEdge edge) const {
+  if ( GetEdgeIndexInNexus(edge) )
+  {
+    return edge[0];
+  }
+  // If edge didn't match any pattern it must be flipped
+  return edge[1];
+}
+
+LsBCCLattice::NodeMetaData& LsBCCLattice::GetNodeMetaDataReference(LsBCCNode node) {
+  return nodeMetaData[GetNodeIndex(node)];
+}
+
+LsBCCLattice::NodeMetaData const& LsBCCLattice::GetNodeMetaDataConstReference(LsBCCNode node) const {
+  return nodeMetaData[GetNodeIndex(node)];
+}
+
+LsBCCLattice::EdgeMetaData& LsBCCLattice::GetEdgeMetaDataReference(LsBCCEdge edge) {
+  LsBCCNode nexusNode = GetEdgeNexusNode(edge);
+  int edgeIndex = GetEdgeIndexInNexus(edge);
+  return GetNodeMetaDataReference(nexusNode).edgeNexus[edgeIndex];
+}
+
+LsBCCLattice::EdgeMetaData const& LsBCCLattice::GetEdgeMetaDataConstReference(LsBCCEdge edge) const {
+  LsBCCNode nexusNode = GetEdgeNexusNode(edge);
+  int edgeIndex = GetEdgeIndexInNexus(edge);
+  return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex]; 
+}
+
+int LsBCCLattice::GetNodeIndex(LsBCCNode node) const {
+  // assert(NodeExists(node));
+  int evenPlanesCount = LsEvenCount(minima[2], node[2] - 1);
+  int oddPlanesCount = LsOddCount(minima[2], node[2] - 1);
+  int evenPlaneRowSize = LsEvenCount(minima[0],maxima[0]);
+  int oddPlaneRowSize = LsOddCount(minima[0],maxima[0]);
+  int evenPlaneRowCount = LsEvenCount(minima[1],maxima[1]);
+  int oddPlaneRowCount = LsOddCount(minima[1],maxima[1]);
+  int evenPlaneSize = evenPlaneRowCount*evenPlaneRowSize;
+  int oddPlaneSize = oddPlaneRowCount*oddPlaneRowSize;
+  int planeOffset = evenPlaneSize*evenPlanesCount + oddPlaneSize*oddPlanesCount;
+  int rowOffset;
+  int columnOffset;
+  if ( LsEven(node[2]) ) {
+    rowOffset = LsEvenCount(minima[1], node[1] - 1)*evenPlaneRowSize;
+    columnOffset = LsEvenCount(minima[0], node[0] - 1);
+  } else {
+    rowOffset = LsOddCount(minima[1], node[1] - 1)*oddPlaneRowSize;
+    columnOffset = LsOddCount(minima[0], node[0] - 1);
+  }
+  return planeOffset + rowOffset + columnOffset;
+}
+
+bool LsBCCLattice::WithinBounds(LsBCCNode node) const {
+  return node[0] >= minima[0] &&
+         node[1] >= minima[1] &&
+         node[2] >= minima[2] &&
+         node[0] <= maxima[0] &&
+         node[1] <= maxima[1] &&
+         node[2] <= maxima[2];
+}
+
+bool LsBCCLattice::Valid(LsBCCNode node) const {
+  return LsEven(node[0]) && LsEven(node[1]) && LsEven(node[2]) ||
+         LsOdd(node[0]) && LsOdd(node[1]) && LsOdd(node[2]);
+}
+
+bool LsBCCLattice::NodeExists(LsBCCNode node) const {
+  return WithinBounds(node) && Valid(node);
+}

@@ -61,14 +61,14 @@ enum class LsBCCValue
 
 class LsBCCLattice {
 private:
-  struct LsBCCEdgeMetaData {
+  struct EdgeMetaData {
     LsOptional<LsVector3> cutPoint;
   };
-  struct LsBCCNodeMetaData {
+  struct NodeMetaData {
     LsBCCNode coordinates;
     LsVector3 position;
     LsBCCValue value;
-    LsBCCEdgeMetaData edgeNexus[7];
+    EdgeMetaData edgeNexus[7];
   };
 public:
   class NodeIterator {
@@ -93,10 +93,14 @@ public:
   class NodeEdgeIterator {
   friend LsBCCLattice;
   public:
-    LsOptional<LsBCCEdge> Next();
+    bool Next();
+    operator LsBCCEdge() const;
   private:
     NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node);
     LsBCCLattice const& lattice;
+    LsBCCNode n1;
+    LsBCCEdge current;
+    short currentAdjacentIndex = 0;
   };
 
   class EdgeIterator {
@@ -127,13 +131,15 @@ public:
 private:
   LsTuple<int,3> minima;
   LsTuple<int,3> maxima;
-  std::vector<LsBCCNodeMetaData> nodeMetaData;
+  std::vector<NodeMetaData> nodeMetaData;
   LsOptional<int> GetEdgeIndexInNexus(LsBCCLattice::LsBCCEdge edge) const;
   LsBCCNode GetEdgeNexusNode(LsBCCEdge edge) const;
-  LsBCCNodeMetaData& GetNodeMetaDataReference(LsBCCNode node);
-  LsBCCNodeMetaData const& GetNodeMetaDataConstReference(LsBCCNode node) const;
-  LsBCCEdgeMetaData& GetEdgeMetaDataReference(LsBCCEdge edge);
-  LsBCCEdgeMetaData const& GetEdgeMetaDataConstReference(LsBCCEdge edge) const;
+  NodeMetaData& GetNodeMetaDataReference(LsBCCNode node);
+  NodeMetaData const& GetNodeMetaDataConstReference(LsBCCNode node) const;
+  EdgeMetaData& GetEdgeMetaDataReference(LsBCCEdge edge);
+  EdgeMetaData const& GetEdgeMetaDataConstReference(LsBCCEdge edge) const;
   int GetNodeIndex(LsBCCNode node) const;
+  bool Valid(LsBCCNode node) const;
+  bool WithinBounds(LsBCCNode node) const;
   bool NodeExists(LsBCCNode node) const;
 };
