@@ -176,3 +176,7 @@ add_custom_command(TARGET Tests POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
     "${LIBRARY_DIRECTORY}/FreeImage.dll"
     "$<TARGET_FILE_DIR:LustriousPaint>/")
+
+enable_testing()
+
+add_test(NAME AllTests COMMAND Tests)

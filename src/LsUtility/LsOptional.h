@@ -36,7 +36,10 @@ public:
   T& GetValue() {
     return m_value; 
   }
-  bool IsEmpty() {
+  const T& GetValue() const {
+    return m_value; 
+  }
+  bool IsEmpty() const {
     return m_empty;
   }
   static LsOptional<T> None() {

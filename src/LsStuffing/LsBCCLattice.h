@@ -60,7 +60,7 @@ enum class LsBCCValue
 //-------------------------------------------------------------------------------
 
 class LsBCCLattice {
-private:
+protected:
   struct EdgeMetaData {
     LsOptional<LsVector3> cutPoint;
   };
@@ -74,10 +74,12 @@ public:
   class NodeIterator {
   friend LsBCCLattice;
   public:
-    LsOptional<LsBCCNode> Next();
+    bool Next();
+    operator LsBCCNode() const;
   private:
     NodeIterator(LsBCCLattice const& lattice);
     LsBCCLattice const& lattice;
+    LsBCCNode current;
     size_t currentIndex = 0;
   };
 
@@ -85,6 +87,7 @@ public:
   friend LsBCCLattice;
   public:
     LsOptional<LsBCCTetrahedron> Next();
+    //operator LsBCCTetrahedron() const;
   private:
     TetrahedronIterator(LsBCCLattice const& lattice);
     LsBCCLattice const& lattice;
@@ -107,6 +110,7 @@ public:
   friend LsBCCLattice;
   public:
     LsOptional<LsBCCEdge> Next();
+    //operator LsBCCEdge() const;
   private:
     EdgeIterator(LsBCCLattice const& lattice);
     LsBCCLattice const& lattice;
@@ -115,20 +119,20 @@ public:
   };
   
   LsBCCLattice(LsTuple<int,3> minima, LsTuple<int,3> maxima, float step);
-  TetrahedronIterator GetTetrahedronIterator(); //   TODO: ???
+  TetrahedronIterator GetTetrahedronIterator(); //   TODO: WTF DO I DO???
   NodeIterator GetNodeIterator();
-  NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);       //   TODO:
+  NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
   EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
   LsVector3 GetNodePosition(LsBCCNode node) const;
   LsBCCColor GetNodeColor(LsBCCNode node) const;
   LsBCCValue GetNodeValue(LsBCCNode node) const;
   void SetNodeValue(LsBCCNode node, LsBCCValue value);
-  void SetNodePosition(LsBCCNode node, LsVector3 position); 
+  void SetNodePosition(LsBCCNode node, LsVector3 position);
   void DeleteNodeCutPoints(LsBCCNode node);
   LsOptional<LsVector3> GetEdgeCutPoint(LsBCCEdge edge) const;
-  LsBCCColor GetEdgeColor(LsBCCEdge edge) const;
   void SetEdgeCutPoint(LsBCCEdge edge, LsVector3 position);
-private:
+  LsBCCColor GetEdgeColor(LsBCCEdge edge) const;
+protected:
   LsTuple<int,3> minima;
   LsTuple<int,3> maxima;
   std::vector<NodeMetaData> nodeMetaData;

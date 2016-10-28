@@ -31,24 +31,24 @@
 // polygon-line intersection
 
 #pragma once
-#include "Optional.hpp"
+#include "LsUtility/LsOptional.h"
 #include <algorithm>
 #include <iterator>
 #include "tuples.h"
-#include "math.h"
+#include "lsmath2.h"
 #include "BBox3f.h"
 #include "BBox3i.h"
 
 template< class InputIt, class UnaryPredicate>
-Optional<int> find_index_if( InputIt first, InputIt last, UnaryPredicate q) {
+LsOptional<int> find_index_if( InputIt first, InputIt last, UnaryPredicate q) {
   auto found_iter = find_if(first, last, q);
   if ( found_iter != last )
   {
-    return Optional<int>(found_iter - first);
+    return LsOptional<int>(found_iter - first);
   }
   else 
   {
-    return Optional<int>::None();
+    return LsOptional<int>::None();
   }
 }
 
@@ -97,7 +97,7 @@ public:
   };
 
   struct EdgeMetaData {
-    Optional<glm::vec3> cutPoint;
+    LsOptional<glm::vec3> cutPoint;
   };
 
   struct NodeMetaData {
@@ -110,7 +110,7 @@ public:
   class NodeIterator {
   friend BCCLattice;
   public:
-    Optional<Node> Next();
+    LsOptional<Node> Next();
   private:
     NodeIterator(std::vector<NodeMetaData> const& nodeMetaData):nodeMetaData(nodeMetaData) { };
     std::vector<NodeMetaData> const& nodeMetaData;
@@ -120,7 +120,7 @@ public:
   class TetrahedronIterator {
   public:
     TetrahedronIterator(BCCLattice const& lattice):lattice(lattice) { };
-    Optional<Tetrahedron> Next() { return Optional<Tetrahedron>::None(); };
+    LsOptional<Tetrahedron> Next() { return LsOptional<Tetrahedron>::None(); };
   private:
     BCCLattice const& lattice;
   };
@@ -128,7 +128,7 @@ public:
   class NodeEdgeIterator {
   public:
     NodeEdgeIterator(BCCLattice const& lattice):lattice(lattice) { };
-    Optional<Edge> Next() { return Optional<Edge>::None(); };
+    LsOptional<Edge> Next() { return LsOptional<Edge>::None(); };
   private:
     BCCLattice const& lattice;
   };
@@ -136,7 +136,7 @@ public:
   class EdgeIterator {
   public:
     EdgeIterator(BCCLattice const& lattice):lattice(lattice) { };
-    Optional<Edge> Next();
+    LsOptional<Edge> Next();
   private:
     BCCLattice const& lattice;
     size_t currentNodeIndex = 0;
@@ -157,7 +157,7 @@ public:
   void DeleteNodeCutPoints(Node node); // DeleteAdjacentCutPoints
  
   // Edge info
-  Optional<glm::vec3> GetEdgeCutPoint(Edge edge) const;
+  LsOptional<glm::vec3> GetEdgeCutPoint(Edge edge) const;
   Color GetEdgeColor(Edge edge) const;
   void SetEdgeCutPoint(Edge edge, glm::vec3 position);
 
@@ -169,7 +169,7 @@ public:
   BBox3i latticeBounds;
   
   //void GetNodeGridCoordinates(BCCLattice::Node n1, int& x, int& y, int& z);
-  Optional<int> GetEdgeIndexInNexus(BCCLattice::Edge edge) const;
+  LsOptional<int> GetEdgeIndexInNexus(BCCLattice::Edge edge) const;
   Node GetEdgeNexusNode(Edge edge) const;
   NodeMetaData& GetNodeMetaDataReference(Node node);
   NodeMetaData const& GetNodeMetaDataConstReference(Node node) const;
@@ -219,18 +219,18 @@ BCCLattice::Node operator+(BCCLattice::NodeOffset const & o1, BCCLattice::NodeOf
   return {o1.dx + o2.dx, o1.dy + o2.dy, o1.dz + o2.dz};
 }
 
-Optional<BCCLattice::Node> BCCLattice::NodeIterator::Next() {
+LsOptional<BCCLattice::Node> BCCLattice::NodeIterator::Next() {
   if ( currentIndex >= nodeMetaData.size() )
   {
-    return Optional<Node>::None();
+    return LsOptional<Node>::None();
   }
   return nodeMetaData[currentIndex++].coordinates;
 }
 
-Optional<BCCLattice::Edge> BCCLattice::EdgeIterator::Next() {
+LsOptional<BCCLattice::Edge> BCCLattice::EdgeIterator::Next() {
   if ( currentNodeIndex >= lattice.nodeMetaData.size() )
   {
-    return Optional<Edge>::None();
+    return LsOptional<Edge>::None();
   }
   Node n2;
   Edge e;
@@ -392,7 +392,7 @@ BCCLattice::EdgeMetaData const& BCCLattice::GetEdgeMetaDataConstReference(Edge e
   return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex]; 
 }
 
-Optional<int> BCCLattice::GetEdgeIndexInNexus(BCCLattice::Edge edge) const {
+LsOptional<int> BCCLattice::GetEdgeIndexInNexus(BCCLattice::Edge edge) const {
   // Get vector representing an edge
   NodeOffset offset = edge.n2 - edge.n1;
 
@@ -403,7 +403,7 @@ Optional<int> BCCLattice::GetEdgeIndexInNexus(BCCLattice::Edge edge) const {
       return i;
     }
   }
-  return Optional<int>::None();
+  return LsOptional<int>::None();
 }
 
 // Every edge has one of it's nodes designated to be used as storage of edge information, called nexus node
@@ -469,24 +469,25 @@ void DetermineCutPoints() {
 class Stencil {
 public:
   Stencil();
-  void Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron, std::vector<glm::vec3>* tetrahedra);
-  bool Match(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron);
+  //virtual std::vector<glm::vec3> Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron, LsTetrahedronMesh* mesh) = 0;
+  //virtual std::vector<glm::vec3> Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron) = 0;
+  virtual void Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron, std::vector<glm::vec3>* tetrahedra) = 0;
+  virtual bool Match(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron) = 0;
 };
 
+class StencilPPPP : Stencil {
+  public:
+  StencilPPPP() {};
+  void Output(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron, std::vector<glm::vec3>* tetrahedra) {
 
-// Quadratic-time repack routine
-// Take single list of vertecies and convert them into a list of vertecies and indecies
-// removing duplicate vertecies along the way
-
-
-
-// auto v_duplicate = find_if(tetrahedra.begin(), tetrahedra.end(), eq_pred);
-//     if ( v_duplicate != tetrahedra.end() )
-//     {
-//       return Optional<int>(v_duplicate - tetrahedra.begin());
-//     } else {
-//       Optional<int>::None();
-//     }
+  }
+  bool Match(BCCLattice const& lattice, BCCLattice::Tetrahedron const& tetrahedron) {
+    return lattice.GetNodeValue(tetrahedron.n1) == BCCLattice::Value::ePositive &&
+           lattice.GetNodeValue(tetrahedron.n2) == BCCLattice::Value::ePositive &&
+           lattice.GetNodeValue(tetrahedron.n3) == BCCLattice::Value::ePositive &&
+           lattice.GetNodeValue(tetrahedron.n4) == BCCLattice::Value::ePositive;
+  }
+};
 
 void BuildMeshBuffers(std::vector<glm::vec3>const& tetrahedra, std::vector<glm::vec3>& vertecies, std::vector<int>& indecies) {
   indecies.reserve(tetrahedra.size());
@@ -496,7 +497,7 @@ void BuildMeshBuffers(std::vector<glm::vec3>const& tetrahedra, std::vector<glm::
     auto eq_pred = [&](glm::vec3 v_dst) { return epsilon_eq(v_dst[0], v_src[0]) && 
                                                  epsilon_eq(v_dst[1], v_src[1]) &&
                                                  epsilon_eq(v_dst[2], v_src[2]); };
-    auto maybeIndex = find_index_if(tetrahedra.begin(), tetrahedra.end(), eq_pred);
+    auto maybeIndex = find_index_if(vertecies.begin(), vertecies.end(), eq_pred);
     int finalIndex;
     if ( !maybeIndex )
     {
@@ -509,23 +510,11 @@ void BuildMeshBuffers(std::vector<glm::vec3>const& tetrahedra, std::vector<glm::
   }
 }
 
-
-// For each vertex of tetrahedra
-//   Is it equal to any other in the vertex array?
-//   No? Push it to vertex array and get it's index.
-//   Yes? Get it's index.
-//   Put index in place of vertex.
-
-//   a a a b b b c c c
-//   1 4 5 1 2 4 5 1 3 
-
-//   a a a b b b c c c
-//         _
-
-//   1 4 5 _ 2 _ _ _
+// class StencilPPPP: Stencil {
+//   public
+// };
 
 
-class StencilA;
 class StencilB;
 class StencilC;
 
@@ -551,7 +540,7 @@ bool MatchValuePattern(BCCLattice::Tetrahedron tetrahedron, std::array<BCCLattic
 }
 void TriangulateLattice() {
   BCCLattice::TetrahedronIterator tetrahedronIterator = lattice.GetTetrahedronIterator();
-  Optional<BCCLattice::Tetrahedron> maybeTetrahedron;
+  LsOptional<BCCLattice::Tetrahedron> maybeTetrahedron;
   while ( maybeTetrahedron = tetrahedronIterator.Next() ) {
     BCCLattice::Tetrahedron tetrahedron = maybeTetrahedron;
     if (MatchValuePattern(tetrahedron, { BCCLattice::Value::ePositive,
@@ -672,7 +661,7 @@ void fff() {
   std::cout << (float)2 << std::endl;
 
   auto nodeIterator = bbb.GetNodeIterator();
-  Optional<BCCLattice::Node> node;
+  LsOptional<BCCLattice::Node> node;
   while( node = nodeIterator.Next() ) {
     //std::cout << node << std::endl;
     BCCLattice::Node n = node;

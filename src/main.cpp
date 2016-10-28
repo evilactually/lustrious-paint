@@ -1,7 +1,7 @@
 #include <windows.h>
 #include "vk.hpp"
 #include "version.h"
-#include "Optional.hpp"
+#include "LsUtility/LsOptional.h"
 #include "win32_console.hpp"
 #include "utility.h"
 #include <map>
@@ -12,7 +12,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <FreeImage.h>
 
-
 #include <chrono>
 #include <thread>
 using namespace std::chrono_literals;
@@ -22,6 +21,14 @@ using namespace std::chrono_literals;
 #include "wintab/PKTDEF.h"
 
 #define GIF_RECORDING
+
+// int32x2_t test_1() {
+//   //int32x2_t xs;
+//   // xs[0] = 0;
+//   // xs[1] = 0;
+//   // xs[2] = 0;
+//   return xs;
+// }
 
 //void assert(bool flag, char *msg = "") {
 //    if (!flag) {
@@ -901,7 +908,7 @@ namespace ls {
         return surface_formats[0];
     }
 
-    Optional<vk::Extent2D> GetSwapChainExtent( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
+    LsOptional<vk::Extent2D> GetSwapChainExtent( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
         // Special value of surface extent is width == height == -1
         // If this is so we define the size by ourselves but it must fit within defined confines
         if( surface_capabilities.currentExtent.width == -1 || TRUE) {
@@ -927,13 +934,13 @@ namespace ls {
         }
 
         if (surface_capabilities.currentExtent.width == 0 || surface_capabilities.currentExtent.height == 0 ) {
-          Optional<vk::Extent2D>::None();
+          LsOptional<vk::Extent2D>::None();
         }
         // Most of the cases we define size of the swap_chain images equal to current window's size
         return surface_capabilities.currentExtent;
     }
 
-    Optional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
+    LsOptional<vk::ImageUsageFlags> GetSwapChainUsageFlags( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
       // Color attachment flag must always be supported, don't have to check
       // We can define other usage flags but we always need to check if they are supported
       vk::ImageUsageFlags additionalImageUsageFlags = vk::ImageUsageFlagBits::eTransferDst;
@@ -944,7 +951,7 @@ namespace ls {
         return vk::ImageUsageFlagBits::eColorAttachment | additionalImageUsageFlags;
       }
       std::cout << "Image usage flags are not supported by the swap chain:" << vk::to_string(additionalImageUsageFlags) << std::endl;
-      return Optional<vk::ImageUsageFlags>::None();
+      return LsOptional<vk::ImageUsageFlags>::None();
     }
 
     vk::SurfaceTransformFlagBitsKHR GetSwapChainTransform( vk::SurfaceCapabilitiesKHR &surface_capabilities ) {
@@ -955,7 +962,7 @@ namespace ls {
       }
     }
 
-    Optional<vk::PresentModeKHR> GetSwapChainPresentMode( std::vector<vk::PresentModeKHR> &present_modes ) {
+    LsOptional<vk::PresentModeKHR> GetSwapChainPresentMode( std::vector<vk::PresentModeKHR> &present_modes ) {
       for( vk::PresentModeKHR &present_mode : present_modes ) {
         if( present_mode == vk::PresentModeKHR::eImmediate ) {
           std::cout << "Using immediate present mode" << std::endl; 
@@ -976,7 +983,7 @@ namespace ls {
           return present_mode;
         }
       }
-      return Optional<vk::PresentModeKHR>();
+      return LsOptional<vk::PresentModeKHR>();
     }
 
     void CreateSwapChainImageViews() {
@@ -1047,10 +1054,10 @@ namespace ls {
         }
 
         vk::SurfaceFormatKHR            desired_format = GetSwapChainFormat( surface_formats );
-        Optional<vk::Extent2D>          desired_extent = GetSwapChainExtent( surface_capabilities );
-        Optional<vk::ImageUsageFlags>   desired_usage = GetSwapChainUsageFlags( surface_capabilities );
+        LsOptional<vk::Extent2D>          desired_extent = GetSwapChainExtent( surface_capabilities );
+        LsOptional<vk::ImageUsageFlags>   desired_usage = GetSwapChainUsageFlags( surface_capabilities );
         vk::SurfaceTransformFlagBitsKHR desired_transform = GetSwapChainTransform( surface_capabilities );
-        Optional<vk::PresentModeKHR>    desired_present_mode = GetSwapChainPresentMode( present_modes );
+        LsOptional<vk::PresentModeKHR>    desired_present_mode = GetSwapChainPresentMode( present_modes );
         vk::SwapchainKHR                old_swapchain = swapChainInfo.swapChain;
 
         if( !desired_usage ) {
@@ -1737,8 +1744,8 @@ namespace ls {
 
       commandBuffer.pipelineBarrier( 
         vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer, 
-        vk::DependencyFlagBits(),
+        vk::PipelineStageFlagBits::eBottomOfPipe, // need to block presentation, there's no actual stage for it, //vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer, 
+        vk::DependencyFlagBits(),                 // but bottom of pipe is what we need
         0,
         nullptr,
         0,
@@ -2599,7 +2606,10 @@ namespace ls {
   }
 }
 
+#ifndef TESTING
+
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+
   try {
     ls::hInstance = hInstance;
     
@@ -2610,7 +2620,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     wt::LoadWintabLibrary();
     wt::LoadEntryPoints();
-    ls::WintabReport();
+    //ls::WintabReport();
     ls::TabletInit();
 
     vk::LoadVulkanLibrary();
@@ -2672,3 +2682,5 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   FreeImage_DeInitialise();
   return ls::msg.wParam;
 }
+
+#endif // #ifndef TESTING
