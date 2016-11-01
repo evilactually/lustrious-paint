@@ -893,7 +893,7 @@ namespace ls {
         // it means that there are no preferred surface formats and any can be chosen
         if( (surface_formats.size() == 1) &&
             (surface_formats[0].format == vk::Format::eUndefined) ) {
-            return vk::SurfaceFormatKHR( vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eVkColorspaceSrgbNonlinear );
+            return {vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear};
         }
 
         // Check if list contains most widely used R8 G8 B8 A8 format

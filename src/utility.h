@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vulkan/vk_cpp.hpp"
 #include <windows.h>
 #include <string>
 #include <vector>
