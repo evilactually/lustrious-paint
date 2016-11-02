@@ -1,5 +1,6 @@
 #include <windows.h>
-#include "vk.hpp"
+#include "LsVulkanLoader/LsVulkanLoader.h"
+#include "LsVulkanLoader/vulkan_dynamic.hpp"
 #include "version.h"
 #include "LsUtility/LsOptional.h"
 #include "win32_console.hpp"
@@ -2623,19 +2624,19 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     //ls::WintabReport();
     ls::TabletInit();
 
-    vk::LoadVulkanLibrary();
-    vk::LoadExportedEntryPoints();
-    vk::LoadGlobalLevelEntryPoints();
+    LsLoadVulkanLibrary();
+    LsLoadExportedEntryPoints();
+    LsLoadGlobalLevelEntryPoints();
     ls::CheckValidationAvailability();
 
     ls::CreateInstance();
-    vk::LoadInstanceLevelEntryPoints(ls::instance, ls::INSTANCE_EXTENSIONS);
+    LsLoadInstanceLevelEntryPoints(ls::instance, ls::INSTANCE_EXTENSIONS);
 
     ls::CreateDebugReportCallback(); // needs an instance level function
     ls::CreatePresentationSurface(); // need this for device creation
 
     ls::CreateDevice();
-    vk::LoadDeviceLevelEntryPoints(ls::device, ls::DEVICE_EXTENSIONS);
+    LsLoadDeviceLevelEntryPoints(ls::device, ls::DEVICE_EXTENSIONS);
 
     ls::CreateSemaphores();
     ls::CreateFence();
@@ -2677,7 +2678,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   ls::DestroyDebugReportCallback();
   ls::FreeInstance();
 
-  vk::UnloadVulkanLibrary();
+  LsUnloadVulkanLibrary();
 
   FreeImage_DeInitialise();
   return ls::msg.wParam;

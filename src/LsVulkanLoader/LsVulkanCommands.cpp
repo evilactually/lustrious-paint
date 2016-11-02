@@ -1,7 +1,19 @@
+//===============================================================================
+// @ LsVulkanCommands.cpp
+// 
+// Vulkan function *definitions* for use with dynamic vulkan loader
+//
+//===============================================================================
 
+//-------------------------------------------------------------------------------
+//-- Dependencies ---------------------------------------------------------------
+//-------------------------------------------------------------------------------
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
 
+//-------------------------------------------------------------------------------
+//-- Functions ------------------------------------------------------------------
+//-------------------------------------------------------------------------------
 #define VK_EXPORTED_FUNCTION( fun ) PFN_##fun fun;
 #define VK_GLOBAL_LEVEL_FUNCTION( fun) PFN_##fun fun;
 #define VK_INSTANCE_LEVEL_FUNCTION( fun ) PFN_##fun fun;
@@ -19,7 +31,7 @@
 #define VK_USE_NV_EXTERNAL_MEMORY_WIN32
 #define VK_USE_NV_EXTERNAL_MEMORY_CAPABILITIES
 
-#include "vk_functions.inl"
+#include "LsVulkanCommands.inl"
 
 #undef VK_USE_CORE
 #undef VK_USE_KHR_DISPLAY
@@ -32,7 +44,3 @@
 #undef VK_USE_AMD_DRAW_INDIRECT_COUNT
 #undef VK_USE_NV_EXTERNAL_MEMORY_WIN32
 #undef VK_USE_NV_EXTERNAL_MEMORY_CAPABILITIES
-
-namespace vk {
-  HMODULE VulkanLibrary;
-}
