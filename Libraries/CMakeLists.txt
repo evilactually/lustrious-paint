@@ -1,0 +1,6 @@
+add_subdirectory( LsMath )
+add_subdirectory( LsUtility )
+add_subdirectory( LsVulkanLoader )
+add_subdirectory( LsWintabLoader )
+add_subdirectory( LsInput )
+add_subdirectory( LsRenderer )

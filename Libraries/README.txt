@@ -1,0 +1,1 @@
+Directory containing source code of libraries used either by tools or by application.

@@ -1,0 +1,1 @@
+Directory containing source code of shaders either in GLSL or SPIR-V assembly.
