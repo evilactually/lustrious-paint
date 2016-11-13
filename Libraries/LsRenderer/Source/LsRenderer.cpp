@@ -1,13 +1,27 @@
 #include <vulkan_dynamic.hpp>
 #include <iostream>
+#include <string>
 
 // Needs device, swapchain, graphics queue
 
 class LsRenderer {
-public:
+  static LsRenderer renderer;
+  vk::Device device;
+  vk::Fence submitCompleteFence;
+  struct {
+    vk::SwapchainKHR swapChain;
+    uint32_t acquiredImageIndex;
+  } swapChainInfo;
+  struct {
+    vk::Semaphore imageAvailable;
+    vk::Semaphore renderingFinished;
+  } semaphores;
   LsRenderer();
   void BeginDrawing();
   void EndDrawing();
+public:
+  static void Initialize(vk::Device device, vk::SwapchainKHR swapChain);
+  static LsRenderer& Get();
   void BeginFrame();
   void EndFrame();
   void Clear(float r, float g, float b);
@@ -16,24 +30,30 @@ public:
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
   void SetPointSize(float size);
-private:
-  vk::Device device;
-  vk::Fence submitCompleteFence;
 };
+
+LsRenderer& LsRenderer::Get() {
+  return renderer;
+}
+
+void LsRenderer::Initialize(vk::Device device, vk::SwapchainKHR swapChain) {
+  LsRenderer::renderer.device = device;
+  LsRenderer::renderer.swapChainInfo.swapChain = swapChain;
+}
 
 void LsRenderer::BeginFrame() {
   if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
-    std::cout << "Waiting for fence takes too long!" << std::endl;
-    //LsError();
+    throw std::string("Waiting for fence takes too long!");
   }
 
-  // device.resetFences( 1, &submitCompleteFence );
+  device.resetFences( 1, &submitCompleteFence );
 
-  // vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
-  //   UINT64_MAX,
-  //   semaphores.imageAvailable,
-  //   vk::Fence(),
-  //   &swapChainInfo.acquiredImageIndex );
+  vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
+    UINT64_MAX,
+    semaphores.imageAvailable,
+    vk::Fence(),
+    &swapChainInfo.acquiredImageIndex );
+
   // switch( result ) {
   //   case vk::Result::eSuccess:
   //   break;

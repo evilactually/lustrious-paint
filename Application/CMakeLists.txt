@@ -11,7 +11,9 @@ set(INCLUDE_FILES
 
 set(SOURCE_FILES
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
-  "Source/Main.cpp")
+  "Source/Main.cpp"
+  "Source/FWin32MessageHandler.cpp"
+  "Source/BrushRig.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"
@@ -37,6 +39,7 @@ add_executable( LustriousPaint WIN32 ${INCLUDE_FILES} ${SOURCE_FILES} ${RESOURCE
 target_include_directories( LustriousPaint PUBLIC Include
                                                   "${CMAKE_SOURCE_DIR}/Include"
                                                   "${CMAKE_CURRENT_BINARY_DIR}/Include/"
+                                                  "${LIBRARY_SOURCE_DIR}/LsInput/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsMath/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
