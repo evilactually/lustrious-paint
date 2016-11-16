@@ -12,7 +12,6 @@ set(INCLUDE_FILES
 set(SOURCE_FILES
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
   "Source/Main.cpp"
-  "Source/FWin32MessageHandler.cpp"
   "Source/BrushRig.cpp")
 
 set(RESOURCE_FILES
@@ -26,11 +25,10 @@ configure_file(
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
   "${CMAKE_BINARY_DIR}/Resources/Version.rc")
 
-configure_file (
+configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/Include/Version.h.in"
   "${CMAKE_CURRENT_BINARY_DIR}/Include/Version.h")
 
-find_package( CAF COMPONENTS core io REQUIRED )
 find_package( FreeImage REQUIRED )
 find_package( VulkanSDK REQUIRED )
 
@@ -39,21 +37,22 @@ add_executable( LustriousPaint WIN32 ${INCLUDE_FILES} ${SOURCE_FILES} ${RESOURCE
 target_include_directories( LustriousPaint PUBLIC Include
                                                   "${CMAKE_SOURCE_DIR}/Include"
                                                   "${CMAKE_CURRENT_BINARY_DIR}/Include/"
-                                                  "${LIBRARY_SOURCE_DIR}/LsInput/Include"
+                                                  "${LIBRARY_SOURCE_DIR}/LsRenderer/Include"
+                                                  "${LIBRARY_SOURCE_DIR}/LsWin32MainWindow/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsMath/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsWintabLoader/Include"
                                                   ${VULKAN_INCLUDE_DIR}
-                                                  ${FREEIMAGE_INCLUDE_DIR}
-                                                  ${CAF_INCLUDE_DIRS} )
+                                                  ${FREEIMAGE_INCLUDE_DIR} )
 
 target_link_libraries( LustriousPaint LsMath
                                       LsUtility
                                       LsVulkanLoader
                                       LsWintabLoader
-                                      ${FREEIMAGE_LIBRARY_STATIC}
-                                      ${CAF_LIBRARIES})
+                                      LsWin32MainWindow
+                                      LsRenderer
+                                      ${FREEIMAGE_LIBRARY_STATIC} )
 
 add_dependencies( LustriousPaint Shaders )
 

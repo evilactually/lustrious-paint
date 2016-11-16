@@ -1,78 +1,226 @@
 #include <vulkan_dynamic.hpp>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <LsRenderer.h>
+#include <LsVulkanLoader.h>
+
+struct LinePushConstants {
+  float positions[4];
+  float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+struct PointPushConstants {
+  float positions[2]; 
+  float pad[2];
+  float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+  float size = 1.0f;
+};
 
 // Needs device, swapchain, graphics queue
 
-class LsRenderer {
-  static LsRenderer renderer;
-  vk::Device device;
-  vk::Fence submitCompleteFence;
-  struct {
-    vk::SwapchainKHR swapChain;
-    uint32_t acquiredImageIndex;
-  } swapChainInfo;
-  struct {
-    vk::Semaphore imageAvailable;
-    vk::Semaphore renderingFinished;
-  } semaphores;
-  LsRenderer();
-  void BeginDrawing();
-  void EndDrawing();
-public:
-  static void Initialize(vk::Device device, vk::SwapchainKHR swapChain);
-  static LsRenderer& Get();
-  void BeginFrame();
-  void EndFrame();
-  void Clear(float r, float g, float b);
-  void DrawLine(float x1, float y1, float x2, float y2);
-  void DrawPoint(float x, float y);
-  void SetColor(float r, float g, float b);
-  void SetLineWidth(float width);
-  void SetPointSize(float size);
-};
+LsRenderer::LsRenderer() {
 
-LsRenderer& LsRenderer::Get() {
-  return renderer;
 }
 
-void LsRenderer::Initialize(vk::Device device, vk::SwapchainKHR swapChain) {
-  LsRenderer::renderer.device = device;
-  LsRenderer::renderer.swapChainInfo.swapChain = swapChain;
+LsRenderer::~LsRenderer() {
+
+}
+
+bool CheckExtensionAvailability( const char *extension_name, 
+                                 std::vector<vk::ExtensionProperties> const& available_instance_extensions ) {
+  for( size_t i = 0; i < available_instance_extensions.size(); ++i ) {
+    if( std::string(available_instance_extensions[i].extensionName) == extension_name ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+//-------------------------------------------------------------------------------
+// @ CreateInstance()
+//-------------------------------------------------------------------------------
+// Create Vulkan instance with all required instance extensions
+//-------------------------------------------------------------------------------
+void CreateInstance( std::vector<const char*> const& extensions, 
+                     std::vector<const char*> const& layers,
+                     vk::Instance* instance ) {
+  // Get available extensions
+  uint32_t instance_extensions_count = 0;
+  vk::Result result = vk::enumerateInstanceExtensionProperties(
+    nullptr, 
+    &instance_extensions_count,
+    nullptr );
+  if ( result != vk::Result::eSuccess || instance_extensions_count == 0 ) {
+    throw std::string("Error occurred during instance extension enumeration!");
+  }
+  std::vector<vk::ExtensionProperties> available_instance_extensions( instance_extensions_count );
+  result = vk::enumerateInstanceExtensionProperties(
+    nullptr, 
+    &instance_extensions_count,
+    &available_instance_extensions[0] );
+  if( result != vk::Result::eSuccess ) {
+    throw std::string("Error occurred during instance extension enumeration!");
+  }
+
+  // Check that all required extensions are present
+  for( size_t i = 0; i < extensions.size(); ++i ) {
+    if( !CheckExtensionAvailability( extensions[i], available_instance_extensions ) ) {
+      throw (std::string("Could not find instance extension named \"") + 
+             std::string(extensions[i]) + 
+             std::string("\"!"));
+    }
+  }
+
+  vk::ApplicationInfo appliactionInfo(
+    NULL,//LS_PRODUCT_NAME,
+    NULL,//LS_VERSION,
+    NULL,
+    NULL,
+    VK_API_VERSION_1_0 );
+
+    vk::InstanceCreateInfo instanceCreateInfo(
+      vk::InstanceCreateFlags(),
+      &appliactionInfo,
+      static_cast<uint32_t>(layers.size()),
+      &layers[0],
+      static_cast<uint32_t>(extensions.size()),
+      &extensions[0] );
+
+    if ( createInstance( &instanceCreateInfo, nullptr, instance) != vk::Result::eSuccess ) {
+      throw std::string( "Failed to create Vulkan instance!" );
+    }
+}
+
+//-------------------------------------------------------------------------------
+// @ requiredInstanceExtensions
+//-------------------------------------------------------------------------------
+// List of instance-level extension that will be enabled when creating an instance
+//-------------------------------------------------------------------------------
+std::vector<const char*> requiredInstanceExtensions = {
+  VK_KHR_SURFACE_EXTENSION_NAME,
+  VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#ifdef VULKAN_VALIDATION
+  VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+#endif
+};
+
+//-------------------------------------------------------------------------------
+// @ requiredDeviceExtensions
+//-------------------------------------------------------------------------------
+// List of device-level extension that will be enabled when creating a logical device
+//-------------------------------------------------------------------------------
+std::vector<const char*> requiredDeviceExtensions = {
+  VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
+//-------------------------------------------------------------------------------
+// @ requiredInstanceValidationLayers
+//-------------------------------------------------------------------------------
+// List of instance-level validation levels that will be enabled when creating an instance
+//-------------------------------------------------------------------------------
+std::vector<const char*> requiredInstanceValidationLayers = {
+#ifdef VULKAN_VALIDATION
+  "VK_LAYER_LUNARG_standard_validation"
+#endif
+};
+
+void CheckValidationLayersAvailability(std::vector<const char*> const& layers) {
+  uint32_t availableLayerCount;
+  vk::enumerateInstanceLayerProperties(&availableLayerCount, nullptr);
+  std::vector<vk::LayerProperties> availableLayers(availableLayerCount);
+  vk::enumerateInstanceLayerProperties(&availableLayerCount, &availableLayers[0]);
+  availableLayers.resize(availableLayerCount);
+
+  for( size_t i = 0; i < layers.size(); ++i ) {
+    bool found = false;
+    for (size_t j = 0; j < availableLayers.size(); ++j)
+    {
+      if ( strcmp( layers[i], availableLayers[j].layerName ) == 0 ) {
+        found = true;
+        break;
+      }
+    }
+    if ( !found )
+    {
+      throw std::string("Instance layer ") + std::string(layers[i]) + std::string(" not found!");
+    }
+  }
+}
+
+void CreateDebugReportCallback(vk::Instance instance, vk::DebugReportCallbackEXT* debugReportCallback) {
+  vk::DebugReportCallbackCreateInfoEXT callbackCreateInfo(
+    vk::DebugReportFlagBitsEXT::eError | vk::DebugReportFlagBitsEXT::eWarning,
+    NULL,
+    nullptr);
+  instance.createDebugReportCallbackEXT(&callbackCreateInfo, nullptr, debugReportCallback);
+}
+
+void CreatePresentationSurface(vk::Instance instance, HINSTANCE hInstance, HWND windowHandle, vk::SurfaceKHR* presentationSurface) {
+  vk::Win32SurfaceCreateInfoKHR surface_create_info(
+    vk::Win32SurfaceCreateFlagsKHR(), // vk::Win32SurfaceCreateFlagsKHR   flags
+    hInstance,                        // HINSTANCE                        hinstance
+    windowHandle                      // HWND                             hwnd
+  );
+
+  if( instance.createWin32SurfaceKHR( &surface_create_info, nullptr, presentationSurface ) != vk::Result::eSuccess ) {
+    throw std::string("Could not create presentation surface!");
+  }
+}
+
+LsRenderer LsRenderer::renderer;
+
+LsRenderer* LsRenderer::Get() {
+  return &renderer;
+}
+
+void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
+  LsRenderer* renderer = LsRenderer::Get();
+  LsLoadVulkanLibrary();
+  LsLoadExportedEntryPoints();
+  LsLoadGlobalLevelEntryPoints();
+  CreateInstance(requiredDeviceExtensions, requiredInstanceValidationLayers, &renderer->instance);
+  CheckValidationLayersAvailability(requiredInstanceValidationLayers);
+#ifdef VULKAN_VALIDATION
+  CreateDebugReportCallback(renderer->instance, &renderer->debugReportCallback);
+#endif
+  CreatePresentationSurface(renderer->instance, hInstance, window, &renderer->swapChainInfo.presentationSurface);
+  // LsRenderer::renderer.device = device;
+  // LsRenderer::renderer.swapChainInfo.swapChain = swapChain;
+  // TODO: Prepare Vulkan as usual
 }
 
 void LsRenderer::BeginFrame() {
-  if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
-    throw std::string("Waiting for fence takes too long!");
-  }
+  // if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
+  //   throw std::string("Waiting for fence takes too long!");
+  // }
 
-  device.resetFences( 1, &submitCompleteFence );
+  // device.resetFences( 1, &submitCompleteFence );
 
-  vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
-    UINT64_MAX,
-    semaphores.imageAvailable,
-    vk::Fence(),
-    &swapChainInfo.acquiredImageIndex );
+  // vk::Result result = device.acquireNextImageKHR( swapChainInfo.swapChain, 
+  //   UINT64_MAX,
+  //   semaphores.imageAvailable,
+  //   vk::Fence(),
+  //   &swapChainInfo.acquiredImageIndex );
 
   // switch( result ) {
   //   case vk::Result::eSuccess:
   //   break;
   //   case vk::Result::eSuboptimalKHR:
+  //   // It's still OK to use.
   //   break;
   //   case vk::Result::eErrorOutOfDateKHR:
-  //   std::cout << "Swap chain out of date" << std::endl;
-  //   RefreshSwapChain();
-  //   UpdatePixelDimensions();
+  //   //RefreshSwapChain();
+  //   //UpdatePixelDimensions();
   //   return;
   //   default:
-  //   std::cout << "Problem occurred during swap chain image acquisition!" << std::endl;
-  //   LsError();
+  //   throw std::string("Problem occurred during swap chain image acquisition!");
   // }
 
   // vk::CommandBufferBeginInfo cmd_buffer_begin_info(
-  //         vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
-  //         nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
-  //         );
+  //   vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
+  //   nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
+  //   );
 
   // commandBuffer.begin( &cmd_buffer_begin_info );
 

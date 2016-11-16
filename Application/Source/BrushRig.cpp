@@ -1,12 +1,20 @@
- #include <FWin32MessageHandler.h>
+#include <iostream>
+#include <LsBrushRig.h>
+#include <LsFWin32MessageHandler.h>
+#include <LsRenderer.h>
 
-class BrushRig: public FWin32MessageHandler
-{
-public:
-  BrushRig();
-  ~BrushRig();
-  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
-  void Render();
-protected:
+LsBrushRig::LsBrushRig() {
+
+}
+
+LsBrushRig::~LsBrushRig() {
   
-};
+}
+
+void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    std::cout << uMsg << std::endl;
+}
+
+void LsBrushRig::Render() {
+
+}

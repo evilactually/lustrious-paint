@@ -1,32 +1,11 @@
-#include <FWin32MessageHandler.h>
+#include <windows.h>
 #include <assert.h>
-
-class LsWin32MainWindow
-{
-friend LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-public:
-  void Create(HINSTANCE hInstance, std::string title, int x, int y, int width, int height);
-  static LsWin32MainWindow& Get();
-  HWND GetWindowHandle();
-  void WaitForMessages();
-  bool ProcessMessages();
-  void Destroy();
-  void Hide();
-  void Show();
-  void Minimize();
-  void Restore();
-  void Maximize();
-protected:
-  static LsWin32MainWindow window;
-  HWND windowHandle;
-  MSG msg;
-  LsWin32MainWindow();
-  ~LsWin32MainWindow();
-  LRESULT HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-};
+#include <string>
+#include <LsWin32MainWindow.h>
+#include <LsFWin32MessageHandler.h>
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  return LsWin32MainWindow::Get().HandleMessage(hwnd, uMsg, wParam, lParam);
+  return LsWin32MainWindow::Get()->HandleMessage(hwnd, uMsg, wParam, lParam);
 }
 
 void LsWin32MainWindow::Create(HINSTANCE hInstance, std::string title, int x, int y, int width, int height) {
@@ -44,7 +23,7 @@ void LsWin32MainWindow::Create(HINSTANCE hInstance, std::string title, int x, in
   windowRegion.left = x;
   windowRegion.right = x + width;
   windowRegion.top = y;
-  windowRegion.bottom = y + height; 
+  windowRegion.bottom = y + height;
 
   ::AdjustWindowRect(&windowRegion, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
 
@@ -66,8 +45,8 @@ void LsWin32MainWindow::Create(HINSTANCE hInstance, std::string title, int x, in
   assert(handle == windowHandle);
 }
 
-LsWin32MainWindow& LsWin32MainWindow::Get() {
-  return window;
+LsWin32MainWindow* LsWin32MainWindow::Get() {
+  return &window;
 }
 
 HWND LsWin32MainWindow::GetWindowHandle() {
@@ -126,10 +105,10 @@ LsWin32MainWindow::~LsWin32MainWindow() {
 LRESULT LsWin32MainWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
   // Set window handle as soon as possible
   if ( !windowHandle ) {
-     LsWin32MainWindow::Get().windowHandle = hwnd;
+     LsWin32MainWindow::Get()->windowHandle = hwnd;
   }
 
-  FWin32MessageHandler::BroadCastWin32Message(uMsg, wParam, lParam);
+  LsFWin32MessageHandler::BroadCastWin32Message(uMsg, wParam, lParam);
 
   switch( uMsg ) {
     case WM_DESTROY:

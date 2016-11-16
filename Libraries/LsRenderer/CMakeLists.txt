@@ -28,4 +28,5 @@ include_directories( Include )
 include_directories( ${VULKAN_INCLUDE_DIR} )
 include_directories( "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include" )
 
-target_link_libraries( LsRenderer ${VULKAN_LIBRARY} )
+target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
+                                  LsVulkanLoader )

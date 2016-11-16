@@ -11,4 +11,4 @@ void LsLoadWintabLibrary();
 
 void LsUnloadWintabLibrary();
 
-void LsLoadEntryPoints();
+void LsLoadWintabEntryPoints();

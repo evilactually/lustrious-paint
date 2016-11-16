@@ -39,7 +39,7 @@ void LsUnloadWintabLibrary() {
   }
 }
 
-void LsLoadEntryPoints() {
+void LsLoadWintabEntryPoints() {
   #define WT_EXPORTED_FUNCTION( fun )                                         \
     if(!(fun = (PFN_##fun)GetProcAddress( wintabLibrary, #fun ))) {           \
       std::cout << "Could not load exported function: ##fun!" << std::endl;   \
