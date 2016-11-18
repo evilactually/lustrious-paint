@@ -3,8 +3,10 @@
 #include <windows.h>
 #include <vulkan_dynamic.hpp>
 #include <vector>
+#include <memory>
+#include <destructor.h>
 
-//#define VULKAN_VALIDATION
+#define VULKAN_VALIDATION
 
 class LsRenderer {
 public:
@@ -45,4 +47,7 @@ private:
     uint32_t acquiredImageIndex;
   } swapChainInfo;
 
+  std::unique_ptr<lslib::destructor> vulkanDestructor;
+
 };
+

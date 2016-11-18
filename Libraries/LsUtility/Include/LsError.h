@@ -24,5 +24,6 @@ void LsError();
 
 void LsExitFatal(std::string message, std::string caption);
 
-void LsMessageBox(std::string message, std::string caption) 
+void LsErrorMessage(std::string message, std::string caption);
 
+void LsMessageBox(std::string message, std::string caption);

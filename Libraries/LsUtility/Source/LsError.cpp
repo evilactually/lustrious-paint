@@ -48,12 +48,16 @@ void LsError() {
 
 void LsExitFatal(std::string message, std::string caption) 
 {
-  MessageBox(NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
+  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
   throw 1;
+}
+
+void LsErrorMessage(std::string message, std::string caption) 
+{
+  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
 }
 
 void LsMessageBox(std::string message, std::string caption) 
 {
-  MessageBox(NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
-  throw 1;
+  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK );
 }

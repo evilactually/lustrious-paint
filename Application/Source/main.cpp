@@ -1,3 +1,5 @@
+#include <destructor.h>
+
 #include <windows.h>
 #include <string>
 #include <iostream>
@@ -7,33 +9,38 @@
 #include <LsWintabLoader.h>
 #include <LsBrushRig.h>
 #include <LsConsole.h>
+#include <LsError.h>
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-  // Get a pointer to main window singleton
-  LsWin32MainWindow* window = LsWin32MainWindow::Get();
 
-  // Attach console for standard output
-  LsOpenConsole();
-  
-  // Load Wintab
-  LsLoadWintabLibrary();
-  LsLoadWintabEntryPoints();
+  try {
+    // Get a pointer to main window singleton
+    LsWin32MainWindow* window = LsWin32MainWindow::Get();
 
-  LsBrushRig brushRig;
-  
-  //LsWin32MainWindow& window = LsWin32MainWindow::Get();
+    // Attach console for standard output
+    LsOpenConsole();
 
+    // Load Wintab
+    LsLoadWintabLibrary();
+    LsLoadWintabEntryPoints();
 
-  window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
+    LsBrushRig brushRig;
 
-  // Initialize the rendering system
-  LsRenderer::Initialize(hInstance, window->GetWindowHandle());
+    window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
+    LsSetDialogParentWindow(window->GetWindowHandle());
 
-  
-  window->Show();
-  while( window->ProcessMessages() ){
-    window->WaitForMessages();
-  };
+    // Initialize the rendering system
+    LsRenderer::Initialize(hInstance, window->GetWindowHandle());
+    
+    window->Show();
+    while( window->ProcessMessages() ){
+      window->WaitForMessages();
+    };
+
+  }
+  catch (std::string m) {
+    LsErrorMessage(m, "Error");
+  }
 
   LsCloseConsole();
 }

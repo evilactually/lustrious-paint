@@ -1,55 +1,55 @@
+#pragma once
+
+#include <vector>
+#include <memory>
+#include <algorithm>
+
 namespace lslib {
 
 using namespace std;
 
 class destructor
 {
-public:
-  int value;
-  void(*fn)();
+protected:
   vector<unique_ptr<destructor>> attached;
-  std::list<destructor> _attached;
-  static bool is_valid(const destructor& x) { return x.value != 0; }
-  static bool is_invalid(const destructor& x) { return !is_valid(x); }
-  //destructor(void(*fn)()):fn(fn) { }
-  destructor(int value):value(value),fn(0) { }
+  void(*fn)();
+  void prune() {
+    auto is_empty = [](unique_ptr<destructor>& x) { 
+      return x.get()->fn == 0;
+    };
+    attached.erase(std::remove_if( attached.begin(), attached.end(), is_empty), attached.end());
+  }
+public:
+  destructor(void(*fn)()):fn(fn) {
+    if (!fn) {
+      throw std::string("Function must not be NULL!");
+    }
+  }
   bool operator==(const destructor& other) {
-    //return fn == other.fn;
-    return value == other.value;
+    return fn == other.fn;
   }
   destructor& operator=(destructor&& other) {
-    //fn = other.fn;
-    //other.fn = 0;
-    value = other.value;
-    other.value = 0;
+    fn = other.fn;
+    other.fn = 0;
     return *this;
   }
   destructor(destructor&& other) {
-    value = other.value;
-    //fn = other.fn;
-    other.value = 0;
-    //other.fn = 0;
+    fn = other.fn;
+    other.fn = 0;
   }
   ~destructor() {
     // Call child destructors before the parent destructor
     attached.clear();
     // Invoke the parent destructor
-    std::cout << "~" << value << std::endl;
-    // if (fn) {
-    //   fn();
-    // }
-  }
-  void prune() {
-    auto is_empty = [](unique_ptr<destructor>& x) { 
-      return x.get()->value == 0;
-    };
-    attached.erase(std::remove_if( attached.begin(), attached.end(), is_empty), attached.end());
+    if (fn) {
+      fn();
+    }
   }
   destructor& attach(destructor& other) {
-    if (!value) {
+    if (!fn) {
       throw std::string("Attaching to moved out destructor!");
     }
-    if (!other.value) {
+    if (!other.fn) {
       throw std::string("Attaching moved out destructor!");
     }
     attached.push_back(make_unique<destructor>(std::move(other)));
@@ -57,12 +57,11 @@ public:
   }
   destructor& attach_to(destructor& other) {
     return other.attach(*this);
-    //return *other.attached[other.attached.size()-1];
   }
   destructor detach(destructor& other) {
     // Check if destructor is attached
     auto it = find_if(attached.begin(), attached.end(), [&](unique_ptr<destructor>& x) {
-      return x.get()->value == other.value;
+      return x.get()->fn == other.fn;
     });
     if (it == attached.end())
     {
@@ -73,6 +72,9 @@ public:
     // Remove moved out values
     prune();
     return other_owned;
+  }
+  destructor detach_from(destructor& other) {
+    return other.detach(*this);
   }
 };
 

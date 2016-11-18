@@ -2,8 +2,16 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <tuple>
+
+#include <memory>
+#include <destructor.h>
+
 #include <LsRenderer.h>
 #include <LsVulkanLoader.h>
+#include <LsError.h>
+
+using namespace lslib;
 
 struct LinePushConstants {
   float positions[4];
@@ -83,9 +91,9 @@ void CreateInstance( std::vector<const char*> const& extensions,
       vk::InstanceCreateFlags(),
       &appliactionInfo,
       static_cast<uint32_t>(layers.size()),
-      &layers[0],
+      layers.data(),
       static_cast<uint32_t>(extensions.size()),
-      &extensions[0] );
+      extensions.data() );
 
     if ( createInstance( &instanceCreateInfo, nullptr, instance) != vk::Result::eSuccess ) {
       throw std::string( "Failed to create Vulkan instance!" );
@@ -174,17 +182,93 @@ LsRenderer* LsRenderer::Get() {
   return &renderer;
 }
 
+//-------------------------------------------------------------------------------
+// @ RatePhysicalDevice()
+//-------------------------------------------------------------------------------
+// Give a rating to vk::PhysicalDevice. Device with a higher rating is more favorable.
+// Rating of zero or less means device is unsuitable.
+//-------------------------------------------------------------------------------
+int RatePhysicalDevice(vk::PhysicalDevice physicalDevice, void const* userData) {
+  return 1;
+}
+
+typedef int (RatePhysicalDeviceFn)(vk::PhysicalDevice, void const*);
+
+vk::PhysicalDevice FindPhysicalDevice(vk::Instance instance, RatePhysicalDeviceFn* ratePhysicalDeviceFn, void const* withUserData) {
+  // Get physical device count
+  uint32_t physicalDeviceCount = 0;
+  vk::Result result = instance.enumeratePhysicalDevices( &physicalDeviceCount, NULL );
+  if( result != vk::Result::eSuccess || physicalDeviceCount == 0 ) {
+    throw std::string("Error occurred during physical devices enumeration!");
+  }
+
+  // Get a list of physical devices
+  std::vector<vk::PhysicalDevice> physicalDevices( physicalDeviceCount );
+  result = instance.enumeratePhysicalDevices( &physicalDeviceCount, physicalDevices.data() );
+  if( result != vk::Result::eSuccess || physicalDeviceCount == 0 ) {
+    throw std::string("Error occurred during physical devices enumeration!");
+  }
+
+  // Rate physical devices
+  std::vector<std::tuple<vk::PhysicalDevice, int>> ratedPhysicalDevices;
+  for( auto physicalDevice:physicalDevices ) {
+    int rating = ratePhysicalDeviceFn(physicalDevice, withUserData);
+    ratedPhysicalDevices.push_back(std::make_tuple(physicalDevice, rating));
+  }
+
+  // Sort in descending order
+  std::sort( ratedPhysicalDevices.begin(), ratedPhysicalDevices.end(), [](auto x, auto y) {
+    return std::get<1>(x) >= std::get<1>(y);
+  });
+
+  vk::PhysicalDevice topDevice = std::get<0>(ratedPhysicalDevices[0]);
+  int topRating = std::get<1>(ratedPhysicalDevices[0]);
+  
+  // Check if at least one device has a positive non-zero rating
+  if ( topRating <= 0 )
+  {
+    throw std::string("No suitable Vulkan device found!");
+  }
+
+  return topDevice;
+}
+
 void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   LsRenderer* renderer = LsRenderer::Get();
+  
   LsLoadVulkanLibrary();
+  renderer->vulkanDestructor = std::make_unique<destructor>(destructor([](){
+    LsMessageBox( "~vulkan", "...");
+    LsUnloadVulkanLibrary();
+  }));
+
   LsLoadExportedEntryPoints();
   LsLoadGlobalLevelEntryPoints();
-  CreateInstance(requiredDeviceExtensions, requiredInstanceValidationLayers, &renderer->instance);
+
+  CreateInstance(requiredInstanceExtensions, requiredInstanceValidationLayers, &renderer->instance);
+  destructor& instanceDestructor = destructor([](){
+    LsMessageBox( "~instance", "...");
+    LsRenderer::Get()->instance.destroy(nullptr);
+  }).attach_to(*renderer->vulkanDestructor);
+
+  LsLoadInstanceLevelEntryPoints(renderer->instance, requiredInstanceExtensions);
   CheckValidationLayersAvailability(requiredInstanceValidationLayers);
 #ifdef VULKAN_VALIDATION
   CreateDebugReportCallback(renderer->instance, &renderer->debugReportCallback);
+  destructor([](){
+    LsMessageBox( "~debug callback", "...");
+    LsRenderer* renderer = LsRenderer::Get();
+    renderer->instance.destroyDebugReportCallbackEXT(renderer->debugReportCallback, nullptr);
+  }).attach_to(instanceDestructor);
 #endif
   CreatePresentationSurface(renderer->instance, hInstance, window, &renderer->swapChainInfo.presentationSurface);
+  destructor& presentationDestructor = destructor([](){
+    LsMessageBox( "~presentation", "...");
+    LsRenderer* renderer = LsRenderer::Get();
+    renderer->instance.destroySurfaceKHR(renderer->swapChainInfo.presentationSurface, nullptr);
+  }).attach_to(instanceDestructor);
+
+  renderer->physicalDevice = FindPhysicalDevice(renderer->instance, RatePhysicalDevice, &renderer);
   // LsRenderer::renderer.device = device;
   // LsRenderer::renderer.swapChainInfo.swapChain = swapChain;
   // TODO: Prepare Vulkan as usual

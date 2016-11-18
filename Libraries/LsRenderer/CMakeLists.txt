@@ -26,7 +26,9 @@ message( "${VULKAN_INCLUDE_DIR}" )
 include_directories( Include )
 
 include_directories( ${VULKAN_INCLUDE_DIR} )
-include_directories( "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include" )
+include_directories( "${CMAKE_SOURCE_DIR}/Include"
+                     "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
+                     "${LIBRARY_SOURCE_DIR}/LsUtility/Include" )
 
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
                                   LsVulkanLoader )

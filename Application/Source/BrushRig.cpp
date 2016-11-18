@@ -12,7 +12,7 @@ LsBrushRig::~LsBrushRig() {
 }
 
 void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    std::cout << uMsg << std::endl;
+    //std::cout << uMsg << std::endl;
 }
 
 void LsBrushRig::Render() {
