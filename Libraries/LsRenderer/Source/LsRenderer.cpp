@@ -188,13 +188,18 @@ LsRenderer* LsRenderer::Get() {
 // Give a rating to vk::PhysicalDevice. Device with a higher rating is more favorable.
 // Rating of zero or less means device is unsuitable.
 //-------------------------------------------------------------------------------
-int RatePhysicalDevice(vk::PhysicalDevice physicalDevice, void const* userData) {
+int RatePhysicalDevice(vk::PhysicalDevice physicalDevice, LsRenderer* renderer) {
   return 1;
 }
 
-typedef int (RatePhysicalDeviceFn)(vk::PhysicalDevice, void const*);
+//template<T>
+//using int (RatePhysicalDeviceFn__)(vk::PhysicalDevice, T const*);
 
-vk::PhysicalDevice FindPhysicalDevice(vk::Instance instance, RatePhysicalDeviceFn* ratePhysicalDeviceFn, void const* withUserData) {
+template<class T>
+using RatePhysicalDevicePfn = int (*)(vk::PhysicalDevice, T*);
+
+template<class T>
+vk::PhysicalDevice FindPhysicalDevice(vk::Instance instance, RatePhysicalDevicePfn<T> ratePhysicalDeviceFn, T* withUserData) {
   // Get physical device count
   uint32_t physicalDeviceCount = 0;
   vk::Result result = instance.enumeratePhysicalDevices( &physicalDeviceCount, NULL );
@@ -268,7 +273,7 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
     renderer->instance.destroySurfaceKHR(renderer->swapChainInfo.presentationSurface, nullptr);
   }).attach_to(instanceDestructor);
 
-  renderer->physicalDevice = FindPhysicalDevice(renderer->instance, RatePhysicalDevice, &renderer);
+  renderer->physicalDevice = FindPhysicalDevice<LsRenderer>(renderer->instance, RatePhysicalDevice, renderer);
   // LsRenderer::renderer.device = device;
   // LsRenderer::renderer.swapChainInfo.swapChain = swapChain;
   // TODO: Prepare Vulkan as usual
