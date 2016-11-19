@@ -118,7 +118,7 @@ std::vector<const char*> requiredInstanceExtensions = {
 //-------------------------------------------------------------------------------
 // List of device-level extension that will be enabled when creating a logical device
 //-------------------------------------------------------------------------------
-std::vector<const char*> requiredDeviceExtensions = {
+std::vector<string> requiredDeviceExtensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
@@ -236,6 +236,45 @@ vk::PhysicalDevice FindPhysicalDevice(vk::Instance instance, RatePhysicalDeviceP
   }
 
   return topDevice;
+}
+
+bool CheckPhysicalDeviceExtensions(vk::PhysicalDevice physicalDevice, std::vector<const char*> extensions) {
+  // No extensions were requested
+  if (extensions.size() == 0) {
+    return true;
+  }
+
+  uint32_t extensions_count = 0;
+  vk::Result result = physicalDevice.enumerateDeviceExtensionProperties( nullptr, &extensions_count, nullptr );
+  if( result != vk::Result::eSuccess || extensions_count == 0 ) {
+    return false;
+  }
+
+  std::vector<vk::ExtensionProperties> available_extensions( extensions_count );
+  result = physicalDevice.enumerateDeviceExtensionProperties( nullptr, &extensions_count, &available_extensions[0] );
+  if( result != vk::Result::eSuccess ) {
+    return false;
+  }
+
+  for(auto extension:extensions) {
+    if( find(extensions.begin(), extensions.end(), extension) != extensions.end()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool TryCreateDevice(vk::PhysicalDevice physicalDevice, 
+                     vk::Device* device, 
+                     uint32_t* graphicsQueueFamily, 
+                     uint32_t* presentQueueFamily) {
+  // Check extensions
+  //CheckPhysicalDeviceExtensions( vk::PhysicalDevice physicalDevice,  )  
+  // Check API version
+  // Check limits
+  // Find graphics queue family
+  return false;
 }
 
 void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
