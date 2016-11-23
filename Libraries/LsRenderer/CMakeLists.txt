@@ -32,3 +32,5 @@ include_directories( "${CMAKE_SOURCE_DIR}/Include"
 
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
                                   LsVulkanLoader )
+
+target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)

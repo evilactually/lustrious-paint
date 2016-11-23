@@ -43,6 +43,7 @@ target_include_directories( LustriousPaint PUBLIC Include
                                                   "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsWintabLoader/Include"
+                                                  "${LIBRARY_SOURCE_DIR}/LsVulkanSystem/Include"
                                                   ${VULKAN_INCLUDE_DIR}
                                                   ${FREEIMAGE_INCLUDE_DIR} )
 

@@ -6,8 +6,6 @@
 #include <memory>
 #include <destructor.h>
 
-#define VULKAN_VALIDATION
-
 class LsRenderer {
 public:
   static void Initialize(HINSTANCE hInstance, HWND window);
@@ -36,6 +34,16 @@ private:
 #ifdef VULKAN_VALIDATION
   vk::DebugReportCallbackEXT debugReportCallback; // Handle representing Vulkan debug callback
 #endif
+
+  struct {
+    uint32_t  familyIndex;
+    vk::Queue handle;
+  } graphicsQueue;
+
+  struct {
+    uint32_t  familyIndex;
+    vk::Queue handle;
+  } presentQueue;
 
   struct {
     vk::SurfaceKHR   presentationSurface;

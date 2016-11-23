@@ -1,8 +1,10 @@
-#include <destructor.h>
+
 
 #include <windows.h>
 #include <string>
 #include <iostream>
+
+#include <destructor.h>
 #include <LsWin32MainWindow.h>
 #include <LsRenderer.h>
 #include <LsVulkanLoader.h>
@@ -11,18 +13,25 @@
 #include <LsConsole.h>
 #include <LsError.h>
 
+using namespace lslib;
+
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+  // Attach console for standard output
+  LsOpenConsole();
+  destructor consoleDestructor = destructor([]() {
+    LsCloseConsole();
+  });
 
   try {
     // Get a pointer to main window singleton
     LsWin32MainWindow* window = LsWin32MainWindow::Get();
 
-    // Attach console for standard output
-    LsOpenConsole();
-
     // Load Wintab
     LsLoadWintabLibrary();
     LsLoadWintabEntryPoints();
+    destructor wintabDestructor = destructor([]() {
+      LsUnloadWintabLibrary();
+    });
 
     LsBrushRig brushRig;
 
@@ -41,6 +50,4 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   catch (std::string m) {
     LsErrorMessage(m, "Error");
   }
-
-  LsCloseConsole();
 }
