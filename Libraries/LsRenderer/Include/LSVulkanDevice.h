@@ -162,8 +162,8 @@ bool TryCreateDevice(vk::PhysicalDevice physicalDevice,
       queueCreateInfos.data(),                                 // const VkDeviceQueueCreateInfo      *pQueueCreateInfos
       0,                                                       // uint32_t                           enabledLayerCount
       nullptr,                                                 // const char * const                 *ppEnabledLayerNames
-      static_cast<uint32_t>(extensions.size()),                 // uint32_t                           enabledExtensionCount
-      extensions.data(),                                        // const char * const                 *ppEnabledExtensionNames
+      static_cast<uint32_t>(extensions.size()),                // uint32_t                           enabledExtensionCount
+      extensions.data(),                                       // const char * const                 *ppEnabledExtensionNames
       &deviceFeatures);                                        // const vk::PhysicalDeviceFeatures   *pEnabledFeatures
 
     if( physicalDevice.createDevice( &deviceCreateInfo, nullptr, device ) != vk::Result::eSuccess ) {

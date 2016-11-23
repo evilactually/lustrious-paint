@@ -39,3 +39,26 @@ bool CheckLayerAvailability( const char *layerName,
   }
   return false;
 }
+
+void CreateSemaphore(vk::Device const& device, vk::Semaphore* semaphore) {
+  vk::SemaphoreCreateInfo semaphoreCreateInfo = {
+    vk::SemaphoreCreateFlags()
+  };
+
+  if( device.createSemaphore( &semaphoreCreateInfo, nullptr, semaphore ) != vk::Result::eSuccess ) {
+    throw std::string("Could not create semaphores!");
+  }
+}
+
+void CreateFence(vk::Device const& device, vk::Fence* fence, bool signaled) {
+  vk::FenceCreateInfo fenceCreateInfo;
+
+  if ( signaled )
+  {
+    fenceCreateInfo.setFlags( vk::FenceCreateFlagBits::eSignaled );
+  }
+
+  if( device.createFence( &fenceCreateInfo, nullptr, fence ) != vk::Result::eSuccess ) {
+    throw std::string("Could not create a fence!");   
+  }
+}

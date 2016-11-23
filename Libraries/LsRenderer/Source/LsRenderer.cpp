@@ -112,6 +112,21 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
     LsRenderer::Get()->device.waitIdle();
     LsRenderer::Get()->device.destroy(nullptr);
   }).attach_to(presentationDestructor);
+
+  CreateSemaphore(renderer->device, &renderer->semaphores.imageAvailable);
+  CreateSemaphore(renderer->device, &renderer->semaphores.renderingFinished);
+  destructor& semaphoresDestructor = destructor([]() {
+    LsRenderer* renderer = LsRenderer::Get();
+    if ( renderer->semaphores.renderingFinished ) {
+      renderer->device.destroySemaphore(renderer->semaphores.renderingFinished, nullptr);
+    }
+
+    if ( renderer->semaphores.imageAvailable ) {
+      renderer->device.destroySemaphore(renderer->semaphores.imageAvailable, nullptr);
+    }
+  }).attach_to(deviceDestructor);
+
+  CreateFence(renderer->device, &renderer->submitCompleteFence, true);
 }
 
 void LsRenderer::BeginFrame() {

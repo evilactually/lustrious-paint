@@ -55,7 +55,13 @@ private:
     uint32_t acquiredImageIndex;
   } swapChainInfo;
 
-  std::unique_ptr<lslib::destructor> vulkanDestructor;
+  struct {
+    vk::Semaphore imageAvailable;     // signals when swap chain image is acquired
+    vk::Semaphore renderingFinished;  // used to block presentation until rendering is finished
+  } semaphores;
 
+  vk::Fence submitCompleteFence;      // protects command buffer from being reset too soon
+
+  std::unique_ptr<lslib::destructor> vulkanDestructor;
 };
 
