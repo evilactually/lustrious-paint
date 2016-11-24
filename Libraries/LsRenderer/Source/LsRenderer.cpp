@@ -127,6 +127,14 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   }).attach_to(deviceDestructor);
 
   CreateFence(renderer->device, &renderer->submitCompleteFence, true);
+  destructor& fenceDestructor = destructor([]() {
+    LsRenderer* renderer = LsRenderer::Get();
+    renderer->device.destroyFence(renderer->submitCompleteFence, nullptr);
+  });
+
+  renderer->device.getQueue( renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
+  renderer->device.getQueue( renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
+
 }
 
 void LsRenderer::BeginFrame() {
