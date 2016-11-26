@@ -15,9 +15,9 @@
 //-------------------------------------------------------------------------------
 
 std::vector<char> GetBinaryFileContents( std::string const &filename ) {
-  char str[256];
-  GetCurrentDirectory(256, &str[0]);
-  throw std::string(str);
+  // char str[256];
+  // GetCurrentDirectory(256, &str[0]);
+  // throw std::string(str);
   try {
 	  std::ifstream file;
 	  file.exceptions(std::ifstream::failbit | std::ifstream::badbit);

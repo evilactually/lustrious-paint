@@ -65,7 +65,7 @@ std::vector<vk::Framebuffer> CreateFramebuffers(vk::Device& device,
                                                 std::vector<vk::ImageView>& imageViews,
                                                 vk::Extent2D& extent,
                                                 vk::RenderPass& renderPass) {
-  std::vector<vk::Framebuffer> framebuffers(imageViews.size());
+  std::vector<vk::Framebuffer> framebuffers;
 
   for (auto imageView:imageViews) {
     vk::FramebufferCreateInfo framebuffer_create_info(

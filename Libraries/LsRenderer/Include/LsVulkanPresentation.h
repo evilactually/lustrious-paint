@@ -255,7 +255,7 @@ std::vector<vk::Image> GetSwapChainImages(vk::Device& device, vk::SwapchainKHR& 
 }
 
 std::vector<vk::ImageView> CreateSwapChainImageViews(vk::Device& device, std::vector<vk::Image>& images, vk::Format format) {
-  std::vector<vk::ImageView> imageViews(images.size());
+  std::vector<vk::ImageView> imageViews;
 
   for(auto image:images) {
     vk::ImageViewCreateInfo image_view_create_info(
