@@ -173,17 +173,17 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   renderer->linePipelineLayout = CreatePipelineLayout(renderer->device, sizeof(LinePushConstants));
   renderer->pointPipelineLayout = CreatePipelineLayout(renderer->device, sizeof(PointPushConstants));
 
-  // CreatePrimitivePipelines(renderer->device,
-  //                          renderer->shaderModules.lineVertexShader,
-  //                          renderer->shaderModules.lineFragmentShader,
-  //                          renderer->shaderModules.pointVertexShader,
-  //                          renderer->shaderModules.pointFragmentShader,
-  //                          renderer->linePipelineLayout,
-  //                          renderer->pointPipelineLayout,
-  //                          renderer->renderPass,
-  //                          renderer->swapChainInfo.extent,
-  //                          &renderer->linePipeline,
-  //                          &renderer->pointPipeline);
+  CreatePrimitivePipelines(renderer->device,
+                           renderer->shaderModules.lineVertexShader,
+                           renderer->shaderModules.lineFragmentShader,
+                           renderer->shaderModules.pointVertexShader,
+                           renderer->shaderModules.pointFragmentShader,
+                           renderer->linePipelineLayout,
+                           renderer->pointPipelineLayout,
+                           renderer->renderPass,
+                           renderer->swapChainInfo.extent,
+                           &renderer->linePipeline,
+                           &renderer->pointPipeline);
   
 }
 
