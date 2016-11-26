@@ -58,10 +58,6 @@ LsRenderer::LsRenderer() {
 
 }
 
-LsRenderer::~LsRenderer() {
-
-}
-
 LsRenderer LsRenderer::renderer;
 
 LsRenderer* LsRenderer::Get() {
@@ -72,32 +68,19 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   LsRenderer* renderer = LsRenderer::Get();
   
   LsLoadVulkanLibrary();
-  renderer->vulkanDestructor = std::make_unique<destructor>(destructor([](){
-    LsUnloadVulkanLibrary();
-  }));
 
   LsLoadExportedEntryPoints();
   LsLoadGlobalLevelEntryPoints();
 
   CreateInstance(requiredInstanceExtensions, requiredInstanceValidationLayers, &renderer->instance);
-  destructor& instanceDestructor = destructor([]() {
-    LsRenderer::Get()->instance.destroy(nullptr);
-  }).attach_to(*renderer->vulkanDestructor);
-
+ 
   LsLoadInstanceLevelEntryPoints(renderer->instance, requiredInstanceExtensions);
 
 #ifdef VULKAN_VALIDATION
   CreateDebugReportCallback(renderer->instance, &renderer->debugReportCallback);
-  destructor& debugReportCallbackDestructor = destructor([]() {
-    LsRenderer::Get()->instance.destroyDebugReportCallbackEXT(LsRenderer::Get()->debugReportCallback, nullptr);
-  }).attach_to(instanceDestructor);
 #endif
   
   CreatePresentationSurface(renderer->instance, hInstance, window, &renderer->swapChainInfo.presentationSurface);
-  destructor& presentationDestructor = destructor([]() {
-    LsRenderer* renderer = LsRenderer::Get();
-    renderer->instance.destroySurfaceKHR(renderer->swapChainInfo.presentationSurface, nullptr);
-  }).attach_to(instanceDestructor);
 
   CreateDevice(renderer->instance, 
                renderer->swapChainInfo.presentationSurface,
@@ -109,42 +92,15 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
  
   LsLoadDeviceLevelEntryPoints(LsRenderer::Get()->device, requiredDeviceExtensions);
  
-  destructor& deviceDestructor = destructor([]() {
-    LsRenderer::Get()->device.waitIdle();
-    LsRenderer::Get()->device.destroy(nullptr);
-  }).attach_to(presentationDestructor);
-
   CreateSemaphore(renderer->device, &renderer->semaphores.imageAvailable);
   CreateSemaphore(renderer->device, &renderer->semaphores.renderingFinished);
-  destructor& semaphoresDestructor = destructor([]() {
-    LsRenderer* renderer = LsRenderer::Get();
-    if ( renderer->semaphores.renderingFinished ) {
-      renderer->device.destroySemaphore(renderer->semaphores.renderingFinished, nullptr);
-    }
-
-    if ( renderer->semaphores.imageAvailable ) {
-      renderer->device.destroySemaphore(renderer->semaphores.imageAvailable, nullptr);
-    }
-  }).attach_to(deviceDestructor);
 
   renderer->shaderModules.lineVertexShader = CreateShaderModule(renderer->device, "Shaders/line.vert.spv");
   renderer->shaderModules.lineFragmentShader = CreateShaderModule(renderer->device, "Shaders/line.frag.spv");
   renderer->shaderModules.pointVertexShader = CreateShaderModule(renderer->device, "Shaders/point.vert.spv");
   renderer->shaderModules.pointFragmentShader = CreateShaderModule(renderer->device, "Shaders/point.frag.spv");
-  destructor& shaderDestructor = destructor([]() {
-    auto& shaderModules = LsRenderer::Get()->shaderModules;
-    vk::Device& device = LsRenderer::Get()->device;
-    device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
-    device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
-    device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
-    device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
-  }).attach_to(deviceDestructor);
 
   CreateFence(renderer->device, &renderer->submitCompleteFence, true);
-  destructor& fenceDestructor = destructor([]() {
-    LsRenderer* renderer = LsRenderer::Get();
-    renderer->device.destroyFence(renderer->submitCompleteFence, nullptr);
-  }).attach_to(deviceDestructor);
 
   renderer->device.getQueue( renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
   renderer->device.getQueue( renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
@@ -185,6 +141,54 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
                            &renderer->linePipeline,
                            &renderer->pointPipeline);
   
+}
+
+LsRenderer::~LsRenderer() {
+  if ( device )
+    device.waitIdle();
+
+  if ( device )
+    for( auto &imageView: swapChainInfo.imageViews) {
+      device.destroyImageView(imageView, nullptr);
+    }
+
+  if ( swapChainInfo.swapChain )
+    device.destroySwapchainKHR(swapChainInfo.swapChain, nullptr);
+
+  if ( submitCompleteFence )
+    device.destroyFence(submitCompleteFence, nullptr);
+
+  if ( shaderModules.lineVertexShader )
+    device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
+  
+  if ( shaderModules.lineFragmentShader )
+    device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
+
+  if ( shaderModules.pointVertexShader )
+    device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
+
+  if ( shaderModules.pointFragmentShader )
+    device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
+
+  if ( semaphores.renderingFinished )
+    device.destroySemaphore(semaphores.renderingFinished, nullptr);
+
+  if ( semaphores.imageAvailable )
+    device.destroySemaphore(semaphores.imageAvailable, nullptr);
+
+  if ( device )
+    device.destroy(nullptr);
+
+  if ( swapChainInfo.presentationSurface )
+    instance.destroySurfaceKHR(swapChainInfo.presentationSurface, nullptr);
+  
+  if ( debugReportCallback )
+    instance.destroyDebugReportCallbackEXT(debugReportCallback, nullptr);
+  
+  if ( instance )  
+    instance.destroy(nullptr);
+
+  LsUnloadVulkanLibrary();
 }
 
 void LsRenderer::BeginFrame() {
