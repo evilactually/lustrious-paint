@@ -197,7 +197,7 @@ bool CreateSwapChain(vk::PhysicalDevice& physicalDevice,
   }
 
   uint32_t desired_number_of_images = GetSwapChainNumImages( surface_capabilities, desired_present_mode );
-
+  
   if( !desired_extent ) {
     // Current surface size is (0, 0) so we can't create a swap chain and render anything
     // But we don't wont to kill the application as this situation may occur i.e. when window gets minimized

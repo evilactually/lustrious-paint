@@ -25,10 +25,12 @@ private:
   ~LsRenderer();
   void BeginDrawing();
   void EndDrawing();
+  void RefreshSwapChain();
     
   // Singleton instance of the LsRenderer
   static LsRenderer renderer;
-
+  
+  HWND window;
   vk::Instance instance;             // Vulkan instance
   vk::PhysicalDevice physicalDevice; // Chosen physical device
   vk::Device device;                 // Logical device created from physicalDevice

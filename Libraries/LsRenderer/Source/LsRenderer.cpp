@@ -67,6 +67,8 @@ LsRenderer* LsRenderer::Get() {
 void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   LsRenderer* renderer = LsRenderer::Get();
   
+  renderer->window = window;
+
   LsLoadVulkanLibrary();
 
   LsLoadExportedEntryPoints();
@@ -105,79 +107,194 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   renderer->device.getQueue( renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
   renderer->device.getQueue( renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
 
-  CreateSwapChain(renderer->physicalDevice,
-                  renderer->device,
-                  renderer->swapChainInfo.presentationSurface,
-                  window,
-                  &renderer->swapChainInfo.swapChain,
-                  &renderer->swapChainInfo.format,
-                  &renderer->swapChainInfo.extent);
+  if ( CreateSwapChain(renderer->physicalDevice,
+                       renderer->device,
+                       renderer->swapChainInfo.presentationSurface,
+                       window,
+                       &renderer->swapChainInfo.swapChain,
+                       &renderer->swapChainInfo.format,
+                       &renderer->swapChainInfo.extent) ) {
 
-  renderer->swapChainInfo.images = GetSwapChainImages(renderer->device, renderer->swapChainInfo.swapChain);
+    renderer->swapChainInfo.images = GetSwapChainImages(renderer->device, renderer->swapChainInfo.swapChain);
 
-  renderer->swapChainInfo.imageViews = CreateSwapChainImageViews(renderer->device,
-                                                                 renderer->swapChainInfo.images,
-                                                                 renderer->swapChainInfo.format);
+    renderer->swapChainInfo.imageViews = CreateSwapChainImageViews(renderer->device,
+                                                                   renderer->swapChainInfo.images,
+                                                                   renderer->swapChainInfo.format);
 
-  renderer->renderPass = CreateSimpleRenderPass(renderer->device, renderer->swapChainInfo.format);
+    renderer->renderPass = CreateSimpleRenderPass(renderer->device, renderer->swapChainInfo.format);
 
-  renderer->framebuffers = CreateFramebuffers(renderer->device, 
-                                              renderer->swapChainInfo.imageViews,
-                                              renderer->swapChainInfo.extent,
-                                              renderer->renderPass);
+    renderer->framebuffers = CreateFramebuffers(renderer->device, 
+                                                renderer->swapChainInfo.imageViews,
+                                                renderer->swapChainInfo.extent,
+                                                renderer->renderPass);
 
-  renderer->linePipelineLayout = CreatePipelineLayout(renderer->device, sizeof(LinePushConstants));
-  renderer->pointPipelineLayout = CreatePipelineLayout(renderer->device, sizeof(PointPushConstants));
+    renderer->linePipelineLayout = CreatePipelineLayout(renderer->device, sizeof(LinePushConstants));
+    renderer->pointPipelineLayout = CreatePipelineLayout(renderer->device, sizeof(PointPushConstants));
 
-  CreatePrimitivePipelines(renderer->device,
-                           renderer->shaderModules.lineVertexShader,
-                           renderer->shaderModules.lineFragmentShader,
-                           renderer->shaderModules.pointVertexShader,
-                           renderer->shaderModules.pointFragmentShader,
-                           renderer->linePipelineLayout,
-                           renderer->pointPipelineLayout,
-                           renderer->renderPass,
-                           renderer->swapChainInfo.extent,
-                           &renderer->linePipeline,
-                           &renderer->pointPipeline);
+    CreatePrimitivePipelines(renderer->device,
+                             renderer->shaderModules.lineVertexShader,
+                             renderer->shaderModules.lineFragmentShader,
+                             renderer->shaderModules.pointVertexShader,
+                             renderer->shaderModules.pointFragmentShader,
+                             renderer->linePipelineLayout,
+                             renderer->pointPipelineLayout,
+                             renderer->renderPass,
+                             renderer->swapChainInfo.extent,
+                             &renderer->linePipeline,
+                             &renderer->pointPipeline);
+    
+    renderer->canRender = true;
+  }
+}
+
+void LsRenderer::RefreshSwapChain() {
+  canRender = false;
+
+  if ( device ) {
+    device.waitIdle();
   
+    if ( linePipeline )
+    {
+      device.destroyPipeline(linePipeline, nullptr);
+      linePipeline = vk::Pipeline();
+    }
+
+    if ( pointPipeline )
+    {
+      device.destroyPipeline(pointPipeline, nullptr);
+      pointPipeline = vk::Pipeline();
+    }
+
+    if ( linePipelineLayout ) {
+      device.destroyPipelineLayout(linePipelineLayout, nullptr);
+      linePipelineLayout = vk::PipelineLayout();
+    }
+
+    if ( pointPipelineLayout ) {
+      device.destroyPipelineLayout(pointPipelineLayout, nullptr);
+      pointPipelineLayout = vk::PipelineLayout();
+    }
+
+    for ( const vk::Framebuffer& framebuffer:framebuffers ) {
+      device.destroyFramebuffer(framebuffer, nullptr);
+    }
+    framebuffers.clear();
+
+    if ( renderPass ) {
+      device.destroyRenderPass(renderPass, nullptr);
+      renderPass = vk::RenderPass();
+    }
+
+    for( auto &imageView: swapChainInfo.imageViews) {
+      device.destroyImageView(imageView, nullptr);
+    }
+    swapChainInfo.imageViews.clear();
+
+    // We don't have to destroy the swap chain here, it will be 
+    // destroyed by a call to CreateSwapChain
+  }
+
+  if ( CreateSwapChain(physicalDevice,
+                       device,
+                       swapChainInfo.presentationSurface,
+                       window,
+                       &swapChainInfo.swapChain,
+                       &swapChainInfo.format,
+                       &swapChainInfo.extent) ) {
+    
+    swapChainInfo.images = GetSwapChainImages(device, swapChainInfo.swapChain);
+
+    swapChainInfo.imageViews = CreateSwapChainImageViews(device,
+                                                         swapChainInfo.images,
+                                                         swapChainInfo.format);
+
+    renderPass = CreateSimpleRenderPass(device, swapChainInfo.format);
+
+    framebuffers = CreateFramebuffers(device, 
+                                      swapChainInfo.imageViews,
+                                      swapChainInfo.extent,
+                                      renderPass);
+
+    linePipelineLayout = CreatePipelineLayout(device, sizeof(LinePushConstants));
+    pointPipelineLayout = CreatePipelineLayout(device, sizeof(PointPushConstants));
+
+    CreatePrimitivePipelines(device,
+                             shaderModules.lineVertexShader,
+                             shaderModules.lineFragmentShader,
+                             shaderModules.pointVertexShader,
+                             shaderModules.pointFragmentShader,
+                             linePipelineLayout,
+                             pointPipelineLayout,
+                             renderPass,
+                             swapChainInfo.extent,
+                             &linePipeline,
+                             &pointPipeline);
+
+    canRender = true;
+  } else {
+    std::cout << "Swap chain not ready, cannot render." << std::endl;
+  }
 }
 
 LsRenderer::~LsRenderer() {
-  if ( device )
-    device.waitIdle();
+  canRender = false;
 
-  if ( device )
+  if ( device ) {
+    device.waitIdle();
+  
+    if ( linePipeline )
+    {
+      device.destroyPipeline(linePipeline, nullptr);
+    }
+
+    if ( pointPipeline )
+    {
+      device.destroyPipeline(pointPipeline, nullptr);
+    }
+
+    if ( linePipelineLayout ) {
+      device.destroyPipelineLayout(linePipelineLayout, nullptr);
+    }
+
+    if ( pointPipelineLayout ) {
+      device.destroyPipelineLayout(pointPipelineLayout, nullptr);
+    }
+
+    for ( const vk::Framebuffer& framebuffer:framebuffers ) {
+      device.destroyFramebuffer(framebuffer, nullptr);
+    }
+
+    if ( renderPass )
+      device.destroyRenderPass(renderPass, nullptr);
+
     for( auto &imageView: swapChainInfo.imageViews) {
       device.destroyImageView(imageView, nullptr);
     }
 
-  if ( swapChainInfo.swapChain )
-    device.destroySwapchainKHR(swapChainInfo.swapChain, nullptr);
+    if ( swapChainInfo.swapChain )
+      device.destroySwapchainKHR(swapChainInfo.swapChain, nullptr);
 
-  if ( submitCompleteFence )
-    device.destroyFence(submitCompleteFence, nullptr);
+    if ( submitCompleteFence )
+      device.destroyFence(submitCompleteFence, nullptr);
 
-  if ( shaderModules.lineVertexShader )
-    device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
-  
-  if ( shaderModules.lineFragmentShader )
-    device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
+    if ( shaderModules.lineVertexShader )
+      device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
+    if ( shaderModules.lineFragmentShader )
+      device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
+    if ( shaderModules.pointVertexShader )
+      device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
+    if ( shaderModules.pointFragmentShader )
+      device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
 
-  if ( shaderModules.pointVertexShader )
-    device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
+    if ( semaphores.renderingFinished )
+      device.destroySemaphore(semaphores.renderingFinished, nullptr);
 
-  if ( shaderModules.pointFragmentShader )
-    device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
+    if ( semaphores.imageAvailable )
+      device.destroySemaphore(semaphores.imageAvailable, nullptr);
 
-  if ( semaphores.renderingFinished )
-    device.destroySemaphore(semaphores.renderingFinished, nullptr);
-
-  if ( semaphores.imageAvailable )
-    device.destroySemaphore(semaphores.imageAvailable, nullptr);
-
-  if ( device )
-    device.destroy(nullptr);
+    if ( device )
+      device.destroy(nullptr);
+  }
 
   if ( swapChainInfo.presentationSurface )
     instance.destroySurfaceKHR(swapChainInfo.presentationSurface, nullptr);
@@ -261,6 +378,8 @@ void LsRenderer::BeginFrame() {
 void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   switch (uMsg) {
     case WM_SIZE:
-      break;
+    RefreshSwapChain();
+    std::cout << "..." << std::endl;
+    break;
   }
 }
