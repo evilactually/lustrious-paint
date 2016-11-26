@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <vulkan_dynamic.hpp>
+#include <LsFile.h>
 
 VKAPI_ATTR VkBool32 VKAPI_CALL LsDebugReportCallback( VkDebugReportFlagsEXT flags, 
     VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
@@ -61,4 +62,23 @@ void CreateFence(vk::Device const& device, vk::Fence* fence, bool signaled) {
   if( device.createFence( &fenceCreateInfo, nullptr, fence ) != vk::Result::eSuccess ) {
     throw std::string("Could not create a fence!");   
   }
+}
+
+vk::ShaderModule CreateShaderModule(vk::Device const& device, const char* filename ) {
+  const std::vector<char> code = GetBinaryFileContents( filename );
+  if( code.size() == 0 ) {
+    LsError();
+  }
+
+  vk::ShaderModuleCreateInfo shader_module_create_info = {
+    vk::ShaderModuleCreateFlags(),                  // VkShaderModuleCreateFlags      flags
+    code.size(),                                    // size_t                         codeSize
+    reinterpret_cast<const uint32_t*>(&code[0])     // const uint32_t                *pCode
+  };
+
+  vk::ShaderModule shader_module;
+  if( device.createShaderModule( &shader_module_create_info, nullptr, &shader_module ) != vk::Result::eSuccess ) {
+    throw std::string("Could not create shader module from a \"") + std::string(filename) + std::string("\" file!");
+  }
+  return shader_module;
 }

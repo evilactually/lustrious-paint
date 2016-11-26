@@ -5,8 +5,9 @@
 #include <vector>
 #include <memory>
 #include <destructor.h>
+#include <LsFWin32MessageHandler.h>
 
-class LsRenderer {
+class LsRenderer: public LsFWin32MessageHandler {
 public:
   static void Initialize(HINSTANCE hInstance, HWND window);
   static LsRenderer* Get();
@@ -18,6 +19,7 @@ public:
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
   void SetPointSize(float size);
+  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 private:
   LsRenderer();
   ~LsRenderer();
@@ -55,13 +57,34 @@ private:
     uint32_t acquiredImageIndex;
   } swapChainInfo;
 
+  bool canRender = false;
+
   struct {
     vk::Semaphore imageAvailable;     // signals when swap chain image is acquired
     vk::Semaphore renderingFinished;  // used to block presentation until rendering is finished
   } semaphores;
 
   vk::Fence submitCompleteFence;      // protects command buffer from being reset too soon
+  
+  vk::RenderPass renderPass;
 
-  std::unique_ptr<lslib::destructor> vulkanDestructor;
+  std::vector<vk::Framebuffer> framebuffers;
+
+  struct {
+    vk::ShaderModule lineVertexShader;
+    vk::ShaderModule lineFragmentShader;
+    vk::ShaderModule pointVertexShader;
+    vk::ShaderModule pointFragmentShader;
+  } shaderModules;
+
+  vk::PipelineLayout linePipelineLayout;  // pipeline layout for line push constants
+  vk::PipelineLayout pointPipelineLayout; // pipeleine layout for point push constants
+  vk::Pipeline linePipeline;              // pipeline for drawing lines
+  vk::Pipeline pointPipeline;             // pipeline for drawing points
+
+  std::unique_ptr<lslib::destructor> vulkanDestructor; // tears down Vulkan resources in order on application shutdown
+  // TODO: Add a destructor group for pipeline, framebuffer, renderpass, imageviews, command buffers.
+  // It must depend on swap chain. Keep a reference to that group so that I can detach it on refresh and rebuild it.
+  lslib::destructor* swapChainRefreshDestructor;
 };
 

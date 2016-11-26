@@ -12,6 +12,7 @@
 #include <LsVulkanDevice.h>
 #include <LsVulkanPresentation.h>
 #include <LsPushConstantTypes.h>
+#include <LsVulkanRendering.h>
 #include <LsRenderer.h>
 
 using namespace lslib;
@@ -126,15 +127,64 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
     }
   }).attach_to(deviceDestructor);
 
+  renderer->shaderModules.lineVertexShader = CreateShaderModule(renderer->device, "Shaders/line.vert.spv");
+  renderer->shaderModules.lineFragmentShader = CreateShaderModule(renderer->device, "Shaders/line.frag.spv");
+  renderer->shaderModules.pointVertexShader = CreateShaderModule(renderer->device, "Shaders/point.vert.spv");
+  renderer->shaderModules.pointFragmentShader = CreateShaderModule(renderer->device, "Shaders/point.frag.spv");
+  destructor& shaderDestructor = destructor([]() {
+    auto& shaderModules = LsRenderer::Get()->shaderModules;
+    vk::Device& device = LsRenderer::Get()->device;
+    device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
+    device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
+    device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
+    device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
+  }).attach_to(deviceDestructor);
+
   CreateFence(renderer->device, &renderer->submitCompleteFence, true);
   destructor& fenceDestructor = destructor([]() {
     LsRenderer* renderer = LsRenderer::Get();
     renderer->device.destroyFence(renderer->submitCompleteFence, nullptr);
-  });
+  }).attach_to(deviceDestructor);
 
   renderer->device.getQueue( renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
   renderer->device.getQueue( renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
 
+  CreateSwapChain(renderer->physicalDevice,
+                  renderer->device,
+                  renderer->swapChainInfo.presentationSurface,
+                  window,
+                  &renderer->swapChainInfo.swapChain,
+                  &renderer->swapChainInfo.format,
+                  &renderer->swapChainInfo.extent);
+
+  renderer->swapChainInfo.images = GetSwapChainImages(renderer->device, renderer->swapChainInfo.swapChain);
+
+  renderer->swapChainInfo.imageViews = CreateSwapChainImageViews(renderer->device,
+                                                                 renderer->swapChainInfo.images,
+                                                                 renderer->swapChainInfo.format);
+
+  renderer->renderPass = CreateSimpleRenderPass(renderer->device, renderer->swapChainInfo.format);
+
+  renderer->framebuffers = CreateFramebuffers(renderer->device, 
+                                              renderer->swapChainInfo.imageViews,
+                                              renderer->swapChainInfo.extent,
+                                              renderer->renderPass);
+
+  renderer->linePipelineLayout = CreatePipelineLayout(renderer->device, sizeof(LinePushConstants));
+  renderer->pointPipelineLayout = CreatePipelineLayout(renderer->device, sizeof(PointPushConstants));
+
+  // CreatePrimitivePipelines(renderer->device,
+  //                          renderer->shaderModules.lineVertexShader,
+  //                          renderer->shaderModules.lineFragmentShader,
+  //                          renderer->shaderModules.pointVertexShader,
+  //                          renderer->shaderModules.pointFragmentShader,
+  //                          renderer->linePipelineLayout,
+  //                          renderer->pointPipelineLayout,
+  //                          renderer->renderPass,
+  //                          renderer->swapChainInfo.extent,
+  //                          &renderer->linePipeline,
+  //                          &renderer->pointPipeline);
+  
 }
 
 void LsRenderer::BeginFrame() {
@@ -202,4 +252,11 @@ void LsRenderer::BeginFrame() {
   //   nullptr,
   //   1,
   //   &barrier_from_present_to_draw);
+}
+
+void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+  switch (uMsg) {
+    case WM_SIZE:
+      break;
+  }
 }

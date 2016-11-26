@@ -146,15 +146,14 @@ uint32_t GetSwapChainNumImages( vk::SurfaceCapabilitiesKHR &surface_capabilities
   return image_count;
 }
 
-void CreateSwapChain(vk::PhysicalDevice& physicalDevice,
+bool CreateSwapChain(vk::PhysicalDevice& physicalDevice,
                      vk::Device& device,
                      vk::SurfaceKHR& presentationSurface,
                      HWND windowHandle,
                      vk::SwapchainKHR* swapChain,
                      vk::Format* swapChainFormat,
                      vk::Extent2D* swapChainExtent) {
-  // canRender = false;
-  // device.waitIdle();
+  device.waitIdle();
 
   vk::SurfaceCapabilitiesKHR surface_capabilities;
   if( physicalDevice.getSurfaceCapabilitiesKHR(presentationSurface, &surface_capabilities) != vk::Result::eSuccess ) {
@@ -200,9 +199,9 @@ void CreateSwapChain(vk::PhysicalDevice& physicalDevice,
   uint32_t desired_number_of_images = GetSwapChainNumImages( surface_capabilities, desired_present_mode );
 
   if( !desired_extent ) {
-    // Current surface size is (0, 0) so we can't create a swap chain and render anything (canRender == false)
+    // Current surface size is (0, 0) so we can't create a swap chain and render anything
     // But we don't wont to kill the application as this situation may occur i.e. when window gets minimized
-    return;
+    return false;
   }
 
   vk::SwapchainCreateInfoKHR swap_chain_create_info(
@@ -235,5 +234,57 @@ void CreateSwapChain(vk::PhysicalDevice& physicalDevice,
   *swapChainFormat = desired_format.format; // for creating attachment, image views, etc
   *swapChainExtent = desired_extent;        // for framebuffers
 
-  // canRender = true;
+  return true;
+}
+
+std::vector<vk::Image> GetSwapChainImages(vk::Device& device, vk::SwapchainKHR& swapChain) {
+  uint32_t image_count = 0;
+  if( device.getSwapchainImagesKHR( swapChain, &image_count, nullptr ) != vk::Result::eSuccess ||
+      image_count == 0 ) {
+    throw std::string("Could not get the number of swap chain images!");
+  }
+
+  std::vector<vk::Image> images(image_count);
+  if( device.getSwapchainImagesKHR( swapChain, &image_count, images.data() ) != vk::Result::eSuccess ) {
+    throw std::string("Could not get swap chain images!");
+  }
+
+  images.resize(image_count);
+  
+  return images;
+}
+
+std::vector<vk::ImageView> CreateSwapChainImageViews(vk::Device& device, std::vector<vk::Image>& images, vk::Format format) {
+  std::vector<vk::ImageView> imageViews(images.size());
+
+  for(auto image:images) {
+    vk::ImageViewCreateInfo image_view_create_info(
+      vk::ImageViewCreateFlags(),        // VkImageViewCreateFlags         flags
+      image,                             // VkImage                        image
+      vk::ImageViewType::e2D,            // VkImageViewType                viewType
+      format,                            // VkFormat                       format
+      {                                  // VkComponentMapping             components
+        vk::ComponentSwizzle::eIdentity, // VkComponentSwizzle             r
+        vk::ComponentSwizzle::eIdentity, // VkComponentSwizzle             g
+        vk::ComponentSwizzle::eIdentity, // VkComponentSwizzle             b
+        vk::ComponentSwizzle::eIdentity  // VkComponentSwizzle             a
+      },
+      {                                  // VkImageSubresourceRange        subresourceRange
+        vk::ImageAspectFlagBits::eColor, // VkImageAspectFlags             aspectMask
+        0,                               // uint32_t                       baseMipLevel
+        1,                               // uint32_t                       levelCount
+        0,                               // uint32_t                       baseArrayLayer
+        1                                // uint32_t                       layerCount
+      }
+    );
+
+    vk::ImageView imageView;
+    if( device.createImageView( &image_view_create_info, nullptr, &imageView ) != vk::Result::eSuccess ) {
+      throw std::string("Could not create image views!");
+    }
+
+    imageViews.push_back(imageView);
+  }
+
+  return imageViews;
 }
