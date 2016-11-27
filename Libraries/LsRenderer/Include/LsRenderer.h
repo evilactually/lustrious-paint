@@ -26,7 +26,13 @@ private:
   void BeginDrawing();
   void EndDrawing();
   void RefreshSwapChain();
-    
+  
+  enum class PipelineBinding {
+    eNone,
+    eLine,
+    ePoint
+  };
+
   // Singleton instance of the LsRenderer
   static LsRenderer renderer;
   
@@ -48,6 +54,9 @@ private:
     uint32_t  familyIndex;
     vk::Queue handle;
   } presentQueue;
+
+  vk::CommandPool commandPool;
+  vk::CommandBuffer commandBuffer;
 
   struct {
     vk::SurfaceKHR   presentationSurface;
@@ -84,9 +93,13 @@ private:
   vk::Pipeline linePipeline;              // pipeline for drawing lines
   vk::Pipeline pointPipeline;             // pipeline for drawing points
 
-  std::unique_ptr<lslib::destructor> vulkanDestructor; // tears down Vulkan resources in order on application shutdown
-  // TODO: Add a destructor group for pipeline, framebuffer, renderpass, imageviews, command buffers.
-  // It must depend on swap chain. Keep a reference to that group so that I can detach it on refresh and rebuild it.
-  lslib::destructor* swapChainRefreshDestructor;
+  struct {
+    float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float lineWidth = 1.0f;
+    float pointSize = 1.0f;
+    bool drawing = false; // indicates that command buffer is ready to draw
+    PipelineBinding pipelineBinding = PipelineBinding::eNone;
+  } drawingContext;
+
 };
 

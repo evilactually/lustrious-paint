@@ -68,6 +68,17 @@ bool LsWin32MainWindow::ProcessMessages() {
   return true;
 }
 
+bool LsWin32MainWindow::ProcessNextMessage() {
+  if ( ::PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) ) {
+    if ( !::GetMessage( &msg, NULL, 0, 0 ) ) {
+      return false;
+    }
+    ::TranslateMessage(&msg);
+    ::DispatchMessage(&msg);
+  }
+  return true;
+}
+
 void LsWin32MainWindow::Destroy() {
   DestroyWindow(windowHandle);
 }

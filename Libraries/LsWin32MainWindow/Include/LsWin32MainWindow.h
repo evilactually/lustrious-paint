@@ -11,6 +11,7 @@ public:
   HWND GetWindowHandle();
   void WaitForMessages();
   bool ProcessMessages();
+  bool ProcessNextMessage();
   void Destroy();
   void Hide();
   void Show();

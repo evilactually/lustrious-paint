@@ -42,6 +42,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     window->Show();
     while( window->ProcessMessages() ){
       window->WaitForMessages();
+      brushRig.Render(); cout << "." << std::endl;
     };
 
   }
