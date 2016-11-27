@@ -1,6 +1,8 @@
+#pragma once 
+
 #include <windows.h>
 
-void GetVulkanPixelDimensions(HWND windowHandle, float* width, float* height) {
+static void GetVulkanPixelDimensions(HWND windowHandle, float* width, float* height) {
   RECT clientRect;
   ::GetClientRect(windowHandle, &clientRect);
 

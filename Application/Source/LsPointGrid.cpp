@@ -1,29 +1,63 @@
-#include <LsP
+#include <windows.h>
+#include <LsRenderer.h>
+#include <LsPointGrid.h>
+#include <LsWindowsUtils.h>
+#include <LsWin32MainWindow.h>
 
-PointGrid::PointGrid() {
+LsPointGrid::LsPointGrid() {
+  renderer = LsRenderer::Get();
+}
+
+LsPointGrid::~LsPointGrid() {
 
 }
 
-PointGrid::~PointGrid() {
-
+void LsPointGrid::SetPointColor(float r, float g, float b) {
+  pointColor.r = r;
+  pointColor.g = g;
+  pointColor.b = b;
 }
 
-void PointGrid::SetPointColor(float r, float g, float b) {
-  pointColot.r = r;
-  pointColot.g = g;
-  pointColot.b = b;
+void LsPointGrid::SetBackgroundColor(float r, float g, float b) {
+  backgroundColor.r = r;
+  backgroundColor.g = g;
+  backgroundColor.b = b;
 }
 
-void PointGrid::SetBackgroundColor(float r, float g, float b) {
-  backgroundColot.r = r;
-  backgroundColot.g = g;
-  backgroundColot.b = b;
-}
-
-void PointGrid::SetSpacing(float spacing) {
+void LsPointGrid::SetSpacing(float spacing) {
   this->spacing = spacing;
 }
 
-void PointGrid::Render() {
-  renderer->Clear(0.1f, 0.0f, 0.1f);
+void LsPointGrid::Render() {
+  struct {
+    int width;
+    int height;
+  } windowExtent;
+
+  LsWin32MainWindow::Get()->GetClientArea(NULL, NULL, &windowExtent.width, &windowExtent.height);
+
+  renderer->Clear(backgroundColor.r, backgroundColor.g, backgroundColor.b);
+
+  const int horizontal_cell_count = static_cast<int>(ceil(((float)windowExtent.width)/spacing));
+  const int vertical_cell_count = static_cast<int>(ceil(((float)windowExtent.height)/spacing));
+
+  renderer->SetPointSize(2.0f);
+  renderer->SetColor(pointColor.r, pointColor.g, pointColor.b);
+
+  for( int y = 0; y < vertical_cell_count; ++y ) {
+    float y_offset = y*spacing;
+    for( int x = 0; x < horizontal_cell_count; ++x ) {
+      float x_offset = x*spacing;
+      renderer->DrawPoint(pixelDimensions.width*x_offset - 1.0f, pixelDimensions.height*y_offset - 1.0f);
+    }
+  }
+}
+
+void LsPointGrid::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+  HWND windowHandle = LsWin32MainWindow::Get()->GetWindowHandle();
+  switch (uMsg) {
+    case WM_SIZE:
+    GetVulkanPixelDimensions(windowHandle, &pixelDimensions.width, &pixelDimensions.height);
+    break;
+  }
 }

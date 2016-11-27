@@ -2,7 +2,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <LsBrushRig.h>
-#include <LsFWin32MessageHandler.h>
 #include <LsWin32MainWindow.h>
 #include <LsRenderer.h>
 #include <DWINTAB.h>
@@ -50,7 +49,6 @@ void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     GetVulkanPixelDimensions(windowHandle, &pixelDimensions.width, &pixelDimensions.height);
     break;
   }
-
 }
 
 void LsBrushRig::Render() {

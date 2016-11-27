@@ -8,6 +8,7 @@
 #include <LsVulkanLoader.h>
 #include <LsWintabLoader.h>
 #include <LsBrushRig.h>
+#include <LsPointGrid.h>
 #include <LsConsole.h>
 #include <LsError.h>
 
@@ -16,6 +17,7 @@ using namespace lslib;
 class Application {
   LsWin32MainWindow* window;
   LsBrushRig brushRig;
+  LsPointGrid pointGrid;
   LsRenderer* renderer;
 public:
   Application() {
@@ -50,6 +52,7 @@ public:
     while( window->ProcessMessages() ){
       window->WaitForMessages();
       renderer->BeginFrame();
+      pointGrid.Render();
       brushRig.Render();
       renderer->EndFrame();
     };
