@@ -13,38 +13,54 @@
 
 using namespace lslib;
 
-int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-  // Attach console for standard output
-  LsOpenConsole();
-  destructor consoleDestructor = destructor([]() {
+class Application {
+  LsWin32MainWindow* window;
+  LsBrushRig brushRig;
+  LsRenderer* renderer;
+public:
+  Application() {
     LsCloseConsole();
-  });
+    LsUnloadWintabLibrary();
+  }
 
-  try {
+  ~Application() {}
+
+  void Initialize(HINSTANCE hInstance) {
+    // Attach console
+    LsOpenConsole();
+
     // Get a pointer to main window singleton
-    LsWin32MainWindow* window = LsWin32MainWindow::Get();
+    window = LsWin32MainWindow::Get();
 
     // Load Wintab
     LsLoadWintabLibrary();
     LsLoadWintabEntryPoints();
-    destructor wintabDestructor = destructor([]() {
-      LsUnloadWintabLibrary();
-    });
-
-    LsBrushRig brushRig;
-
+   
     window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
     // Initialize the rendering system
     LsRenderer::Initialize(hInstance, window->GetWindowHandle());
-    
+
+    renderer = LsRenderer::Get();
+  }
+
+  void Run() {
     window->Show();
     while( window->ProcessMessages() ){
       window->WaitForMessages();
-      brushRig.Render(); cout << "." << std::endl;
+      renderer->BeginFrame();
+      brushRig.Render();
+      renderer->EndFrame();
     };
+  }
+};
 
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+  try {
+    Application application;
+    application.Initialize(hInstance);
+    application.Run();
   }
   catch (std::string m) {
     LsErrorMessage(m, "Error");

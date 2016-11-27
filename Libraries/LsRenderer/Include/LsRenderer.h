@@ -100,6 +100,4 @@ private:
     bool drawing = false; // indicates that command buffer is ready to draw
     PipelineBinding pipelineBinding = PipelineBinding::eNone;
   } drawingContext;
-
 };
-

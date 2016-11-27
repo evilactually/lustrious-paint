@@ -18,6 +18,7 @@ public:
   void Minimize();
   void Restore();
   void Maximize();
+  void GetClientArea(int* x, int* y, int* width, int* height);
 protected:
   static LsWin32MainWindow window;
   HWND windowHandle;

@@ -21,9 +21,9 @@ protected:
   }
 public:
   destructor(void(*fn)()):fn(fn) {
-    if (!fn) {
-      throw std::string("Function must not be NULL!");
-    }
+    // if (!fn) {
+    //   throw std::string("Function must not be NULL!");
+    // }
   }
   bool operator==(const destructor& other) {
     return fn == other.fn;

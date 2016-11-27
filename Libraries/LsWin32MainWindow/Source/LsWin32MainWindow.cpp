@@ -103,6 +103,27 @@ void LsWin32MainWindow::Maximize() {
   ShowWindow(windowHandle, SW_MAXIMIZE);
 }
 
+void LsWin32MainWindow::GetClientArea(int* x, int* y, int* width, int* height) {
+  RECT clientRect;
+  ::GetClientRect(windowHandle, &clientRect);
+
+  if (x) {
+    *x = clientRect.left;
+  }
+
+  if (y) {
+    *y = clientRect.top;
+  }
+
+  if (width) {
+    *width = clientRect.right - clientRect.left;
+  }
+
+  if (height) {
+    *height = clientRect.bottom - clientRect.top;
+  }
+}
+
 LsWin32MainWindow LsWin32MainWindow::window;
 
 LsWin32MainWindow::LsWin32MainWindow() {

@@ -12,7 +12,7 @@ set(INCLUDE_FILES
 set(SOURCE_FILES
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
   "Source/Main.cpp"
-  "Source/BrushRig.cpp")
+  "Source/LsBrushRig.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"
