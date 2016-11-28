@@ -21,6 +21,7 @@ public:
   void ShowMouse();
   void HideMouse();
   void GetClientArea(int* x, int* y, int* width, int* height);
+  POINT GetMousePosition();
 protected:
   static LsWin32MainWindow window;
   HWND windowHandle;

@@ -25,11 +25,9 @@ LsBrushRig::~LsBrushRig() {
 void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   PACKET pkt;
   POINT cursor;
-  HWND windowHandle = LsWin32MainWindow::Get()->GetWindowHandle();
   switch (uMsg) {
     case WM_MOUSEMOVE:
-    GetCursorPos(&cursor);
-    ScreenToClient(windowHandle, &cursor);
+    cursor = LsWin32MainWindow::Get()->GetMousePosition();
     penStatus.position[0] = cursor.x;
     penStatus.position[1] = cursor.y;
     break;

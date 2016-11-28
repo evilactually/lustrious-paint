@@ -132,6 +132,13 @@ void LsWin32MainWindow::GetClientArea(int* x, int* y, int* width, int* height) {
   }
 }
 
+POINT LsWin32MainWindow::GetMousePosition() {
+  POINT cursor;
+  GetCursorPos(&cursor);
+  ScreenToClient(windowHandle, &cursor);
+  return cursor;
+}
+
 LsWin32MainWindow LsWin32MainWindow::window;
 
 LsWin32MainWindow::LsWin32MainWindow() {
