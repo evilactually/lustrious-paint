@@ -1,10 +1,11 @@
 #pragma once
 
 #include <windows.h>
-#include <vulkan_dynamic.hpp>
 #include <vector>
 #include <memory>
-#include <destructor.h>
+#include <vulkan_dynamic.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <LsFWin32MessageHandler.h>
 
 class LsRenderer: public LsFWin32MessageHandler {
@@ -100,4 +101,10 @@ private:
     bool drawing = false; // indicates that command buffer is ready to draw
     PipelineBinding pipelineBinding = PipelineBinding::eNone;
   } drawingContext;
+
+  glm::tmat3x3<float> windowToVulkanTransformation = { 
+    1.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 1.0f
+  };
 };

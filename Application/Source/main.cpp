@@ -41,15 +41,19 @@ public:
     window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
+    window->HideMouse();
+
     // Initialize the rendering system
     LsRenderer::Initialize(hInstance, window->GetWindowHandle());
 
     renderer = LsRenderer::Get();
+
+    pointGrid.SetBackgroundColor(0.1f, 0.0f, 0.1f);
   }
 
   void Run() {
     window->Show();
-    while( window->ProcessMessages() ){
+    while( window->ProcessNextMessage() ){
       window->WaitForMessages();
       renderer->BeginFrame();
       pointGrid.Render();

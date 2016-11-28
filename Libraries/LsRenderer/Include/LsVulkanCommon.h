@@ -1,8 +1,11 @@
 #pragma once
 
+#include <windows.h>
 #include <iostream>
 #include <string>
 #include <vector>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <vulkan_dynamic.hpp>
 #include <LsFile.h>
 
@@ -81,4 +84,21 @@ vk::ShaderModule CreateShaderModule(vk::Device const& device, const char* filena
     throw std::string("Could not create shader module from a \"") + std::string(filename) + std::string("\" file!");
   }
   return shader_module;
+}
+
+static glm::tmat3x3<float> WindowToVulkanTransformation(HWND windowHandle) {
+  RECT clientRect;
+  ::GetClientRect(windowHandle, &clientRect);
+
+  float width = (float)(clientRect.right - clientRect.left);
+  float height = (float)(clientRect.bottom - clientRect.top);
+  float pixel_width = 2.0f/width;
+  float pixel_height = 2.0f/height;
+ 
+  glm::tmat3x3<float> transformation(
+	  pixel_width,             0.0f,                      0.0f,
+	  0.0f,                    pixel_height,              0.0f,
+	  -pixel_width*width/2.0f, -pixel_height*height/2.0f, 1.0f);
+
+  return transformation;
 }

@@ -512,12 +512,15 @@ void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
     drawingContext.pipelineBinding = PipelineBinding::eLine; 
   }
 
+  glm::vec3 vulkanPoint1 = windowToVulkanTransformation*glm::vec3(x1, y1, 1.0f);
+  glm::vec3 vulkanPoint2 = windowToVulkanTransformation*glm::vec3(x2, y2, 1.0f);
+
   // Transition image layout from generic read/present
   LinePushConstants pushConstants;
-  pushConstants.positions[0] = x1;
-  pushConstants.positions[1] = y1;
-  pushConstants.positions[2] = x2;
-  pushConstants.positions[3] = y2;
+  pushConstants.positions[0] = vulkanPoint1[0];
+  pushConstants.positions[1] = vulkanPoint1[1];
+  pushConstants.positions[2] = vulkanPoint2[0];
+  pushConstants.positions[3] = vulkanPoint2[1];
   std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
 
   commandBuffer.pushConstants( linePipelineLayout,
@@ -540,11 +543,13 @@ void LsRenderer::DrawPoint(float x, float y) {
     drawingContext.pipelineBinding = PipelineBinding::ePoint;
   }
 
+  glm::vec3 vulkanPoint = windowToVulkanTransformation*glm::vec3(x, y, 1.0f);
+
   // Transition image layout from generic read/present
   // TODO: Do I need to push it every time?
   PointPushConstants pushConstants;
-  pushConstants.positions[0] = x;
-  pushConstants.positions[1] = y;
+  pushConstants.positions[0] = vulkanPoint[0];
+  pushConstants.positions[1] = vulkanPoint[1];
   pushConstants.size = drawingContext.pointSize;
   std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
 
@@ -671,6 +676,7 @@ void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   switch (uMsg) {
     case WM_SIZE:
     RefreshSwapChain();
+    windowToVulkanTransformation = WindowToVulkanTransformation(window);
     break;
   }
 }

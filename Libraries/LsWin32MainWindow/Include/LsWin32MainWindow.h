@@ -18,11 +18,15 @@ public:
   void Minimize();
   void Restore();
   void Maximize();
+  void ShowMouse();
+  void HideMouse();
   void GetClientArea(int* x, int* y, int* width, int* height);
 protected:
   static LsWin32MainWindow window;
   HWND windowHandle;
   MSG msg;
+  HCURSOR arrowCursor;
+  bool mouseVisible = true;
   LsWin32MainWindow();
   ~LsWin32MainWindow();
   LRESULT HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

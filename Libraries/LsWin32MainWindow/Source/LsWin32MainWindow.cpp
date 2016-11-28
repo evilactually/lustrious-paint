@@ -103,6 +103,14 @@ void LsWin32MainWindow::Maximize() {
   ShowWindow(windowHandle, SW_MAXIMIZE);
 }
 
+void LsWin32MainWindow::ShowMouse() {
+  mouseVisible = true;
+}
+
+void LsWin32MainWindow::HideMouse() {
+  mouseVisible = false;
+}
+
 void LsWin32MainWindow::GetClientArea(int* x, int* y, int* width, int* height) {
   RECT clientRect;
   ::GetClientRect(windowHandle, &clientRect);
@@ -127,7 +135,7 @@ void LsWin32MainWindow::GetClientArea(int* x, int* y, int* width, int* height) {
 LsWin32MainWindow LsWin32MainWindow::window;
 
 LsWin32MainWindow::LsWin32MainWindow() {
-
+  arrowCursor = LoadCursor(NULL, IDC_ARROW);
 }
 
 LsWin32MainWindow::~LsWin32MainWindow() {
@@ -141,6 +149,18 @@ LRESULT LsWin32MainWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LP
   }
 
   LsFWin32MessageHandler::BroadCastWin32Message(uMsg, wParam, lParam);
+
+  // Control mouse visibility in client area
+  if ( uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT )
+  {
+    if ( mouseVisible )
+    {
+      SetCursor(arrowCursor);
+    } else {
+      SetCursor(NULL);
+    }
+    return TRUE;
+  }
 
   switch( uMsg ) {
     case WM_DESTROY:

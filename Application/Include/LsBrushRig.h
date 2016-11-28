@@ -13,12 +13,7 @@ class LsBrushRig: public LsFWin32MessageHandler
     float orientation[2] = { kPI, kPI/2.0f };
     float pressure;
   } penStatus;
-
-  struct {
-    float width;
-    float height;
-  } pixelDimensions;
-  
+ 
 public:
   LsBrushRig();
   ~LsBrushRig();

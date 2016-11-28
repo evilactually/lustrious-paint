@@ -17,11 +17,6 @@ class LsPointGrid: public LsFWin32MessageHandler
 
   float spacing = 32.0f;
 
-  struct {
-    float width;
-    float height;
-  } pixelDimensions;
-
   LsRenderer* renderer;
 
 public:

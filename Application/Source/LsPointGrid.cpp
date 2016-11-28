@@ -48,16 +48,9 @@ void LsPointGrid::Render() {
     float y_offset = y*spacing;
     for( int x = 0; x < horizontal_cell_count; ++x ) {
       float x_offset = x*spacing;
-      renderer->DrawPoint(pixelDimensions.width*x_offset - 1.0f, pixelDimensions.height*y_offset - 1.0f);
+      renderer->DrawPoint(x_offset - 1.0f, y_offset - 1.0f);
     }
   }
 }
 
-void LsPointGrid::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  HWND windowHandle = LsWin32MainWindow::Get()->GetWindowHandle();
-  switch (uMsg) {
-    case WM_SIZE:
-    GetVulkanPixelDimensions(windowHandle, &pixelDimensions.width, &pixelDimensions.height);
-    break;
-  }
-}
+void LsPointGrid::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) { }
