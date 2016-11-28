@@ -13,7 +13,8 @@ set(SOURCE_FILES
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
   "Source/Main.cpp"
   "Source/LsBrushRig.cpp"
-  "Source/LsPointGrid.cpp")
+  "Source/LsPointGrid.cpp"
+  "Source/LsUselessBox.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"

@@ -9,6 +9,7 @@
 #include <LsWintabLoader.h>
 #include <LsBrushRig.h>
 #include <LsPointGrid.h>
+#include <LsUselessBox.h>
 #include <LsConsole.h>
 #include <LsError.h>
 
@@ -18,6 +19,7 @@ class Application {
   LsWin32MainWindow* window;
   LsBrushRig brushRig;
   LsPointGrid pointGrid;
+  LsUselessBox uselessBox;
   LsRenderer* renderer;
 public:
   Application() {
@@ -58,6 +60,7 @@ public:
       renderer->BeginFrame();
       pointGrid.Render();
       brushRig.Render();
+      uselessBox.Render();
       renderer->EndFrame();
     };
   }
