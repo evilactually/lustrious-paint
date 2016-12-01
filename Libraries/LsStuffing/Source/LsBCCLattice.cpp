@@ -22,7 +22,7 @@
 //-------------------------------------------------------------------------------
 // Specifies displacement between two nodes
 //-------------------------------------------------------------------------------
-typedef LsTuple<int, 3> LsBCCNodeOffset;
+typedef std::tuple<int, int, int> LsBCCNodeOffset;
 
 //-------------------------------------------------------------------------------
 //-- Constants -------------------------------------------------------------------
@@ -60,19 +60,19 @@ static const LsBCCNodeOffset adjacentOffsets[14] = {
 //-------------------------------------------------------------------------------
 
 LsBCCNodeOffset SubtractNodes(LsBCCNode const & n1, LsBCCNode const & n2) {
-  return LsBCCNodeOffset(n1[0] - n2[0], n1[1] - n2[1], n1[2] - n2[2]);
+  return LsBCCNodeOffset(std::get<0>(n1) - std::get<0>(n2), std::get<1>(n1) - std::get<1>(n2), std::get<2>(n1) - std::get<2>(n2));
 }
 
 LsBCCNode AddNodeOffset(LsBCCNode const & node, LsBCCNodeOffset const & offset) {
-  return LsBCCNode(node[0] + offset[0], node[1] + offset[1], node[2] + offset[2]);
+  return LsBCCNode(std::get<0>(node) + std::get<0>(offset), std::get<1>(node) + std::get<1>(offset), std::get<2>(node) + std::get<2>(offset));
 }
 
 bool NodesEqual(LsBCCNode const & n1, LsBCCNode const & n2) {
-  return n1[0] == n2[0] && n1[1] == n2[1] && n1[2] == n2[2];
+  return std::get<0>(n1) == std::get<0>(n2) && std::get<1>(n1) == std::get<1>(n2) && std::get<2>(n1) == std::get<2>(n2);
 }
 
 bool NodeOffsetsEqual(LsBCCNodeOffset const & o1, LsBCCNodeOffset const & o2) {
-  return o1[0] == o2[0] && o1[1] == o2[1] && o1[2] == o2[2];
+  return std::get<0>(o1) == std::get<0>(o2) && std::get<1>(o1) == std::get<1>(o2) && std::get<2>(o1) == std::get<2>(o2);
 }
 
 //-------------------------------------------------------------------------------
@@ -136,14 +136,14 @@ LsOptional<LsBCCEdge> LsBCCLattice::EdgeIterator::Next() {
 //-------------------------------------------------------------------------------
 // Initialize lattice bounded by inclusive interval
 //-------------------------------------------------------------------------------
-LsBCCLattice::LsBCCLattice(LsTuple<int,3> minima,
-                           LsTuple<int,3> maxima,
+LsBCCLattice::LsBCCLattice(std::tuple<int, int, int> minima,
+                           std::tuple<int, int, int> maxima,
                            float step):minima(minima), maxima(maxima) {
-  for (int z = minima[2]; z <= maxima[2]; ++z)
+  for (int z = std::get<2>(minima); z <= std::get<2>(maxima); ++z)
   {
-    for (int y = minima[1]; y <= maxima[1]; ++y)
+    for (int y = std::get<1>(minima); y <= std::get<1>(maxima); ++y)
     {
-      for (int x = minima[0]; x <= maxima[0]; ++x)
+      for (int x = std::get<0>(minima); x <= std::get<0>(maxima); ++x)
       {
         LsBCCNode node = {x,y,z};
         if ( Valid(node) )
@@ -179,7 +179,7 @@ LsVector3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
 
 LsBCCColor LsBCCLattice::GetNodeColor(LsBCCNode node) const {
   assert(Valid(node));
-  if ( LsEven(node[0]) ) // Node is black iff all of it's coordinates are even
+  if ( LsEven(std::get<0>(node)) ) // Node is black iff all of it's coordinates are even
     return LsBCCColor::eBlack;
   else
     return LsBCCColor::eRed;
@@ -217,8 +217,8 @@ void LsBCCLattice::SetEdgeCutPoint(LsBCCEdge edge, LsVector3 position) {
 
 LsBCCColor LsBCCLattice::GetEdgeColor(LsBCCEdge edge) const {
   // Edge is black if both it's points are red or both it's points are black, otherwise it's red
-  LsBCCColor color1 = GetNodeColor(edge[0]);
-  LsBCCColor color2 = GetNodeColor(edge[1]);
+  LsBCCColor color1 = GetNodeColor(std::get<0>(edge));
+  LsBCCColor color2 = GetNodeColor(std::get<1>(edge));
   if ( color1 == LsBCCColor::eRed && color2 == LsBCCColor::eRed )
   {
     return LsBCCColor::eBlack; 
@@ -231,7 +231,7 @@ LsBCCColor LsBCCLattice::GetEdgeColor(LsBCCEdge edge) const {
 
 LsOptional<int> LsBCCLattice::GetEdgeIndexInNexus(LsBCCEdge edge) const {
   // Get vector representing an edge
-  LsBCCNodeOffset offset = SubtractNodes(edge[1], edge[0]);
+  LsBCCNodeOffset offset = SubtractNodes(std::get<1>(edge), std::get<0>(edge));
 
   // Test if edge matches one of nexus pattern edges
   for (int i = 0; i < 7; ++i)
@@ -247,10 +247,10 @@ LsOptional<int> LsBCCLattice::GetEdgeIndexInNexus(LsBCCEdge edge) const {
 LsBCCNode LsBCCLattice::GetEdgeNexusNode(LsBCCEdge edge) const {
   if ( GetEdgeIndexInNexus(edge) )
   {
-    return edge[0];
+    return std::get<0>(edge);
   }
   // If edge didn't match any pattern it must be flipped
-  return edge[1];
+  return std::get<1>(edge);
 }
 
 LsBCCLattice::NodeMetaData& LsBCCLattice::GetNodeMetaDataReference(LsBCCNode node) {
@@ -275,39 +275,39 @@ LsBCCLattice::EdgeMetaData const& LsBCCLattice::GetEdgeMetaDataConstReference(Ls
 
 int LsBCCLattice::GetNodeIndex(LsBCCNode node) const {
   assert(NodeExists(node));
-  int evenPlanesCount = LsEvenCount(minima[2], node[2] - 1);
-  int oddPlanesCount = LsOddCount(minima[2], node[2] - 1);
-  int evenPlaneRowSize = LsEvenCount(minima[0],maxima[0]);
-  int oddPlaneRowSize = LsOddCount(minima[0],maxima[0]);
-  int evenPlaneRowCount = LsEvenCount(minima[1],maxima[1]);
-  int oddPlaneRowCount = LsOddCount(minima[1],maxima[1]);
+  int evenPlanesCount = LsEvenCount(std::get<2>(minima), std::get<2>(node) - 1);
+  int oddPlanesCount = LsOddCount(std::get<2>(minima), std::get<2>(node) - 1);
+  int evenPlaneRowSize = LsEvenCount(std::get<0>(minima), std::get<0>(maxima));
+  int oddPlaneRowSize = LsOddCount(std::get<0>(minima), std::get<0>(maxima));
+  int evenPlaneRowCount = LsEvenCount(std::get<1>(minima), std::get<1>(maxima));
+  int oddPlaneRowCount = LsOddCount(std::get<1>(minima), std::get<1>(maxima));
   int evenPlaneSize = evenPlaneRowCount*evenPlaneRowSize;
   int oddPlaneSize = oddPlaneRowCount*oddPlaneRowSize;
   int planeOffset = evenPlaneSize*evenPlanesCount + oddPlaneSize*oddPlanesCount;
   int rowOffset;
   int columnOffset;
-  if ( LsEven(node[2]) ) {
-    rowOffset = LsEvenCount(minima[1], node[1] - 1)*evenPlaneRowSize;
-    columnOffset = LsEvenCount(minima[0], node[0] - 1);
+  if ( LsEven(std::get<2>(node)) ) {
+    rowOffset = LsEvenCount(std::get<1>(minima), std::get<1>(node) - 1)*evenPlaneRowSize;
+    columnOffset = LsEvenCount(std::get<0>(minima), std::get<0>(node) - 1);
   } else {
-    rowOffset = LsOddCount(minima[1], node[1] - 1)*oddPlaneRowSize;
-    columnOffset = LsOddCount(minima[0], node[0] - 1);
+    rowOffset = LsOddCount(std::get<1>(minima), std::get<1>(node) - 1)*oddPlaneRowSize;
+    columnOffset = LsOddCount(std::get<0>(minima), std::get<0>(node) - 1);
   }
   return planeOffset + rowOffset + columnOffset;
 }
 
 bool LsBCCLattice::WithinBounds(LsBCCNode node) const {
-  return node[0] >= minima[0] &&
-         node[1] >= minima[1] &&
-         node[2] >= minima[2] &&
-         node[0] <= maxima[0] &&
-         node[1] <= maxima[1] &&
-         node[2] <= maxima[2];
+  return std::get<0>(node) >= std::get<0>(minima) &&
+         std::get<1>(node) >= std::get<1>(minima) &&
+         std::get<2>(node) >= std::get<2>(minima) &&
+         std::get<0>(node) <= std::get<0>(maxima) &&
+         std::get<1>(node) <= std::get<1>(maxima) &&
+         std::get<2>(node) <= std::get<2>(maxima);
 }
 
 bool LsBCCLattice::Valid(LsBCCNode node) const {
-  return LsEven(node[0]) && LsEven(node[1]) && LsEven(node[2]) ||
-         LsOdd(node[0]) && LsOdd(node[1]) && LsOdd(node[2]);
+  return LsEven(std::get<0>(node)) && LsEven(std::get<1>(node)) && LsEven(std::get<2>(node)) ||
+         LsOdd(std::get<0>(node)) && LsOdd(std::get<1>(node)) && LsOdd(std::get<2>(node));
 }
 
 bool LsBCCLattice::NodeExists(LsBCCNode node) const {

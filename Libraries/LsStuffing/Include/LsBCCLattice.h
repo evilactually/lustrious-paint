@@ -8,7 +8,7 @@
 #pragma once
 
 #include <vector>
-#include <LsTuple.h>
+#include <tuple>
 #include <LsOptional.h>
 #include <LsVector3.h>
 
@@ -21,21 +21,21 @@
 //-------------------------------------------------------------------------------
 // Specifies coordinates of a node
 //-------------------------------------------------------------------------------
-typedef LsTuple<int, 3> LsBCCNode;
+typedef std::tuple<int, int, int> LsBCCNode;
 
 //-------------------------------------------------------------------------------
 // @ LsBCCEdge
 //-------------------------------------------------------------------------------
 // Specifies coordinates of nodes defining an edge
 //-------------------------------------------------------------------------------
-typedef LsTuple<LsBCCNode, 2> LsBCCEdge;
+typedef std::tuple<LsBCCNode, LsBCCNode> LsBCCEdge;
 
 //-------------------------------------------------------------------------------
 // @ LsBCCTetrahedron
 //-------------------------------------------------------------------------------
 // Specifies coordinates of nodes defining a tetrahedron
 //-------------------------------------------------------------------------------
-typedef LsTuple<LsBCCNode, 4> LsBCCTetrahedron;
+typedef std::tuple<LsBCCNode, LsBCCNode, LsBCCNode, LsBCCNode> LsBCCTetrahedron;
 
 
 //-------------------------------------------------------------------------------
@@ -118,7 +118,7 @@ public:
     int currentNexusIndex = 0;
   };
   
-  LsBCCLattice(LsTuple<int,3> minima, LsTuple<int,3> maxima, float step);
+  LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
   TetrahedronIterator GetTetrahedronIterator(); //   TODO: WTF DO I DO???
   NodeIterator GetNodeIterator();
   NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
@@ -133,8 +133,8 @@ public:
   void SetEdgeCutPoint(LsBCCEdge edge, LsVector3 position);
   LsBCCColor GetEdgeColor(LsBCCEdge edge) const;
 protected:
-  LsTuple<int,3> minima;
-  LsTuple<int,3> maxima;
+  std::tuple<int, int, int> minima;
+  std::tuple<int, int, int> maxima;
   std::vector<NodeMetaData> nodeMetaData;
   LsOptional<int> GetEdgeIndexInNexus(LsBCCLattice::LsBCCEdge edge) const;
   LsBCCNode GetEdgeNexusNode(LsBCCEdge edge) const;
