@@ -9,6 +9,7 @@
 // void Stuff(LsTetrahedronMesh& mesh), public // stuff the surface and output resulting mesh into provided instance of LsTetrahedronMesh
 
 #include <tuple>
+#include <memory>
 #include <glm/glm.hpp>
 #include "LsBCCLattice.h"
 #include "LsTetrahedronMesh.h"
@@ -26,7 +27,7 @@ protected:
   virtual LsBCCValue GetValueAtVertex(glm::vec3 vertex) = 0;
   virtual glm::vec3 GetEdgeCutPoint(glm::vec3 e1, glm::vec3 e2) = 0;
 private:
-  LsBCCLattice bccLattice;
+  std::unique_ptr<LsBCCLattice> bccLattice;
   void UpdateValues();
   void UpdateCutPoints();
   void Warp();
