@@ -156,7 +156,7 @@ LsBCCLattice::LsBCCLattice(std::tuple<int, int, int> minima,
         {
           NodeMetaData nodeInfo;
           nodeInfo.coordinates = node;
-          nodeInfo.position = step*LsVector3(x,y,z); // Vertex coordinates correspond to 
+          nodeInfo.position = step*glm::vec3(x,y,z); // Vertex coordinates correspond to 
           nodeInfo.value = LsBCCValue::eUnassigned;  // BCC grid coordinates scaled by step
           nodeMetaData.push_back(nodeInfo);
         }
@@ -179,7 +179,7 @@ LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node)
 
 // BCCLattice::EdgeIterator BCCLattice::GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
 
-LsVector3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
+glm::vec3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
   return GetNodeMetaDataConstReference(node).position;
 }
 
@@ -201,7 +201,7 @@ void LsBCCLattice::SetNodeValue(LsBCCNode node, LsBCCValue value) {
   GetNodeMetaDataReference(node).value = value;
 }
 
-void LsBCCLattice::SetNodePosition(LsBCCNode node, LsVector3 position) {
+void LsBCCLattice::SetNodePosition(LsBCCNode node, glm::vec3 position) {
   assert(Valid(node));
   GetNodeMetaDataReference(node).position = position;
 }
@@ -213,11 +213,11 @@ void LsBCCLattice::DeleteNodeCutPoints(LsBCCNode node) {
   GetEdgeMetaDataReference(edge);
 }
  
-LsOptional<LsVector3> LsBCCLattice::GetEdgeCutPoint(LsBCCEdge edge) const {
+LsOptional<glm::vec3> LsBCCLattice::GetEdgeCutPoint(LsBCCEdge edge) const {
   return GetEdgeMetaDataConstReference(edge).cutPoint;
 }
 
-void LsBCCLattice::SetEdgeCutPoint(LsBCCEdge edge, LsVector3 position) {
+void LsBCCLattice::SetEdgeCutPoint(LsBCCEdge edge, glm::vec3 position) {
   GetEdgeMetaDataReference(edge).cutPoint = position;
 }
 

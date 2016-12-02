@@ -10,7 +10,8 @@
 #include <vector>
 #include <tuple>
 #include <LsOptional.h>
-#include <LsVector3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 //-------------------------------------------------------------------------------
 //-- Typedefs -------------------------------------------------------------------
@@ -70,11 +71,11 @@ enum class LsBCCValue
 class LsBCCLattice {
 protected:
   struct EdgeMetaData {
-    LsOptional<LsVector3> cutPoint;
+    LsOptional<glm::vec3> cutPoint;
   };
   struct NodeMetaData {
     LsBCCNode coordinates;
-    LsVector3 position;
+    glm::vec3 position;
     LsBCCValue value;
     EdgeMetaData edgeNexus[7];
   };
@@ -131,14 +132,14 @@ public:
   NodeIterator GetNodeIterator();
   NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
   EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
-  LsVector3 GetNodePosition(LsBCCNode node) const;
+  glm::vec3 GetNodePosition(LsBCCNode node) const;
   LsBCCColor GetNodeColor(LsBCCNode node) const;
   LsBCCValue GetNodeValue(LsBCCNode node) const;
   void SetNodeValue(LsBCCNode node, LsBCCValue value);
-  void SetNodePosition(LsBCCNode node, LsVector3 position);
+  void SetNodePosition(LsBCCNode node, glm::vec3 position);
   void DeleteNodeCutPoints(LsBCCNode node);
-  LsOptional<LsVector3> GetEdgeCutPoint(LsBCCEdge edge) const;
-  void SetEdgeCutPoint(LsBCCEdge edge, LsVector3 position);
+  LsOptional<glm::vec3> GetEdgeCutPoint(LsBCCEdge edge) const;
+  void SetEdgeCutPoint(LsBCCEdge edge, glm::vec3 position);
   LsBCCColor GetEdgeColor(LsBCCEdge edge) const;
 protected:
   std::tuple<int, int, int> minima;
