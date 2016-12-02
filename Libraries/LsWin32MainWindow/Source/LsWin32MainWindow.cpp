@@ -40,7 +40,7 @@ void LsWin32MainWindow::Create(HINSTANCE hInstance, std::string title, int x, in
                                   NULL,
                                   hInstance,
                                   NULL );
-
+  
   // Sanity check, make sure windowHandle was set inside WndProc to correct value
   assert(handle == windowHandle);
 }
@@ -166,13 +166,28 @@ LRESULT LsWin32MainWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LP
     } else {
       SetCursor(NULL);
     }
-    return TRUE;
+    return TRUE; // halt further processing
   }
 
   switch( uMsg ) {
+    case WM_MOUSEMOVE:
+    // Set mouse event tracking to get WM_MOUSELEAVE event
+    if ( !mouseInClient )
+    {
+      mouseInClient = TRUE;
+      TRACKMOUSEEVENT trackMouseEvent = { sizeof(TRACKMOUSEEVENT) };
+      trackMouseEvent.dwFlags = TME_LEAVE;
+      trackMouseEvent.hwndTrack = windowHandle;
+      TrackMouseEvent(&trackMouseEvent);
+    }
+    break;
+    case WM_MOUSELEAVE:
+      mouseInClient = FALSE;
+      return 0;
+    break;
     case WM_DESTROY:
-      PostQuitMessage(0);
-      break;
+    PostQuitMessage(0);
+    break;
   }
  
   return DefWindowProc(hwnd, uMsg, wParam, lParam);

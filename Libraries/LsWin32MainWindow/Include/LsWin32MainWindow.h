@@ -28,6 +28,7 @@ protected:
   MSG msg;
   HCURSOR arrowCursor;
   bool mouseVisible = true;
+  BOOL mouseInClient; // used to track mouse leave
   LsWin32MainWindow();
   ~LsWin32MainWindow();
   LRESULT HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
