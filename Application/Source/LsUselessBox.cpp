@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <iostream>
 #include <glm/glm.hpp>
 #include <LsRenderer.h>
 #include <LsUselessBox.h>
@@ -28,8 +29,11 @@ bool LsUselessBox::HitTest(POINT point) {
 void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   POINT cursor;
   switch (uMsg) {
+    case WM_MOUSELEAVE:
+    dragging = false;
+    break;
     case WM_MOUSEMOVE:
-    if (dragging) {
+    if ( dragging ) {
       cursor = LsWin32MainWindow::Get()->GetMousePosition();
       x = (float)(cursor.x - grabOffset.x);
       y = (float)(cursor.y - grabOffset.y);
