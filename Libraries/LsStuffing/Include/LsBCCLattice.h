@@ -15,6 +15,14 @@
 //-------------------------------------------------------------------------------
 //-- Typedefs -------------------------------------------------------------------
 //-------------------------------------------------------------------------------
+struct LsDomain {
+  float x1;
+  float y1;
+  float z1;
+  float x2;
+  float y2;
+  float z2;
+};
 
 //-------------------------------------------------------------------------------
 // @ LsBCCNode
@@ -117,7 +125,7 @@ public:
     size_t currentNodeIndex = 0;
     int currentNexusIndex = 0;
   };
-  
+  LsBCCLattice(LsDomain domain);
   LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
   TetrahedronIterator GetTetrahedronIterator(); //   TODO: WTF DO I DO???
   NodeIterator GetNodeIterator();
@@ -147,3 +155,5 @@ protected:
   bool WithinBounds(LsBCCNode node) const;
   bool NodeExists(LsBCCNode node) const;
 };
+
+// Lattice bounded by domain must contain every terahedra that has at least one of it's vertecies in the domain

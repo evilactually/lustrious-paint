@@ -131,6 +131,12 @@ LsOptional<LsBCCEdge> LsBCCLattice::EdgeIterator::Next() {
   throw 1;
 }
 
+LsBCCLattice::LsBCCLattice(LsDomain domain) {
+  // TODO: Implement this in terms of previous constructor code. Domain is a floating 
+  // point bounding box. The grid must include every tetrahedron that is touched by it.
+  // It can be accomplished simply by rounding up by step size outwards.
+}
+
 //-------------------------------------------------------------------------------
 // @ LsBCCLattice::LsBCCLattice()
 //-------------------------------------------------------------------------------
