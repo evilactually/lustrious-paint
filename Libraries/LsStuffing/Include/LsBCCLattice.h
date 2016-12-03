@@ -119,7 +119,7 @@ public:
   friend LsBCCLattice;
   public:
     LsOptional<LsBCCEdge> Next();
-    //operator LsBCCEdge() const;
+    operator LsBCCEdge() const;
   private:
     EdgeIterator(LsBCCLattice const& lattice);
     LsBCCLattice const& lattice;

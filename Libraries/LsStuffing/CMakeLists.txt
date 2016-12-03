@@ -5,12 +5,12 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 
 set(INCLUDE_FILES
-  Include/LsTetrahedronStuffer.h
+  Include/LsIsosurfaceStuffer.h
   Include/LsTetrahedronMesh.h
   Include/LsBCCLattice.h)
 
 set(SOURCE_FILES
-  Source/LsTetrahedronStuffer.cpp
+  Source/LsIsosurfaceStuffer.cpp
   Source/LsTetrahedronMesh.cpp
   Source/LsBCCLattice.cpp)
 

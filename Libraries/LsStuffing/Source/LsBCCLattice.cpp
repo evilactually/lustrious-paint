@@ -100,7 +100,13 @@ bool LsBCCLattice::NodeIterator::Next() {
 
 LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(lattice) { };
 
-LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() { 
+LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
+  // expand minima and maxima to include next back(even) nodes if they are red
+  // subtract from minima, and add to maxima
+  // iterate in "cubes", each cube contains 3*4 tetrahedra
+  // each 4-pack of them is wrapped around the three axial edges
+  // connecting it's center(red) with +2 center next(also red).
+  // we could go left-down-deep counterclockwise order for example
   throw 1;
 };
 
@@ -109,6 +115,11 @@ LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, Ls
   current = LsBCCEdge(n1, n2);
 };
 
+//-------------------------------------------------------------------------------
+// @ LsBCCLattice::NodeEdgeIterator::operator LsBCCEdge() 
+//-------------------------------------------------------------------------------
+// Get the current edge. The origin node is guaranteed to be the first node of the edge.
+//-------------------------------------------------------------------------------
 LsBCCLattice::NodeEdgeIterator::operator LsBCCEdge() const {
   return current;
 }
@@ -123,6 +134,12 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
   } else {
     return false;
   }
+}
+
+LsBCCLattice::EdgeIterator::operator LsBCCEdge() const {
+  // iterate over nodes, then over edges stored at node
+  // can reuse NodeEdgeIterator here
+  throw 1;
 }
 
 LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(lattice) { };
