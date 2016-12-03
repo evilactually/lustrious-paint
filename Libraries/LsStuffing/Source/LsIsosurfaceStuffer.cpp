@@ -36,16 +36,33 @@ void LsIsosurfaceStuffer::UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface co
 }
 
 void LsIsosurfaceStuffer::Warp(LsBCCLattice& lattice) {
+  LsBCCLattice::NodeIterator nodeIterator = lattice.GetNodeIterator();
+  do {
+    LsBCCNode n1 = nodeIterator;
+    LsBCCLattice::NodeEdgeIterator edgeIterator = lattice.GetNodeEdgeIterator(n1);
+    do {
+      LsBCCEdge edge = edgeIterator;
+      LsBCCNode n2 = std::get<1>(edge);
+      glm::vec3 cutPoint = lattice.GetEdgeCutPoint(edge);
+      glm::vec3 p1 = lattice.GetNodePosition(n1);
+      glm::vec3 p2 = lattice.GetNodePosition(n2);
 
+      float alpha = alphaLong;
+      if ( lattice.GetEdgeColor(edge) == LsBCCColor::eRed )
+      {
+        alpha = alphaShort;
+      }
+
+      if ( glm::abs(glm::length((cutPoint - p1)/(p2 - p1))) < alpha ) // cutPoint violates p1
+      {
+        lattice.SetNodePosition(n1, cutPoint);       // snap violated node to cut point
+        lattice.SetNodeValue(n1, LsBCCValue::eZero); // update value, it lays on surface
+        lattice.DeleteNodeCutPoints(n1);             // since it lays on surface, no cut points can be possible
+      }
+    } while ( edgeIterator.Next() );
+  } while ( nodeIterator.Next() );
 }
 
 void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& mesh) {
 
 }
-
-/*
-  eUnassigned = 0,
-  eNegative = 1,
-  eZero = 2,
-  ePositive = 3
-*/
