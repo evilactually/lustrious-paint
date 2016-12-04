@@ -96,7 +96,7 @@ public:
   friend LsBCCLattice;
   public:
     LsOptional<LsBCCTetrahedron> Next();
-    //operator LsBCCTetrahedron() const;
+    operator LsBCCTetrahedron() const;
   private:
     TetrahedronIterator(LsBCCLattice const& lattice);
     LsBCCLattice const& lattice;
@@ -128,7 +128,7 @@ public:
   };
   LsBCCLattice(LsDomain domain);
   LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
-  TetrahedronIterator GetTetrahedronIterator(); //   TODO: WTF DO I DO???
+  TetrahedronIterator GetTetrahedronIterator() const; //   TODO: Use the cube tile
   NodeIterator GetNodeIterator();
   NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
   EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 

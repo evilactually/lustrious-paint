@@ -24,6 +24,7 @@ public:
   typedef LsTuple<int, 4> LsTetrahedron;
   LsTetrahedronMesh();
   ~LsTetrahedronMesh();
+  void UseAbsoluteEq(bool); // TODO: We may be able to get away with bitwise float comparison in most practical cases
   int AddTetrahedron(int node1, int node2, int node3, int node4);
   int AddTetrahedron(const LsVector3& node1, const LsVector3& node2, const LsVector3& node3, const LsVector3& node4);
   void RemoveTetrahedron(int tetrahedronIndex);

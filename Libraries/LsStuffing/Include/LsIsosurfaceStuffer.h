@@ -37,8 +37,8 @@ public:
   void SetAlphaShort(float a);
   void SetStep(float step);
 private:
-  float alphaLong;
-  float alphaShort;
+  float alphaLong = 0.24999f;
+  float alphaShort = 0.40173f;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);

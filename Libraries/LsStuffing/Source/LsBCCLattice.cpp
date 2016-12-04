@@ -100,6 +100,10 @@ bool LsBCCLattice::NodeIterator::Next() {
 
 LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(lattice) { };
 
+LsBCCLattice::TetrahedronIterator::operator LsBCCTetrahedron() const {
+  throw 1;
+}
+
 LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
   // expand minima and maxima to include next back(even) nodes if they are red
   // subtract from minima, and add to maxima
@@ -182,7 +186,7 @@ LsBCCLattice::LsBCCLattice(std::tuple<int, int, int> minima,
   }
 }
 
-LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() {   //   TODO: ???
+LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() const {   //   TODO: ???
   return TetrahedronIterator(*this);
 }
 
