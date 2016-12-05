@@ -9,6 +9,8 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
+#include <glm/glm.hpp>
+#include <LsMath.h>
 #include <LsTetrahedronMesh.h>
 #include <LsStdAlgorithms.h>
 
@@ -37,6 +39,10 @@ LsTetrahedronMesh::LsTetrahedronMesh() {
 
 LsTetrahedronMesh::~LsTetrahedronMesh() { }
 
+void LsTetrahedronMesh::UseAbsoluteEq(bool value) {
+  useAbsoluteEq = value;
+}
+
 //-------------------------------------------------------------------------------
 // @ LsTetrahedronMesh::AddTetrahedron()
 //-------------------------------------------------------------------------------
@@ -52,10 +58,10 @@ int LsTetrahedronMesh::AddTetrahedron(int node1, int node2, int node3, int node4
 //-------------------------------------------------------------------------------
 // Add tetrahedron by specifying coordinates of it's vertecies, duplicate tetrahedra are allowed.
 //-------------------------------------------------------------------------------
-int LsTetrahedronMesh::AddTetrahedron(const LsVector3& node1, 
-                                      const LsVector3& node2, 
-                                      const LsVector3& node3, 
-                                      const LsVector3& node4) {
+int LsTetrahedronMesh::AddTetrahedron(const glm::vec3& node1, 
+                                      const glm::vec3& node2, 
+                                      const glm::vec3& node3, 
+                                      const glm::vec3& node4) {
   indexBuffer.push_back(LsTetrahedron(AddNode(node1), AddNode(node2), AddNode(node3), AddNode(node4)));
   return indexBuffer.size() - 1;
 }
@@ -72,20 +78,30 @@ void LsTetrahedronMesh::RemoveTetrahedron(int tetrahedronIndex) {
 }
 
 //-------------------------------------------------------------------------------
-// @ LsTetrahedronMesh::FindNodeIndex(const LsVector3&)
+// @ LsTetrahedronMesh::FindNodeIndex(const glm::vec3&)
 //-------------------------------------------------------------------------------
 // Try to get index of a node approximately equal to given coordinates
 //-------------------------------------------------------------------------------
-LsOptional<int> LsTetrahedronMesh::FindNodeIndex(const LsVector3& node) {
-  return find_index( vertexBuffer.begin(), vertexBuffer.end(), node );
+LsOptional<int> LsTetrahedronMesh::FindNodeIndex(const glm::vec3& node) {
+  return find_index_if( vertexBuffer.begin(), vertexBuffer.end(), [&](const glm::vec3& other) {
+    if (useAbsoluteEq) {
+      return node[0] == other[0] &&
+             node[1] == other[1] &&
+             node[2] == other[2];
+    } else {
+      return IvAreEqual(node[0], other[0]) && 
+             IvAreEqual(node[1], other[1]) &&
+             IvAreEqual(node[2], other[2]);
+    }
+  });
 }
 
 //-------------------------------------------------------------------------------
-// @ LsTetrahedronMesh::AddNode(const LsVector3&)
+// @ LsTetrahedronMesh::AddNode(const glm::vec3&)
 //-------------------------------------------------------------------------------
 // Add a new vertex to vertex buffer and return it's index, duplicates are not added.
 //-------------------------------------------------------------------------------
-int LsTetrahedronMesh::AddNode(const LsVector3& node) {
+int LsTetrahedronMesh::AddNode(const glm::vec3& node) {
   LsOptional<int> index = FindNodeIndex(node);
   if (!index)
   {
@@ -114,7 +130,7 @@ void LsTetrahedronMesh::RemoveNode(int node) {
 //-------------------------------------------------------------------------------
 // Look-up node position
 //-------------------------------------------------------------------------------
-LsVector3 LsTetrahedronMesh::GetNodePosition(int node) {
+glm::vec3 LsTetrahedronMesh::GetNodePosition(int node) {
   return vertexBuffer[node];
 }
 
@@ -170,7 +186,7 @@ void LsTetrahedronMesh::Optimize() {
 // Get constant reference to vertex buffer of tetrahedron mesh.
 // Some vertecies may be unneeded.
 //-------------------------------------------------------------------------------
-const std::vector<LsVector3>& LsTetrahedronMesh::GetVertecies() {
+const std::vector<glm::vec3>& LsTetrahedronMesh::GetVertecies() {
   return vertexBuffer;
 }
 

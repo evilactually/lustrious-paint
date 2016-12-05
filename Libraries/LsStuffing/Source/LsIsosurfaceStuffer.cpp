@@ -184,7 +184,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
 
     if ( pppp && zppp && zzpp && zzzp )
     {
-      /* code */
+      mesh.AddTetrahedron(p0, p1, p2, p3);
     }
 
   } while ( iterator.Next() );
