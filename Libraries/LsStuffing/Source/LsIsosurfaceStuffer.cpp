@@ -118,6 +118,11 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
       std::swap(nodes[1], nodes[2]);
     }
 
+    LsBCCNode n0 = nodes[0];
+    LsBCCNode n1 = nodes[1];
+    LsBCCNode n2 = nodes[2];
+    LsBCCNode n3 = nodes[3];
+
     LsBCCValue v0 = lattice.GetNodeValue(nodes[0]);
     LsBCCValue v1 = lattice.GetNodeValue(nodes[1]);
     LsBCCValue v2 = lattice.GetNodeValue(nodes[2]);
@@ -182,9 +187,49 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
     glm::vec3 p2 = lattice.GetNodePosition(nodes[2]);
     glm::vec3 p3 = lattice.GetNodePosition(nodes[3]);
 
+    // Group 1
     if ( pppp && zppp && zzpp && zzzp )
     {
       mesh.AddTetrahedron(p0, p1, p2, p3);
+    }
+
+    // Group 2
+    if ( nzzp )
+    {
+      glm::vec3 c03 = lattice.GetEdgeCutPoint(LsBCCEdge(n0, n3));
+      mesh.AddTetrahedron(c03, p1, p2, p3); 
+    }
+
+    if ( nnzp )
+    {
+      glm::vec3 c03 = lattice.GetEdgeCutPoint(LsBCCEdge(n0, n3));
+      glm::vec3 c13 = lattice.GetEdgeCutPoint(LsBCCEdge(n1, n3));
+      mesh.AddTetrahedron(c03, c13, p2, p3); 
+    }
+
+    if ( nnnp )
+    {
+      glm::vec3 c03 = lattice.GetEdgeCutPoint(LsBCCEdge(n0, n3));
+      glm::vec3 c13 = lattice.GetEdgeCutPoint(LsBCCEdge(n1, n3));
+      glm::vec3 c23 = lattice.GetEdgeCutPoint(LsBCCEdge(n2, n3));
+      mesh.AddTetrahedron(c03, c13, c23, p3);
+    }
+
+    // Group 3
+    if ( nzpp ) {
+      LsBCCEdge e02(n0, n2);
+      LsBCCEdge e03(n0, n3);
+      LsBCCEdge e13(n1, n3);
+      LsBCCColor color02 = lattice.GetEdgeColor(e02);
+      LsBCCColor color03 = lattice.GetEdgeColor(e03);
+      glm::vec3 c02 = lattice.GetEdgeCutPoint(e02);
+      glm::vec3 c03 = lattice.GetEdgeCutPoint(e03);
+      //TODO: This is unmaintainable, create a pattern matcher. Pattern matcher recieves a description of 
+      // a pattern and assigned numbers to each node or cut point. Then referring to the nodes can be done by numbers.
+
+      //mesh.AddTetrahedron(c03, p1, c23, p3);
+      //mesh.AddTetrahedron(c03, c13, c23, p3);
+      //mesh.AddTetrahedron(c03, c13, c23, p3);
     }
 
   } while ( iterator.Next() );
