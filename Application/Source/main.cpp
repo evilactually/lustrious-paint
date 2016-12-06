@@ -12,6 +12,7 @@
 #include <LsUselessBox.h>
 #include <LsConsole.h>
 #include <LsError.h>
+#include <Test.h>
 
 using namespace lslib;
 
@@ -69,7 +70,7 @@ public:
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
   try {
     Application application;
-    application.Initialize(hInstance);
+    application.Initialize(hInstance); test();
     application.Run();
   }
   catch (std::string m) {

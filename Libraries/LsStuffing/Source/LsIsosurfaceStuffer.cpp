@@ -236,5 +236,277 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
   } while ( iterator.Next() );
 }
 
+/* Graph matching algorithm
 
- 
+1 is +
+2 is +
+3 is +
+3 is +
+any edge 1 2
+any edge 2 3
+any edge 3 1
+any edge 4 1
+any edge 4 2
+any edge 4 3
+
+1 is -
+2 is +
+black edge 1 2 cut
+3 is +
+red edge 1 3 cut
+red edge 3 2
+4 is 0
+black edge 4 3
+red edge 4 2
+red edge 4 1
+
+
+Implicitly assign cut points an id based on nodes of the edge
+GetPosition(1);
+GetPosition(1,2);
+GetNode(1);
+GetNode(1,2); // ERROR: no such function
+
+auto it = lattice.GetNodeIterator();
+lattice.GetNodeValue(it) == LsBCCValue::eNegative; // 1
+matches[1] = it;
+
+// find all positive
+lattice.GetNodeValue(it) == LsBCCValue::ePositive; // 2
+// recur for each
+
+- 0 + +
+0 1 2 3
+
+1 n0
+2 n2, n3
+3 n2, n3
+4 n1
+
+1 is +
+2 is -
+black edge 1 2 cut
+3 is +
+red edge 2 3 cut
+red edge 1 3
+4 is -
+red edge 4 1 cut
+black edge 4 3 cut
+red edge 4 2
+
+- - + +
+0 1 2 3
+
+1 n2, n3
+2 n2, n4
+3 n2, n3
+4 n2, n4
+
+n2, n3 are good candidates, because they are +'ses
+look for all edges that have the 1 in them:
+
+black edge 1 2 cut
+red edge 1 3
+red edge 4 1 cut
+
+we cannot make a decision right now, because we have not selected 2, 3, 4
+but if did select 2, 3, 4
+
+lattice.GetEdgeColor(<edge between 1 and 2>) == black;
+lattice.GetEdgeCutPoint(<edge between 1 and 2>) == <not Nothing>;
+lattice.GetEdgeColor(<edge between 1 and 3>) == red;
+lattice.GetEdgeCutPoint(<edge between 1 and 3>) == <Nothing>;
+lattice.GetEdgeColor(<edge between 1 and 4>) == red;
+lattice.GetEdgeCutPoint(<edge between 1 and 4>) == <not Nothing>;
+
+// select nodes that are required to check the edges
+// if it cannot do that, fail
+// if you can 
+
+// make a choice
+// recur with the choice
+// until no more choices need to be made
+
+// check each possible choice of node 4 choices, each can be 4 different things
+// choose 1 as n0, n1, n2, n3
+//   choose 2 as n1, n2, n3
+//     choose 3 as n2, n3
+//       choose 4 as n3
+//         check edges
+
+// start with n0, remainding n1,n2,n3
+//
+
+// class LsStencil
+// {
+// public:
+//   LsStencil();
+//   ~LsStencil();
+//   Get
+// };
+
+*/
+
+#include <LsOptional.h>
+
+using NodeSelections = std::vector<LsBCCNode>;
+
+bool match(LsBCCLattice const& lattice, 
+                                 LsBCCTetrahedron const& tetrahedron,
+                                 std::vector<LsBCCNode> selected, 
+                                 std::vector<LsBCCNode> remaining,
+                                 int index) {
+  // n cases
+  // n = 3 - index; worsk size of NEXT recursion
+  // 4 - index
+  // 4 0
+  // 3 1
+  // 2 2
+  // 1 3
+  // 0 4
+  return false;
+}
+
+// template<class T>
+// void find_permutation_if(std::vector<T> elements, bool (*predicate)(std::vector<T>const& permutation)) {
+
+// }
+
+#include <FactoradicPermutation.hh>
+#include <string>
+#include <iostream>
+
+void test() {
+  std::string x = "abcd";
+  NthPermutation(x.begin(), x.end(), 2);
+  std::cout << x << std::endl;
+}
+
+class LsPattern
+{
+public:
+  LsPattern();
+  ~LsPattern();
+  void AddNode(int id);
+  void AddEdge(int id);
+
+  
+};
+
+class PatternDSL;
+
+struct _id_data_ {
+  int id;
+  LsBCCValue value;
+};
+
+class _is_
+{
+  PatternDSL& mPattern;
+public:
+  _is_(PatternDSL& pattern):mPattern(pattern) {};
+  ~_is_() {};
+  PatternDSL& plus();
+};
+
+class _id_
+{
+  PatternDSL& mPattern;
+  int mId;
+public:
+  _id_(PatternDSL& pattern, int id):mPattern(pattern),mId(id){};
+  ~_id_();
+  _is_ is();
+};
+
+class IPatternDSLInterpreter
+{
+public:
+  IPatternDSLInterpreter();
+  ~IPatternDSLInterpreter();
+  virtual void OnId(int id, LsBCCValue value) = 0;
+  virtual void OnEdge(int id1, int id2, LsBCCColor color, bool isCut) = 0;
+};
+
+class PatternDSL
+{
+friend ::_id_;
+friend ::_is_;
+  IPatternDSLInterpreter& mInterpreter;
+  IPatternDSLInterpreter& GetInterpreter();
+public:
+  PatternDSL(IPatternDSLInterpreter& interpreter):mInterpreter(interpreter){};
+  ~PatternDSL();
+  _id_ id(int _id);
+};
+
+_is_ _id_::is() {
+    return ::_is_(mPattern);
+};
+
+PatternDSL& _is_::plus() {
+  mPattern.GetInterpreter().OnId(0, LsBCCValue::ePositive);
+  return mPattern;
+}
+
+IPatternDSLInterpreter& PatternDSL::GetInterpreter() {
+  return mInterpreter;
+}
+
+_id_ PatternDSL::id(int id) {
+  return ::_id_(*this, id);
+}
+
+void aaa() {
+  // PatternDSL pattern;
+  // pattern
+  // .id(1).is().plus()
+  // .id(2).is().plus()
+  // .red().edge(1,2).cut()
+}
+
+class PatternMatcher
+{
+public:
+  PatternMatcher();
+  ~PatternMatcher();
+  //PatternDSL& RecordPattern();
+  void AddNode(int id, LsBCCValue value);
+  void AddEdge(int id1, int id2, LsBCCValue value, bool isCut);
+  void ClearPattern();
+  void Match(LsBCCLattice const& lattice, LsBCCTetrahedron tetrahedron);
+  LsBCCNode GetNodeById(int id);
+  glm::vec3 GetNodePosition(int id);             // Convinience functions
+  glm::vec3 GetEdgeCutPoint(int id1, int id2);
+  LsBCCColor GetNodeColor(int id);
+  LsBCCColor GetEdgeColor(int id1, int id2);
+  LsBCCValue GetNodeValue(int id);
+};
+
+/*
+  Node('+', 1) 
+  Edge(eRed, 1, 2).Cut(1).
+  Edge(eBlack, 1, 2).Cut(1).
+
+Id(1).Is().Plus().
+Id(2).Is().Minus().
+Black().Edge(1,2).Cut().
+Red().Edge(1,2).Cut()
+
+1 is +
+2 is -
+black edge 1 2 cut
+3 is +
+red edge 2 3 cut
+red edge 1 3
+4 is -
+red edge 4 1 cut
+black edge 4 3 cut
+red edge 4 2
+
+matcher01.AddNode(1, ePositive);
+matcher01.AddEdge(1, 2, eRed, true);
+.id(1).is().plus();
+
+
+*/
