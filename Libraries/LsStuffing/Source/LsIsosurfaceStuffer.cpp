@@ -226,6 +226,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
       glm::vec3 c03 = lattice.GetEdgeCutPoint(e03);
       //TODO: This is unmaintainable, create a pattern matcher. Pattern matcher recieves a description of 
       // a pattern and assigned numbers to each node or cut point. Then referring to the nodes can be done by numbers.
+      // Spitting out a mesh then is a matter of checking if pattern has matched or not and pulling out positions by numbers.
 
       //mesh.AddTetrahedron(c03, p1, c23, p3);
       //mesh.AddTetrahedron(c03, c13, c23, p3);
