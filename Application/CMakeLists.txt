@@ -55,6 +55,7 @@ target_link_libraries( LustriousPaint LsMath
                                       LsWintabLoader
                                       LsWin32MainWindow
                                       LsRenderer
+                                      LsStuffing
                                       ${FREEIMAGE_LIBRARY_STATIC} )
 
 add_dependencies( LustriousPaint Shaders )
