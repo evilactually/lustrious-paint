@@ -51,7 +51,7 @@ extern void IvFastSinCos( float a, float& sina, float& cosa );
 //-------------------------------------------------------------------------------
 // Is this floating point value close to zero?
 //-------------------------------------------------------------------------------
-inline bool IsZero( float a );
+bool IsZero( float a );
 
 //-------------------------------------------------------------------------------
 // @ IvAreEqual()
@@ -65,53 +65,53 @@ bool IvAreEqual( float a, float b );
 //-------------------------------------------------------------------------------
 // Same as IvAreEqual, but using more advanced method.
 //-------------------------------------------------------------------------------
-inline bool LsAreEqualRelative(float a, float b);
+bool LsAreEqualRelative(float a, float b);
 
 //-------------------------------------------------------------------------------
 // @ IvSin()
 //-------------------------------------------------------------------------------
 // Returns the floating-point sine of the argument
 //-------------------------------------------------------------------------------
-inline float IvSin( float a );
+float IvSin( float a );
 
 //-------------------------------------------------------------------------------
 // @ IvCos()
 //-------------------------------------------------------------------------------
 // Returns the floating-point cosine of the argument
 //-------------------------------------------------------------------------------
-inline float IvCos( float a );
+float IvCos( float a );
 
 //-------------------------------------------------------------------------------
 // @ IvTan()
 //-------------------------------------------------------------------------------
 // Returns the floating-point tangent of the argument
 //-------------------------------------------------------------------------------
-inline float IvTan( float a );
+float IvTan( float a );
 
 //-------------------------------------------------------------------------------
 // @ IvSinCos()
 //-------------------------------------------------------------------------------
 // Returns the floating-point sine and cosine of the argument
 //-------------------------------------------------------------------------------
-inline void IvSinCos( float a, float& sina, float& cosa );
+void IvSinCos( float a, float& sina, float& cosa );
 
-inline bool LsOdd(int x);
+bool LsOdd(int x);
 
-inline bool LsEven(int x);
+bool LsEven(int x);
 
 //-------------------------------------------------------------------------------
 // @ LsOddCount()
 //-------------------------------------------------------------------------------
 // Returns a count of odd numbers on the closed interval [min, max]
 //-------------------------------------------------------------------------------
-inline int LsOddCount(int min, int max);
+int LsOddCount(int min, int max);
 
 //-------------------------------------------------------------------------------
 // @ LsEvenCount()
 //-------------------------------------------------------------------------------
 // Returns a count of even numbers on the closed interval [min, max]
 //-------------------------------------------------------------------------------
-inline int LsEvenCount(int min, int max);
+int LsEvenCount(int min, int max);
 
 //-------------------------------------------------------------------------------
 //-- Externs --------------------------------------------------------------------

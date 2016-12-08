@@ -115,8 +115,9 @@ LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
 };
 
 LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(lattice),n1(node) {
-  LsBCCNode n2 = AddNodeOffset(n1, adjacentOffsets[currentAdjacentIndex]);
-  current = LsBCCEdge(n1, n2);
+  assert( lattice.NodeExists(node));
+  currentAdjacentIndex = -1; // Use Next() method to find first valid edge,
+  Next();                    // in case if first edge doesn't exist
 };
 
 //-------------------------------------------------------------------------------
@@ -134,7 +135,11 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
   {
     LsBCCNode n2 = AddNodeOffset(n1, adjacentOffsets[currentAdjacentIndex]);
     current = LsBCCEdge(n1, n2);
-    return true;
+    if (lattice.NodeExists(n2))
+    {
+      return true;
+    }
+    return Next(); // Keep looking for next valid edge
   } else {
     return false;
   }
@@ -229,9 +234,12 @@ void LsBCCLattice::SetNodePosition(LsBCCNode node, glm::vec3 position) {
 
 void LsBCCLattice::DeleteNodeCutPoints(LsBCCNode node) {
   assert(Valid(node));
-  NodeEdgeIterator nodeEdges = GetNodeEdgeIterator(node);
-  LsBCCEdge edge = nodeEdges;
-  GetEdgeMetaDataReference(edge);
+  NodeEdgeIterator iterator = GetNodeEdgeIterator(node);
+  do {
+    LsBCCEdge edge = iterator;
+    GetEdgeMetaDataReference(edge);
+    GetEdgeMetaDataReference(edge).cutPoint = LsOptional<glm::vec3>::None();;
+  } while ( iterator.Next() );
 }
  
 LsOptional<glm::vec3> LsBCCLattice::GetEdgeCutPoint(LsBCCEdge edge) const {
@@ -270,14 +278,36 @@ LsOptional<int> LsBCCLattice::GetEdgeIndexInNexus(LsBCCEdge edge) const {
   return LsOptional<int>::None();
 }
 
-// Every edge has one of it's nodes designated to be used as storage of edge information, called nexus node
-LsBCCNode LsBCCLattice::GetEdgeNexusNode(LsBCCEdge edge) const {
-  if ( GetEdgeIndexInNexus(edge) )
+//-------------------------------------------------------------------------------
+// @ LsBCCLattice::FindEdgeInNexus()
+//-------------------------------------------------------------------------------
+// Find out nexus node and nexus offset of an edge
+//-------------------------------------------------------------------------------
+void LsBCCLattice::FindEdgeInNexus(LsBCCEdge edge, LsBCCNode* nexusNode, int* nexusOffset) const {
+  // Get vector representing an edge, assume first node is nexus
+  LsBCCNodeOffset offset = SubtractNodes(std::get<1>(edge), std::get<0>(edge));
+
+  // Test if edge matches one of nexus pattern edges
+  for (int i = 0; i < 7; ++i)
   {
-    return std::get<0>(edge);
+    if( NodeOffsetsEqual(nexusOffsets[i], offset) ) {
+      if ( nexusNode ) *nexusNode = std::get<0>(edge);
+      if ( nexusOffset ) *nexusOffset = i;
+      return;
+    }
   }
-  // If edge didn't match any pattern it must be flipped
-  return std::get<1>(edge);
+
+  // If still not found, assume second node is nexus
+  offset = SubtractNodes(std::get<0>(edge), std::get<1>(edge));
+  for (int i = 0; i < 7; ++i)
+  {
+    if( NodeOffsetsEqual(nexusOffsets[i], offset) ) {
+      if ( nexusNode ) *nexusNode = std::get<1>(edge);
+      if ( nexusOffset ) *nexusOffset = i;
+      return;
+    }
+  }
+  assert(false);
 }
 
 LsBCCLattice::NodeMetaData& LsBCCLattice::GetNodeMetaDataReference(LsBCCNode node) {
@@ -289,15 +319,17 @@ LsBCCLattice::NodeMetaData const& LsBCCLattice::GetNodeMetaDataConstReference(Ls
 }
 
 LsBCCLattice::EdgeMetaData& LsBCCLattice::GetEdgeMetaDataReference(LsBCCEdge edge) {
-  LsBCCNode nexusNode = GetEdgeNexusNode(edge);
-  int edgeIndex = GetEdgeIndexInNexus(edge);
+  LsBCCNode nexusNode;
+  int edgeIndex;
+  FindEdgeInNexus(edge, &nexusNode, &edgeIndex);
   return GetNodeMetaDataReference(nexusNode).edgeNexus[edgeIndex];
 }
 
 LsBCCLattice::EdgeMetaData const& LsBCCLattice::GetEdgeMetaDataConstReference(LsBCCEdge edge) const {
-  LsBCCNode nexusNode = GetEdgeNexusNode(edge);
-  int edgeIndex = GetEdgeIndexInNexus(edge);
-  return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex]; 
+  LsBCCNode nexusNode;
+  int edgeIndex;
+  FindEdgeInNexus(edge, &nexusNode, &edgeIndex);
+  return GetNodeMetaDataConstReference(nexusNode).edgeNexus[edgeIndex];
 }
 
 int LsBCCLattice::GetNodeIndex(LsBCCNode node) const {

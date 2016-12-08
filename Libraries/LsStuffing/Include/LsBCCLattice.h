@@ -146,7 +146,7 @@ protected:
   std::tuple<int, int, int> maxima;
   std::vector<NodeMetaData> nodeMetaData;
   LsOptional<int> GetEdgeIndexInNexus(LsBCCLattice::LsBCCEdge edge) const;
-  LsBCCNode GetEdgeNexusNode(LsBCCEdge edge) const;
+  void FindEdgeInNexus(LsBCCEdge edge, LsBCCNode* nexusNode, int* nexusOffset) const;
   NodeMetaData& GetNodeMetaDataReference(LsBCCNode node);
   NodeMetaData const& GetNodeMetaDataConstReference(LsBCCNode node) const;
   EdgeMetaData& GetEdgeMetaDataReference(LsBCCEdge edge);

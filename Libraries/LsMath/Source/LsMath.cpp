@@ -16,9 +16,9 @@
 #include <math.h>
 #include <algorithm>
 
-inline float IvSqrt( float val )        { return sqrtf( val ); }
-inline float IvInvSqrt( float val )     { return 1.0f/sqrtf( val ); }
-inline float IvAbs( float f )           { return fabsf(f); }
+float IvSqrt( float val )        { return sqrtf( val ); }
+float IvInvSqrt( float val )     { return 1.0f/sqrtf( val ); }
+float IvAbs( float f )           { return fabsf(f); }
 
 //-------------------------------------------------------------------------------
 //-- Classes --------------------------------------------------------------------
@@ -40,7 +40,7 @@ extern void IvFastSinCos( float a, float& sina, float& cosa );
 //-------------------------------------------------------------------------------
 bool IsZero( float a ) 
 {
-    return ( fabsf(a) < kEpsilon );
+  return ( fabsf(a) < kEpsilon );
 
 }   // End of IsZero()
 
@@ -51,9 +51,9 @@ bool IsZero( float a )
 //-------------------------------------------------------------------------------
 bool IvAreEqual( float a, float b ) 
 {
-    return ( ::IsZero(a-b) );
+  return ( ::IsZero(a-b) );
 
-}   // End of IvAreEqual()
+}  // End of IvAreEqual()
 
 //-------------------------------------------------------------------------------
 // @ LsAreEqualRelative()
@@ -61,19 +61,19 @@ bool IvAreEqual( float a, float b )
 // Same as IvAreEqual, but using more advanced method.
 //-------------------------------------------------------------------------------
 bool LsAreEqualRelative(float a, float b) {
-    const float absA = std::abs(a);
-    const float absB = std::abs(b);
-    const float diff = std::abs(a - b);
+  const float absA = std::abs(a);
+  const float absB = std::abs(b);
+  const float diff = std::abs(a - b);
 
-    if (a == b) { // shortcut, handles infinities
-      return true;
-    } else if (a == 0 || b == 0 || diff < FLT_MIN) {
-      // a or b is zero or both are extremely close to it
-      // relative error is less meaningful here
-      return diff < (kEpsilon * FLT_MIN);
-    } else { // use relative error
-      return diff / std::min((absA + absB), FLT_MAX) < kEpsilon;
-    }
+  if (a == b) { // shortcut, handles infinities
+    return true;
+  } else if (a == 0 || b == 0 || diff < FLT_MIN) {
+    // a or b is zero or both are extremely close to it
+    // relative error is less meaningful here
+    return diff < (kEpsilon * FLT_MIN);
+  } else { // use relative error
+    return diff / std::min((absA + absB), FLT_MAX) < kEpsilon;
+  }
 }
 
 //-------------------------------------------------------------------------------
@@ -83,7 +83,7 @@ bool LsAreEqualRelative(float a, float b) {
 //-------------------------------------------------------------------------------
 float IvSin( float a )
 {
-    return sinf(a);
+  return sinf(a);
 
 }  // End of IvSin
 
@@ -95,8 +95,7 @@ float IvSin( float a )
 //-------------------------------------------------------------------------------
 float IvCos( float a )
 {
-    return cosf(a);
-
+  return cosf(a);
 }  // End of IvCos
 
 
@@ -107,8 +106,7 @@ float IvCos( float a )
 //-------------------------------------------------------------------------------
 float IvTan( float a )
 {
-    return tanf(a);
-
+  return tanf(a);
 }  // End of IvTan
 
 //-------------------------------------------------------------------------------
@@ -118,9 +116,8 @@ float IvTan( float a )
 //-------------------------------------------------------------------------------
 void IvSinCos( float a, float& sina, float& cosa )
 {
-    sina = sinf(a);
-    cosa = cosf(a);
-
+  sina = sinf(a);
+  cosa = cosf(a);
 }  // End of IvSinCos
 
 bool LsOdd(int x) {
