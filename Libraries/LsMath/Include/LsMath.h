@@ -58,7 +58,7 @@ inline bool IsZero( float a );
 //-------------------------------------------------------------------------------
 // Are these floating point values close to equal?
 //-------------------------------------------------------------------------------
-inline bool IvAreEqual( float a, float b );
+bool IvAreEqual( float a, float b );
 
 //-------------------------------------------------------------------------------
 // @ LsAreEqualRelative()

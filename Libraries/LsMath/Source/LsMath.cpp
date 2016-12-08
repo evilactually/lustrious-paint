@@ -38,7 +38,7 @@ extern void IvFastSinCos( float a, float& sina, float& cosa );
 //-------------------------------------------------------------------------------
 // Is this floating point value close to zero?
 //-------------------------------------------------------------------------------
-inline bool IsZero( float a ) 
+bool IsZero( float a ) 
 {
     return ( fabsf(a) < kEpsilon );
 
@@ -49,7 +49,7 @@ inline bool IsZero( float a )
 //-------------------------------------------------------------------------------
 // Are these floating point values close to equal?
 //-------------------------------------------------------------------------------
-inline bool IvAreEqual( float a, float b ) 
+bool IvAreEqual( float a, float b ) 
 {
     return ( ::IsZero(a-b) );
 
@@ -60,7 +60,7 @@ inline bool IvAreEqual( float a, float b )
 //-------------------------------------------------------------------------------
 // Same as IvAreEqual, but using more advanced method.
 //-------------------------------------------------------------------------------
-inline bool LsAreEqualRelative(float a, float b) {
+bool LsAreEqualRelative(float a, float b) {
     const float absA = std::abs(a);
     const float absB = std::abs(b);
     const float diff = std::abs(a - b);
@@ -81,7 +81,7 @@ inline bool LsAreEqualRelative(float a, float b) {
 //-------------------------------------------------------------------------------
 // Returns the floating-point sine of the argument
 //-------------------------------------------------------------------------------
-inline float IvSin( float a )
+float IvSin( float a )
 {
     return sinf(a);
 
@@ -93,7 +93,7 @@ inline float IvSin( float a )
 //-------------------------------------------------------------------------------
 // Returns the floating-point cosine of the argument
 //-------------------------------------------------------------------------------
-inline float IvCos( float a )
+float IvCos( float a )
 {
     return cosf(a);
 
@@ -105,7 +105,7 @@ inline float IvCos( float a )
 //-------------------------------------------------------------------------------
 // Returns the floating-point tangent of the argument
 //-------------------------------------------------------------------------------
-inline float IvTan( float a )
+float IvTan( float a )
 {
     return tanf(a);
 
@@ -116,18 +116,18 @@ inline float IvTan( float a )
 //-------------------------------------------------------------------------------
 // Returns the floating-point sine and cosine of the argument
 //-------------------------------------------------------------------------------
-inline void IvSinCos( float a, float& sina, float& cosa )
+void IvSinCos( float a, float& sina, float& cosa )
 {
     sina = sinf(a);
     cosa = cosf(a);
 
 }  // End of IvSinCos
 
-inline bool LsOdd(int x) {
+bool LsOdd(int x) {
   return x % 2;
 }
 
-inline bool LsEven(int x) {
+bool LsEven(int x) {
   return !(x % 2);
 }
 
@@ -136,7 +136,7 @@ inline bool LsEven(int x) {
 //-------------------------------------------------------------------------------
 // Returns a count of odd numbers on the closed interval [min, max]
 //-------------------------------------------------------------------------------
-inline int LsOddCount(int min, int max) {
+int LsOddCount(int min, int max) {
   int N = max - min;
   if ( LsEven(min) )
   {
@@ -151,7 +151,7 @@ inline int LsOddCount(int min, int max) {
 //-------------------------------------------------------------------------------
 // Returns a count of even numbers on the closed interval [min, max]
 //-------------------------------------------------------------------------------
-inline int LsEvenCount(int min, int max) {
+int LsEvenCount(int min, int max) {
   int N = max - min;
   if ( LsOdd(min) )
   {
