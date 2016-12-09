@@ -39,6 +39,11 @@ TEST_CASE( "lattice02", "[stuffing]" ) {
 
 TEST_CASE( "lattice03", "[stuffing]" ) {
   LsBCCLattice lattice = LsBCCLattice(std::tuple<int,int,int>(0,0,0), std::tuple<int,int,int>(10,10,10), 1.0f);
+  lattice.SetNodeValue(LsBCCNode(0,0,0), LsBCCValue::ePositive);
+  lattice.SetNodeValue(LsBCCNode(2,0,0), LsBCCValue::eNegative);
+  lattice.SetNodeValue(LsBCCNode(0,2,0), LsBCCValue::eNegative);
+  lattice.SetNodeValue(LsBCCNode(0,0,2), LsBCCValue::eNegative);
+  lattice.SetNodeValue(LsBCCNode(1,1,1), LsBCCValue::eNegative);
   LsBCCEdge black01 = LsBCCEdge(LsBCCNode(0,0,0), LsBCCNode(2,0,0));
   LsBCCEdge black02 = LsBCCEdge(LsBCCNode(0,0,0), LsBCCNode(0,2,0));
   LsBCCEdge black03 = LsBCCEdge(LsBCCNode(0,0,0), LsBCCNode(0,0,2));

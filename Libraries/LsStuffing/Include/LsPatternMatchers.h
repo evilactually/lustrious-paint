@@ -32,7 +32,7 @@ public:
   bool Match(LsBCCLattice const& lattice, LsBCCTetrahedron tetrahedron);
   LsBCCNode GetNodeById(int id);
   glm::vec3 GetNodePosition(int id);
-  glm::vec3 GetEdgeCutPoint(int id1, int id2);
+  LsOptional<glm::vec3> GetEdgeCutPoint(int id1, int id2);
   LsBCCColor GetNodeColor(int id);
   LsBCCColor GetEdgeColor(int id1, int id2);
   LsBCCValue GetNodeValue(int id);

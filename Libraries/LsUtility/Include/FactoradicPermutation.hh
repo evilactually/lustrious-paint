@@ -215,8 +215,10 @@
  * run in quadratic time, though faster implementations are possible using more
  * complex algorithms.
  */
-#ifndef FactoradicPermutation_Included
-#define FactoradicPermutation_Included
+// #ifndef FactoradicPermutation_Included
+// #define FactoradicPermutation_Included
+
+#pragma once
 
 #include <iterator>   // For std::iterator_traits
 #include <algorithm>  // For std::sort, std::rotate, std::count_if
@@ -396,4 +398,4 @@ Integer PermutationIndex(RandomIterator begin, RandomIterator end) {
      std::less<typename std::iterator_traits<RandomIterator>::value_type>());
 }
 
-#endif
+// #endif

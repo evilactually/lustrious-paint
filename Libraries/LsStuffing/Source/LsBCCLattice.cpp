@@ -248,6 +248,10 @@ LsOptional<glm::vec3> LsBCCLattice::GetEdgeCutPoint(LsBCCEdge edge) const {
 }
 
 void LsBCCLattice::SetEdgeCutPoint(LsBCCEdge edge, glm::vec3 position) {
+  LsBCCValue v1 = GetNodeValue(std::get<0>(edge));
+  LsBCCValue v2 = GetNodeValue(std::get<1>(edge));
+  assert( v1 == LsBCCValue::ePositive && v2 == LsBCCValue::eNegative  ||
+          v1 == LsBCCValue::eNegative && v2 == LsBCCValue::ePositive );
   GetEdgeMetaDataReference(edge).cutPoint = position;
 }
 

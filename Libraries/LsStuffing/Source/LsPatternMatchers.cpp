@@ -3,6 +3,7 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
+#include <LsOptional.h>
 #include <FactoradicPermutation.hh>
 #include <LsPatternMatchers.h>
 
@@ -27,6 +28,10 @@ LsBCCNode LsPatternMatcher::GetNodeById(int id) {
       return matchedNodes[i];
     }
   }
+}
+
+LsOptional<glm::vec3> LsPatternMatcher::GetEdgeCutPoint(int id1, int id2) {
+  return pLattice->GetEdgeCutPoint(LsBCCEdge(GetNodeById(id1), GetNodeById(id2)));
 }
 
 LsBCCColor LsPatternMatcher::GetEdgeColor(int id1, int id2) {
