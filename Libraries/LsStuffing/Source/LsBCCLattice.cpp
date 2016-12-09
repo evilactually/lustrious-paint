@@ -9,6 +9,7 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
+#include <LsBCCLatticeTypes.h>
 #include <LsBCCLattice.h>
 #include <LsMath.h>
 #include <assert.h>

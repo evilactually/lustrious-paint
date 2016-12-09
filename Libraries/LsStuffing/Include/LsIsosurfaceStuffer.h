@@ -36,7 +36,9 @@ public:
   void SetAlphaLong(float a);
   void SetAlphaShort(float a);
   void SetStep(float step);
+#ifndef TESTING
 private:
+#endif
   float alphaLong = 0.24999f;
   float alphaShort = 0.40173f;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
