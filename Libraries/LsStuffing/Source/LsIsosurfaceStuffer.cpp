@@ -95,6 +95,21 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            pppp.GetNodePosition(2),
                            pppp.GetNodePosition(3),
                            pppp.GetNodePosition(4) );
+    } else if ( zppp.Match(lattice, tetrahedron) ) {
+      mesh.AddTetrahedron( zppp.GetNodePosition(1),
+                           zppp.GetNodePosition(2),
+                           zppp.GetNodePosition(3),
+                           zppp.GetNodePosition(4) );
+    } else if ( zzpp.Match(lattice, tetrahedron) ) {
+      mesh.AddTetrahedron( zzpp.GetNodePosition(1),
+                           zzpp.GetNodePosition(2),
+                           zzpp.GetNodePosition(3),
+                           zzpp.GetNodePosition(4) );
+    } if ( zzzp.Match(lattice, tetrahedron) ) {
+      mesh.AddTetrahedron( zzzp.GetNodePosition(1),
+                           zzzp.GetNodePosition(2),
+                           zzzp.GetNodePosition(3),
+                           zzzp.GetNodePosition(4) );
     }
 
   } while ( iterator.Next() );

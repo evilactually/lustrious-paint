@@ -44,6 +44,8 @@ private:
   float alphaShort = 0.40173f;
   LsPPPPMatcher pppp;
   LsZPPPMatcher zppp;
+  LsZZPPMatcher zzpp;
+  LsZZZPMatcher zzzp;
   LsG3NZPPMatcher g3nzpp;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);

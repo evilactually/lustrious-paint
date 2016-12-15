@@ -61,6 +61,18 @@ public:
   ~LsZPPPMatcher() {};
 };
 
+class LsZZPPMatcher: public LsPatternMatcher {
+public:
+  LsZZPPMatcher();
+  ~LsZZPPMatcher() {};
+};
+
+class LsZZZPMatcher: public LsPatternMatcher {
+public:
+  LsZZZPMatcher();
+  ~LsZZZPMatcher() {};
+};
+
 class LsG3NZPPMatcher: public LsPatternMatcher {
 public:
   LsG3NZPPMatcher();

@@ -111,6 +111,32 @@ LsZPPPMatcher::LsZPPPMatcher() {
   AddEdge(4, 3, LsBCCMaybeColor::None()); 
 }
 
+LsZZPPMatcher::LsZZPPMatcher() {
+  AddNode(1, LsBCCValue::eZero);
+  AddNode(2, LsBCCValue::eZero);
+  AddNode(3, LsBCCValue::ePositive);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCMaybeColor::None());
+  AddEdge(2, 3, LsBCCMaybeColor::None());
+  AddEdge(3, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 2, LsBCCMaybeColor::None());
+  AddEdge(4, 3, LsBCCMaybeColor::None());
+}
+
+LsZZZPMatcher::LsZZZPMatcher() {
+  AddNode(1, LsBCCValue::eZero);
+  AddNode(2, LsBCCValue::eZero);
+  AddNode(3, LsBCCValue::eZero);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCMaybeColor::None());
+  AddEdge(2, 3, LsBCCMaybeColor::None());
+  AddEdge(3, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 2, LsBCCMaybeColor::None());
+  AddEdge(4, 3, LsBCCMaybeColor::None());
+}
+
 LsG3NZPPMatcher::LsG3NZPPMatcher() {
   AddNode(1, LsBCCValue::eNegative);
   AddNode(2, LsBCCValue::ePositive);
