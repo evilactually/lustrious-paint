@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 #include "LsBCCLattice.h"
 #include "LsTetrahedronMesh.h"
+#include "LsPatternMatchers.h"
 
 //-------------------------------------------------------------------------------
 // @ LsIsosurface
@@ -41,6 +42,9 @@ private:
 #endif
   float alphaLong = 0.24999f;
   float alphaShort = 0.40173f;
+  LsPPPPMatcher pppp;
+  LsZPPPMatcher zppp;
+  LsG3NZPPMatcher g3nzpp;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);
