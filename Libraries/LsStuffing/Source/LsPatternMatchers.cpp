@@ -137,6 +137,45 @@ LsZZZPMatcher::LsZZZPMatcher() {
   AddEdge(4, 3, LsBCCMaybeColor::None());
 }
 
+LsNZZPMatcher::LsNZZPMatcher() {
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::eZero);
+  AddNode(3, LsBCCValue::eZero);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCMaybeColor::None());
+  AddEdge(2, 3, LsBCCMaybeColor::None());
+  AddEdge(3, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 2, LsBCCMaybeColor::None());
+  AddEdge(4, 3, LsBCCMaybeColor::None());
+}
+
+LsNNZPMatcher::LsNNZPMatcher() {
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::eNegative);
+  AddNode(3, LsBCCValue::eZero);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCMaybeColor::None());
+  AddEdge(2, 3, LsBCCMaybeColor::None());
+  AddEdge(3, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 2, LsBCCMaybeColor::None());
+  AddEdge(4, 3, LsBCCMaybeColor::None());
+}
+
+LsNNNPMatcher::LsNNNPMatcher() {
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::eNegative);
+  AddNode(3, LsBCCValue::eNegative);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCMaybeColor::None());
+  AddEdge(2, 3, LsBCCMaybeColor::None());
+  AddEdge(3, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 1, LsBCCMaybeColor::None());
+  AddEdge(4, 2, LsBCCMaybeColor::None());
+  AddEdge(4, 3, LsBCCMaybeColor::None());
+}
+
 LsG3NZPPMatcher::LsG3NZPPMatcher() {
   AddNode(1, LsBCCValue::eNegative);
   AddNode(2, LsBCCValue::ePositive);

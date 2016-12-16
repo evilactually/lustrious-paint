@@ -46,6 +46,9 @@ private:
   LsZPPPMatcher zppp;
   LsZZPPMatcher zzpp;
   LsZZZPMatcher zzzp;
+  LsNZZPMatcher nzzp;
+  LsNNZPMatcher nnzp;
+  LsNNNPMatcher nnnp;
   LsG3NZPPMatcher g3nzpp;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);

@@ -73,6 +73,24 @@ public:
   ~LsZZZPMatcher() {};
 };
 
+class LsNZZPMatcher: public LsPatternMatcher {
+public:
+  LsNZZPMatcher();
+  ~LsNZZPMatcher() {};
+};
+
+class LsNNZPMatcher: public LsPatternMatcher {
+public:
+  LsNNZPMatcher();
+  ~LsNNZPMatcher() {};
+};
+
+class LsNNNPMatcher: public LsPatternMatcher {
+public:
+  LsNNNPMatcher();
+  ~LsNNNPMatcher() {};
+};
+
 class LsG3NZPPMatcher: public LsPatternMatcher {
 public:
   LsG3NZPPMatcher();
