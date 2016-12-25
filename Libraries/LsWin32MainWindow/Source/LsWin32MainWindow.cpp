@@ -3,6 +3,7 @@
 #include <string>
 #include <LsWin32MainWindow.h>
 #include <LsFWin32MessageHandler.h>
+#include <DWINTAB.h>
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
   return LsWin32MainWindow::Get()->HandleMessage(hwnd, uMsg, wParam, lParam);
@@ -170,6 +171,9 @@ LRESULT LsWin32MainWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LP
   }
 
   switch( uMsg ) {
+    case WT_PACKET:
+    return FALSE;
+    break;
     case WM_MOUSEMOVE:
     // Set mouse event tracking to get WM_MOUSELEAVE event
     if ( !mouseInClient )

@@ -42,14 +42,14 @@ private:
 #endif
   float alphaLong = 0.24999f;
   float alphaShort = 0.40173f;
-  LsPPPPMatcher pppp;
+  LsPPPPMatcher pppp; // Group 1
   LsZPPPMatcher zppp;
   LsZZPPMatcher zzpp;
   LsZZZPMatcher zzzp;
-  LsNZZPMatcher nzzp;
+  LsNZZPMatcher nzzp; // Group 2
   LsNNZPMatcher nnzp;
   LsNNNPMatcher nnnp;
-  LsG3NZPPMatcher g3nzpp;
+  LsNZPPMatcher nzpp; // Group 3
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);

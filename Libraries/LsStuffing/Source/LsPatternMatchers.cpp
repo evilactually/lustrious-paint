@@ -176,7 +176,7 @@ LsNNNPMatcher::LsNNNPMatcher() {
   AddEdge(4, 3, LsBCCMaybeColor::None());
 }
 
-LsG3NZPPMatcher::LsG3NZPPMatcher() {
+LsNZPPMatcher::LsNZPPMatcher() {
   AddNode(1, LsBCCValue::eNegative);
   AddNode(2, LsBCCValue::ePositive);
   AddNode(3, LsBCCValue::ePositive);

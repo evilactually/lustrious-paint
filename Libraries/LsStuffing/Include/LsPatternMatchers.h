@@ -91,8 +91,8 @@ public:
   ~LsNNNPMatcher() {};
 };
 
-class LsG3NZPPMatcher: public LsPatternMatcher {
+class LsNZPPMatcher: public LsPatternMatcher {
 public:
-  LsG3NZPPMatcher();
-  ~LsG3NZPPMatcher() {};
+  LsNZPPMatcher();
+  ~LsNZPPMatcher() {};
 };

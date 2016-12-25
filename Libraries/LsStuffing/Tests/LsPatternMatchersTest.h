@@ -75,7 +75,7 @@ TEST_CASE( "zppp01" ) {
 }
 
 TEST_CASE( "nzpp01" ) {
-  LsG3NZPPMatcher nzpp;
+  LsNZPPMatcher nzpp;
   LsBCCLattice lattice = LsBCCLattice(std::tuple<int,int,int>(0,0,0), std::tuple<int,int,int>(10,10,10), 1.0f);
   
   LsBCCNode n1 = LsBCCNode(2,0,0);

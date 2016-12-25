@@ -30,10 +30,12 @@ void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     cursor = LsWin32MainWindow::Get()->GetMousePosition();
     penStatus.position[0] = cursor.x;
     penStatus.position[1] = cursor.y;
+    //std::cout << cursor.x << " " << cursor.y << std::endl;
     break;
     case WT_PACKET:
     if (WTPacket((HCTX)lParam, wParam, &pkt)) 
     {
+      //std::cout << "packet" << std::endl;
       AXIS pressureNormal;
       WTInfoA(WTI_DEVICES|0, DVC_NPRESSURE, &pressureNormal);
       penStatus.pressure = static_cast<float>(pkt.pkNormalPressure)/static_cast<float>(pressureNormal.axMax);
