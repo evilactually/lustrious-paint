@@ -89,7 +89,7 @@ public:
 
   void Run() {
     window->Show();
-    while( window->ProcessNextMessage() ){
+    while( window->ProcessMessages() ){
       window->WaitForMessages();
       renderer->BeginFrame();
       pointGrid.Render();
