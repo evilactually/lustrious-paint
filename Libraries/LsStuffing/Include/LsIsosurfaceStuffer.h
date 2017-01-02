@@ -25,7 +25,7 @@ class LsIsosurface {
 public:
   virtual LsDomain GetDomain() const = 0;
   virtual LsBCCValue EvaluateAt(glm::vec3 vertex) const = 0;
-  virtual glm::vec3 IntersectByEdge(glm::vec3 e1, glm::vec3 e2) const = 0;
+  virtual glm::vec3 IntersectByEdge(glm::vec3 p1, glm::vec3 p2) const = 0;
 };
 
 class LsIsosurfaceStuffer

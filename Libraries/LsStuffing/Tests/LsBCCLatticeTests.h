@@ -61,5 +61,7 @@ TEST_CASE( "lattice03", "[stuffing]" ) {
   REQUIRE ( glm::all(glm::equal(lattice.GetEdgeCutPoint(black03).GetValue(), v03)) );
   REQUIRE ( glm::all(glm::equal(lattice.GetEdgeCutPoint(red04).GetValue(), v04)) );
   lattice.DeleteNodeCutPoints(LsBCCNode(0,0,0));
-  //REQUIRE ( !lattice.GetEdgeCutPoint(black01) );
+  REQUIRE ( !lattice.GetEdgeCutPoint(black01) );
+  REQUIRE ( !lattice.GetEdgeCutPoint(black02) );
+  REQUIRE ( !lattice.GetEdgeCutPoint(black03) );
 }

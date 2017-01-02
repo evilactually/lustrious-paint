@@ -11,6 +11,7 @@ set( INCLUDE_FILES
   Include/LsTetrahedronMesh.h
   Include/LsBCCLattice.h
   Include/LsPatternMatchers.h
+  Include/LsIsosphere.h
 )
 
 set( SOURCE_FILES
@@ -18,12 +19,14 @@ set( SOURCE_FILES
   Source/LsTetrahedronMesh.cpp
   Source/LsBCCLattice.cpp
   Source/LsPatternMatchers.cpp
+  Source/LsIsosphere.cpp
 )
 
 set( TEST_FILES
   Tests/LsTetrahedronMeshTest
   Tests/LsBCCLatticeTests.h
   Tests/LsPatternMatchersTest.h
+  Tests/LsIsosphereTests.h
   Tests/Main.cpp
 )
 
