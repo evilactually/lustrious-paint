@@ -60,10 +60,10 @@ void LsLoadGlobalLevelEntryPoints() {
     #undef VK_USE_CORE
 }
 
-void LsLoadInstanceLevelEntryPoints(vk::Instance instance, std::vector<const char*> extensions) {
+void LsLoadInstanceLevelEntryPoints(VkInstance instance, std::vector<const char*> extensions) {
     // Core
     #define VK_INSTANCE_LEVEL_FUNCTION( fun )                                            \
-        if( !(fun = (PFN_##fun)instance.getProcAddr( #fun )) ) {                         \
+        if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instance, #fun )) ) {                        \
             throw std::runtime_error("Could not load instnace level function: ##fun!");  \
             std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
             throw 1;                                                                     \
@@ -100,7 +100,7 @@ void LsLoadInstanceLevelEntryPoints(vk::Instance instance, std::vector<const cha
     }
 
     #define LOAD_FUNCTION( fun )                                                             \
-    if( !(fun = (PFN_##fun)instance.getProcAddr( #fun )) ) {                                 \
+    if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instance, #fun )) ) {                      \
                 throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                 std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
                 throw 1;                                                                     \
@@ -144,10 +144,10 @@ void LsLoadInstanceLevelEntryPoints(vk::Instance instance, std::vector<const cha
     #undef LOAD_FUNCTION
 }
 
-void LsLoadDeviceLevelEntryPoints(vk::Device device, std::vector<const char*> extensions) {
+void LsLoadDeviceLevelEntryPoints(VkDevice device, std::vector<const char*> extensions) {
     // Core
     #define VK_DEVICE_LEVEL_FUNCTION( fun )                                              \
-        if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                           \
+        if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( device, #fun )) ) {                \
             throw std::runtime_error("Could not load instnace level function: ##fun!");  \
             std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
             throw 1;                                                                     \
@@ -186,7 +186,7 @@ void LsLoadDeviceLevelEntryPoints(vk::Device device, std::vector<const char*> ex
     }
 
     #define LOAD_FUNCTION( fun )                                                             \
-    if( !(fun = (PFN_##fun)device.getProcAddr( #fun )) ) {                                   \
+    if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( device, #fun )) ) {                                   \
                 throw std::runtime_error("Could not load instnace level function: ##fun!");  \
                 std::cout << "Could not load instnace level function: ##fun!" << std::endl;  \
                 throw 1;                                                                     \

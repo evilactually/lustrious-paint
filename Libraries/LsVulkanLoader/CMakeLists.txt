@@ -3,14 +3,13 @@ cmake_minimum_required ( VERSION 3.5.2 )
 set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 
 set(INCLUDE_FILES
-  Include/LsVulkanCommands.h
   Include/LsVulkanCommands.inl
   Include/LsVulkanLoader.h
   Include/vulkan_dynamic.hpp)
 
 set(SOURCE_FILES
-  Source/LsVulkanCommands.cpp
-  Source/LsVulkanLoader.cpp)
+  Source/LsVulkanLoader.cpp
+  Source/vulkan_dynamic.cpp)
 
 source_group( "Include" FILES ${INCLUDE_FILES} )
 source_group( "Source" FILES ${SOURCE_FILES} )

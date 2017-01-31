@@ -21,6 +21,6 @@ void LsLoadExportedEntryPoints();
 
 void LsLoadGlobalLevelEntryPoints();
 
-void LsLoadInstanceLevelEntryPoints(vk::Instance instance, std::vector<const char*> extensions);
+void LsLoadInstanceLevelEntryPoints(VkInstance instance, std::vector<const char*> extensions);
 
-void LsLoadDeviceLevelEntryPoints(vk::Device device, std::vector<const char*> extensions);
+void LsLoadDeviceLevelEntryPoints(VkDevice device, std::vector<const char*> extensions);
