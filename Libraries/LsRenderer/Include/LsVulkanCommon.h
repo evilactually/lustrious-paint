@@ -16,16 +16,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL LsDebugReportCallback( VkDebugReportFlagsEXT flag
     return VK_FALSE;
 }
 
-void CreateDebugReportCallback(vk::Instance instance, vk::DebugReportCallbackEXT* debugReportCallback) {
-  vk::DebugReportCallbackCreateInfoEXT callbackCreateInfo(
-    vk::DebugReportFlagBitsEXT::eError | vk::DebugReportFlagBitsEXT::eWarning,
-    LsDebugReportCallback,
-    nullptr);
-  instance.createDebugReportCallbackEXT(&callbackCreateInfo, nullptr, debugReportCallback);
+void CreateDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT* debugReportCallback) {
+	VkDebugReportCallbackCreateInfoEXT callbackCreateInfo = {};
+	callbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+	callbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+	callbackCreateInfo.pfnCallback = LsDebugReportCallback;
+	vkCreateDebugReportCallbackEXT(instance, &callbackCreateInfo, nullptr, debugReportCallback);
 }
 
 bool CheckExtensionAvailability( const char *extensionName, 
-                                 std::vector<vk::ExtensionProperties> const& availableExtensions ) {
+                                 std::vector<VkExtensionProperties> const& availableExtensions ) {
   for( size_t i = 0; i < availableExtensions.size(); ++i ) {
     if( !strcmp(availableExtensions[i].extensionName, extensionName) ) {
       return true;
@@ -35,7 +35,7 @@ bool CheckExtensionAvailability( const char *extensionName,
 }
 
 bool CheckLayerAvailability( const char *layerName, 
-                             std::vector<vk::LayerProperties> const& availableLayers ) {
+                             std::vector<VkLayerProperties> const& availableLayers ) {
   for( size_t i = 0; i < availableLayers.size(); ++i ) {
     if( !strcmp(availableLayers[i].layerName, layerName) ) {
       return true;
@@ -44,43 +44,43 @@ bool CheckLayerAvailability( const char *layerName,
   return false;
 }
 
-void CreateSemaphore(vk::Device const& device, vk::Semaphore* semaphore) {
-  vk::SemaphoreCreateInfo semaphoreCreateInfo = {
-    vk::SemaphoreCreateFlags()
-  };
+void CreateSemaphore(VkDevice const& device, VkSemaphore* semaphore) {
+  VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+  semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-  if( device.createSemaphore( &semaphoreCreateInfo, nullptr, semaphore ) != vk::Result::eSuccess ) {
+  if( vkCreateSemaphore( device, &semaphoreCreateInfo, nullptr, semaphore ) != VK_SUCCESS ) {
     throw std::string("Could not create semaphores!");
   }
 }
 
-void CreateFence(vk::Device const& device, vk::Fence* fence, bool signaled) {
-  vk::FenceCreateInfo fenceCreateInfo;
+void CreateFence(VkDevice const& device, VkFence* fence, bool signaled) {
+  VkFenceCreateInfo fenceCreateInfo = {};
+  fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
   if ( signaled )
   {
-    fenceCreateInfo.setFlags( vk::FenceCreateFlagBits::eSignaled );
+    fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   }
 
-  if( device.createFence( &fenceCreateInfo, nullptr, fence ) != vk::Result::eSuccess ) {
+  if( vkCreateFence( device, &fenceCreateInfo, nullptr, fence ) != VK_SUCCESS ) {
     throw std::string("Could not create a fence!");   
   }
 }
 
-vk::ShaderModule CreateShaderModule(vk::Device const& device, const char* filename ) {
+VkShaderModule CreateShaderModule(VkDevice const& device, const char* filename ) {
   const std::vector<char> code = GetBinaryFileContents( filename );
   if( code.size() == 0 ) {
     LsError();
   }
 
-  vk::ShaderModuleCreateInfo shader_module_create_info = {
-    vk::ShaderModuleCreateFlags(),                  // VkShaderModuleCreateFlags      flags
-    code.size(),                                    // size_t                         codeSize
-    reinterpret_cast<const uint32_t*>(&code[0])     // const uint32_t                *pCode
-  };
+  VkShaderModuleCreateInfo shader_module_create_info = {};
+  shader_module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_module_create_info.flags = 0;
+  shader_module_create_info.codeSize = code.size();
+  shader_module_create_info.pCode = reinterpret_cast<const uint32_t*>(&code[0]);
 
-  vk::ShaderModule shader_module;
-  if( device.createShaderModule( &shader_module_create_info, nullptr, &shader_module ) != vk::Result::eSuccess ) {
+  VkShaderModule shader_module;
+  if( vkCreateShaderModule( device, &shader_module_create_info, nullptr, &shader_module ) != VK_SUCCESS ) {
     throw std::string("Could not create shader module from a \"") + std::string(filename) + std::string("\" file!");
   }
   return shader_module;

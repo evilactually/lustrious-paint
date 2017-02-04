@@ -9,9 +9,9 @@
 
 bool CheckInstanceLayers(std::vector<const char*> const& requiredLayers) {
   uint32_t availableLayerCount;
-  vk::enumerateInstanceLayerProperties(&availableLayerCount, nullptr);
-  std::vector<vk::LayerProperties> availableLayers(availableLayerCount);
-  vk::enumerateInstanceLayerProperties(&availableLayerCount, &availableLayers[0]);
+  vkEnumerateInstanceLayerProperties(&availableLayerCount, nullptr);
+  std::vector<VkLayerProperties> availableLayers(availableLayerCount);
+  vkEnumerateInstanceLayerProperties(&availableLayerCount, &availableLayers[0]);
   availableLayers.resize(availableLayerCount);
 
   for(auto requiredLayer:requiredLayers) {
@@ -26,25 +26,25 @@ bool CheckInstanceLayers(std::vector<const char*> const& requiredLayers) {
 
 bool CheckInstanceExtensions(std::vector<const char*> requiredExtensions) {
   uint32_t availableExtensionsCount = 0;
-  vk::Result result = vk::enumerateInstanceExtensionProperties(
+  VkResult result = vkEnumerateInstanceExtensionProperties(
     nullptr, 
     &availableExtensionsCount,
     nullptr );
 
-  if ( result != vk::Result::eSuccess || availableExtensionsCount == 0 ) {
+  if ( result != VK_SUCCESS || availableExtensionsCount == 0 ) {
     throw std::string("Error occurred during instance extension enumeration!");
   }
 
-  std::vector<vk::ExtensionProperties> availableExtensions( availableExtensionsCount );
+  std::vector<VkExtensionProperties> availableExtensions( availableExtensionsCount );
 
-  result = vk::enumerateInstanceExtensionProperties(
+  result = vkEnumerateInstanceExtensionProperties(
     nullptr, 
     &availableExtensionsCount,
     availableExtensions.data());
 
   availableExtensions.resize(availableExtensionsCount);
 
-  if( result != vk::Result::eSuccess ) {
+  if( result != VK_SUCCESS ) {
     throw std::string("Error occurred during instance extension enumeration!");
   }
 
@@ -65,7 +65,7 @@ bool CheckInstanceExtensions(std::vector<const char*> requiredExtensions) {
 //-------------------------------------------------------------------------------
 void CreateInstance( std::vector<const char*> const& extensions, 
                      std::vector<const char*> const& layers,
-                     vk::Instance* instance ) {
+                     VkInstance* instance ) {
   if ( !CheckInstanceExtensions(extensions) ) {
     throw std::string("Instance missing required extensions");
   }
@@ -74,15 +74,15 @@ void CreateInstance( std::vector<const char*> const& extensions,
     throw std::string("Instance missing required layers");
   }
 
-  vk::InstanceCreateInfo instanceCreateInfo(
-    vk::InstanceCreateFlags(),
-    NULL, // appliactionInfo field is optional
-    static_cast<uint32_t>(layers.size()),
-    layers.data(),
-    static_cast<uint32_t>(extensions.size()),
-    extensions.data() );
-
-  if ( createInstance( &instanceCreateInfo, nullptr, instance) != vk::Result::eSuccess ) {
+  VkInstanceCreateInfo instanceCreateInfo = {};
+  instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  instanceCreateInfo.pApplicationInfo = NULL;  // TODO: appliactionInfo field is optional, but fill it out later
+  instanceCreateInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
+  instanceCreateInfo.ppEnabledLayerNames = layers.data();
+  instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+  instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
+  
+  if ( vkCreateInstance( &instanceCreateInfo, nullptr, instance) != VK_SUCCESS ) {
     throw std::string( "Failed to create Vulkan instance!" );
   }
 }

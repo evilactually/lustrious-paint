@@ -5,7 +5,14 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 
 set(INCLUDE_FILES
-  Include/LsRenderer.h)
+  Include/LsRenderer.h
+  Include/LsPushConstantTypes.h
+  Include/LsVulkanCommandBuffers.h
+  Include/LsVulkanCommon.h
+  Include/LSVulkanDevice.h
+  Include/LsVulkanInstance.h
+  Include/LsVulkanPresentation.h
+  Include/LsVulkanRendering.h)
 
 set(SOURCE_FILES
   Source/LsRenderer.cpp)

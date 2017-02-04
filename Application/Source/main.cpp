@@ -13,7 +13,7 @@
 #include <LsUselessBox.h>
 #include <LsConsole.h>
 #include <LsError.h>
-#include <Test.h>
+// #include <Test.h>
 
 #define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
 #define PACKETMODE 0
@@ -103,7 +103,7 @@ public:
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
   try {
     Application application;
-    application.Initialize(hInstance); test();
+    application.Initialize(hInstance);// test();
     application.Run();
   }
   catch (std::string m) {

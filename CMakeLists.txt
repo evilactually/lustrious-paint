@@ -8,5 +8,5 @@ set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/Build)
 
 add_subdirectory( Application )
 add_subdirectory( Libraries )
-add_subdirectory( Tools )
+#add_subdirectory( Tools )
 add_subdirectory( Shaders )

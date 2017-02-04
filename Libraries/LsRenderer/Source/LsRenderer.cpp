@@ -4,6 +4,7 @@
 #include <tuple>
 #include <memory>
 #include <assert.h>
+#include <array>
 #include <vulkan_dynamic.hpp>
 
 #include <destructor.h>
@@ -106,11 +107,11 @@ void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
   renderer->shaderModules.lineFragmentShader = CreateShaderModule(renderer->device, "Shaders/line.frag.spv");
   renderer->shaderModules.pointVertexShader = CreateShaderModule(renderer->device, "Shaders/point.vert.spv");
   renderer->shaderModules.pointFragmentShader = CreateShaderModule(renderer->device, "Shaders/point.frag.spv");
-
+  
   CreateFence(renderer->device, &renderer->submitCompleteFence, true);
 
-  renderer->device.getQueue( renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
-  renderer->device.getQueue( renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
+  vkGetDeviceQueue( renderer->device, renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
+  vkGetDeviceQueue( renderer->device, renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
 
   if ( CreateSwapChain(renderer->physicalDevice,
                        renderer->device,
@@ -156,42 +157,42 @@ void LsRenderer::RefreshSwapChain() {
   canRender = false;
 
   if ( device ) {
-    device.waitIdle();
+    vkDeviceWaitIdle(device);
   
     if ( linePipeline )
     {
-      device.destroyPipeline(linePipeline, nullptr);
-      linePipeline = vk::Pipeline();
+      vkDestroyPipeline( device, linePipeline, nullptr);
+	  linePipeline = VK_NULL_HANDLE;
     }
 
     if ( pointPipeline )
     {
-      device.destroyPipeline(pointPipeline, nullptr);
-      pointPipeline = vk::Pipeline();
+      vkDestroyPipeline(device, pointPipeline, nullptr);
+	  pointPipeline = VK_NULL_HANDLE;
     }
 
     if ( linePipelineLayout ) {
-      device.destroyPipelineLayout(linePipelineLayout, nullptr);
-      linePipelineLayout = vk::PipelineLayout();
+      vkDestroyPipelineLayout(device, linePipelineLayout, nullptr);
+	  linePipelineLayout = VK_NULL_HANDLE;
     }
 
     if ( pointPipelineLayout ) {
-      device.destroyPipelineLayout(pointPipelineLayout, nullptr);
-      pointPipelineLayout = vk::PipelineLayout();
+      vkDestroyPipelineLayout(device, pointPipelineLayout, nullptr);
+	  pointPipelineLayout = VK_NULL_HANDLE;
     }
 
-    for ( const vk::Framebuffer& framebuffer:framebuffers ) {
-      device.destroyFramebuffer(framebuffer, nullptr);
+    for ( const VkFramebuffer& framebuffer:framebuffers ) {
+      vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
     framebuffers.clear();
 
     if ( renderPass ) {
-      device.destroyRenderPass(renderPass, nullptr);
-      renderPass = vk::RenderPass();
+      vkDestroyRenderPass(device, renderPass, nullptr);
+	  renderPass = VK_NULL_HANDLE;
     }
 
     for( auto &imageView: swapChainInfo.imageViews) {
-      device.destroyImageView(imageView, nullptr);
+      vkDestroyImageView(device, imageView, nullptr);
     }
     swapChainInfo.imageViews.clear();
 
@@ -245,143 +246,142 @@ LsRenderer::~LsRenderer() {
   canRender = false;
 
   if ( device ) {
-    device.waitIdle();
+    vkDeviceWaitIdle(device);
   
     if ( linePipeline )
     {
-      device.destroyPipeline(linePipeline, nullptr);
+      vkDestroyPipeline( device, linePipeline, nullptr );
     }
 
     if ( pointPipeline )
     {
-      device.destroyPipeline(pointPipeline, nullptr);
+      vkDestroyPipeline( device, pointPipeline, nullptr );
     }
 
     if ( linePipelineLayout ) {
-      device.destroyPipelineLayout(linePipelineLayout, nullptr);
+      vkDestroyPipelineLayout( device, linePipelineLayout, nullptr );
     }
 
     if ( pointPipelineLayout ) {
-      device.destroyPipelineLayout(pointPipelineLayout, nullptr);
+	  vkDestroyPipelineLayout( device, pointPipelineLayout, nullptr );
     }
 
-    for ( const vk::Framebuffer& framebuffer:framebuffers ) {
-      device.destroyFramebuffer(framebuffer, nullptr);
+    for ( const VkFramebuffer& framebuffer:framebuffers ) {
+      vkDestroyFramebuffer( device, framebuffer, nullptr );
     }
 
     if ( renderPass )
-      device.destroyRenderPass(renderPass, nullptr);
+      vkDestroyRenderPass( device, renderPass, nullptr );
 
     for( auto &imageView: swapChainInfo.imageViews) {
-      device.destroyImageView(imageView, nullptr);
+      vkDestroyImageView( device, imageView, nullptr );
     }
 
     if ( swapChainInfo.swapChain )
-      device.destroySwapchainKHR(swapChainInfo.swapChain, nullptr);
+       vkDestroySwapchainKHR( device, swapChainInfo.swapChain, nullptr );
 
     if ( submitCompleteFence )
-      device.destroyFence(submitCompleteFence, nullptr);
+      vkDestroyFence( device, submitCompleteFence, nullptr );
 
     if ( shaderModules.lineVertexShader )
-      device.destroyShaderModule(shaderModules.lineVertexShader, nullptr);
+      vkDestroyShaderModule( device, shaderModules.lineVertexShader, nullptr );
     if ( shaderModules.lineFragmentShader )
-      device.destroyShaderModule(shaderModules.lineFragmentShader, nullptr);
+      vkDestroyShaderModule( device, shaderModules.lineFragmentShader, nullptr );
     if ( shaderModules.pointVertexShader )
-      device.destroyShaderModule(shaderModules.pointVertexShader, nullptr);
+      vkDestroyShaderModule( device, shaderModules.pointVertexShader, nullptr );
     if ( shaderModules.pointFragmentShader )
-      device.destroyShaderModule(shaderModules.pointFragmentShader, nullptr);
+      vkDestroyShaderModule( device, shaderModules.pointFragmentShader, nullptr );
 
     if ( semaphores.renderingFinished )
-      device.destroySemaphore(semaphores.renderingFinished, nullptr);
+      vkDestroySemaphore( device, semaphores.renderingFinished, nullptr );
 
     if ( semaphores.imageAvailable )
-      device.destroySemaphore(semaphores.imageAvailable, nullptr);
+      vkDestroySemaphore( device, semaphores.imageAvailable, nullptr );
 
     if( commandPool ) {
-      device.destroyCommandPool( commandPool, nullptr );
-      commandPool = vk::CommandPool();
+      vkDestroyCommandPool( device, commandPool, nullptr );
+	  commandPool = VK_NULL_HANDLE;
     }
 
-    device.destroy(nullptr);
+	vkDestroyDevice(device, nullptr);
   }
 
   if ( swapChainInfo.presentationSurface )
-    instance.destroySurfaceKHR(swapChainInfo.presentationSurface, nullptr);
+    vkDestroySurfaceKHR( instance, swapChainInfo.presentationSurface, nullptr );
   
   if ( debugReportCallback )
-    instance.destroyDebugReportCallbackEXT(debugReportCallback, nullptr);
+    vkDestroyDebugReportCallbackEXT( instance, debugReportCallback, nullptr );
   
-  if ( instance )  
-    instance.destroy(nullptr);
+  if (instance)
+    vkDestroyInstance( instance, nullptr );
 
   LsUnloadVulkanLibrary();
 }
 
 void LsRenderer::BeginFrame() {
-  if( device.waitForFences( 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != vk::Result::eSuccess ) {
+  if( vkWaitForFences( device, 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != VK_SUCCESS ) {
     throw std::string("Waiting for fence takes too long!");
   }
 
-  device.resetFences( 1, &submitCompleteFence );
+  vkResetFences( device, 1, &submitCompleteFence );
 
-  vk::Result result = device.acquireNextImageKHR(
-    swapChainInfo.swapChain, 
-    UINT64_MAX,
-    semaphores.imageAvailable,
-    vk::Fence(),
-    &swapChainInfo.acquiredImageIndex );
+  VkResult result = vkAcquireNextImageKHR( device,
+                                           swapChainInfo.swapChain, 
+                                           UINT64_MAX,
+                                           semaphores.imageAvailable,
+                                           VK_NULL_HANDLE,
+                                           &swapChainInfo.acquiredImageIndex );
 
   switch( result ) {
-    case vk::Result::eSuccess:
+    case VK_SUCCESS:
     break;
-    case vk::Result::eSuboptimalKHR:
+    case VK_SUBOPTIMAL_KHR:
     // It's still OK to use.
     break;
-    case vk::Result::eErrorOutOfDateKHR:
+    case VK_ERROR_OUT_OF_DATE_KHR:
     RefreshSwapChain();
     return;
     default:
-    throw std::string("Problem occurred during swap chain image acquisition!");
+    throw std::string( "Problem occurred during swap chain image acquisition!" );
   }
 
-  vk::CommandBufferBeginInfo cmd_buffer_begin_info(
-    vk::CommandBufferUsageFlagBits::eSimultaneousUse, // VkCommandBufferUsageFlags              flags
-    nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
-    );
+  VkCommandBufferBeginInfo cmd_buffer_begin_info = {};
+  cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cmd_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
-  commandBuffer.begin( &cmd_buffer_begin_info );
+  vkBeginCommandBuffer( commandBuffer, &cmd_buffer_begin_info );
 
-  vk::ImageSubresourceRange image_subresource_range(
-    vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
-    0,                                              // uint32_t                               baseMipLevel
-    1,                                              // uint32_t                               levelCount
-    0,                                              // uint32_t                               baseArrayLayer
-    1                                               // uint32_t                               layerCount
-    );
+  VkImageSubresourceRange image_subresource_range = {
+	VK_IMAGE_ASPECT_COLOR_BIT,                      // VkImageAspectFlags                     aspectMask
+	0,                                              // uint32_t                               baseMipLevel
+	1,                                              // uint32_t                               levelCount
+	0,                                              // uint32_t                               baseArrayLayer
+	1                                               // uint32_t                               layerCount
+  };
 
   // Transition to presentation layout and tell vulkan that we are discarding previous contents of the image
   // block reads from present(atachment output), blocks draws and clears
-  vk::ImageMemoryBarrier barrier_from_present_to_draw(
-    vk::AccessFlagBits(),                                   // VkAccessFlags            srcAccessMask
-    vk::AccessFlagBits::eMemoryRead,                        // VkAccessFlags            dstAccessMask
-    vk::ImageLayout::eUndefined,                            // VkImageLayout            oldLayout // TODO: DO AN INITIAL FILL
-    vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
-    VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 srcQueueFamilyIndex
-    VK_QUEUE_FAMILY_IGNORED,                                // uint32_t                 dstQueueFamilyIndex
-    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
-    image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
-    );
+  VkImageMemoryBarrier barrier_from_present_to_draw = {}; 
+  barrier_from_present_to_draw.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier_from_present_to_draw.srcAccessMask = 0;
+  barrier_from_present_to_draw.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+  barrier_from_present_to_draw.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  barrier_from_present_to_draw.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  barrier_from_present_to_draw.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_present_to_draw.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_present_to_draw.image = swapChainInfo.images[swapChainInfo.acquiredImageIndex];
+  barrier_from_present_to_draw.subresourceRange = image_subresource_range;
 
-  commandBuffer.pipelineBarrier( 
-    vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
-    vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
-    vk::DependencyFlagBits(),
-    0,
-    nullptr,
-    0,
-    nullptr,
-    1,
-    &barrier_from_present_to_draw);
+  vkCmdPipelineBarrier( commandBuffer, 
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        0,
+                        0,
+                        nullptr,
+                        0,
+                        nullptr,
+                        1,
+                        &barrier_from_present_to_draw );
 }
 
 void LsRenderer::EndFrame() {
@@ -389,43 +389,43 @@ void LsRenderer::EndFrame() {
     EndDrawing();
   }
 
-  if( commandBuffer.end() != vk::Result::eSuccess ) {
+  if( vkEndCommandBuffer( commandBuffer ) != VK_SUCCESS ) {
     throw std::string("Could not record command buffers!");
   }
 
   // stall these stages until image is available from swap chain
-  vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
-  vk::PipelineStageFlagBits::eTransfer;
-  vk::SubmitInfo submit_info(
-    1,                             // uint32_t                     waitSemaphoreCount
-    &semaphores.imageAvailable,    // const VkSemaphore           *pWaitSemaphores
-    &wait_dst_stage_mask,          // const VkPipelineStageFlags  *pWaitDstStageMask;
-    1,                             // uint32_t                     commandBufferCount
-    &commandBuffer,                // const VkCommandBuffer       *pCommandBuffers
-    1,                             // uint32_t                     signalSemaphoreCount
-    &semaphores.renderingFinished  // const VkSemaphore           *pSignalSemaphores
-    );
-
-  if( graphicsQueue.handle.submit( 1, &submit_info, submitCompleteFence ) != vk::Result::eSuccess ) {
+  VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+	                                         VK_PIPELINE_STAGE_TRANSFER_BIT;
+  VkSubmitInfo submit_info = {};
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.waitSemaphoreCount = 1;
+  submit_info.pWaitSemaphores = &semaphores.imageAvailable;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &commandBuffer;
+  submit_info.signalSemaphoreCount = 1;
+  submit_info.pSignalSemaphores = &semaphores.renderingFinished;
+  submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
+  
+  if( vkQueueSubmit( graphicsQueue.handle, 1, &submit_info, submitCompleteFence ) != VK_SUCCESS ) {
     throw std::string("Submit to queue failed!");
   }
 
-  vk::PresentInfoKHR present_info(
-    1,                                    // uint32_t                     waitSemaphoreCount
-    &semaphores.renderingFinished,        // const VkSemaphore           *pWaitSemaphores
-    1,                                    // uint32_t                     swapchainCount
-    &swapChainInfo.swapChain,             // const VkSwapchainKHR        *pSwapchains
-    &swapChainInfo.acquiredImageIndex,    // const uint32_t              *pImageIndices
-    nullptr                               // VkResult                    *pResults
-    );
-
-  vk::Result result = presentQueue.handle.presentKHR( &present_info );
+  VkPresentInfoKHR present_info = {};
+  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  present_info.waitSemaphoreCount = 1;
+  present_info.pWaitSemaphores = &semaphores.renderingFinished;
+  present_info.swapchainCount = 1;
+  present_info.pSwapchains = &swapChainInfo.swapChain;
+  present_info.pImageIndices = &swapChainInfo.acquiredImageIndex;
+  present_info.pResults = nullptr;
+  
+  VkResult result = vkQueuePresentKHR(presentQueue.handle, &present_info );
 
   switch( result ) {
-    case vk::Result::eSuccess:
+    case VK_SUCCESS:
     break;
-    case vk::Result::eErrorOutOfDateKHR:
-    case vk::Result::eSuboptimalKHR:
+    case VK_ERROR_OUT_OF_DATE_KHR:
+    case VK_SUBOPTIMAL_KHR:
     RefreshSwapChain();
     return;
     default:
@@ -438,66 +438,70 @@ void LsRenderer::Clear(float r, float g, float b) {
     EndDrawing();
   }
 
-  vk::ImageSubresourceRange image_subresource_range(
-    vk::ImageAspectFlagBits::eColor,                // VkImageAspectFlags                     aspectMask
-    0,                                              // uint32_t                               baseMipLevel
-    1,                                              // uint32_t                               levelCount
-    0,                                              // uint32_t                               baseArrayLayer
-    1                                               // uint32_t                               layerCount
-  );
+  VkImageSubresourceRange image_subresource_range = {
+	VK_IMAGE_ASPECT_COLOR_BIT,                      // VkImageAspectFlags                     aspectMask
+	0,                                              // uint32_t                               baseMipLevel
+	1,                                              // uint32_t                               levelCount
+	0,                                              // uint32_t                               baseArrayLayer
+	1                                               // uint32_t                               layerCount
+  };
 
-  vk::ImageMemoryBarrier barrier_from_present_to_clear(
-    vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          srcAccessMask,
-    vk::AccessFlagBits::eTransferWrite,         // VkAccessFlags                          dstAccessMask
-    vk::ImageLayout::ePresentSrcKHR,            // VkImageLayout                          oldLayout
-    vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          newLayout
-    VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
-    VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
-    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                                image
-    image_subresource_range                     // VkImageSubresourceRange                subresourceRange
-  );
+  VkImageMemoryBarrier barrier_from_present_to_clear = {};
+  barrier_from_present_to_clear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier_from_present_to_clear.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+  barrier_from_present_to_clear.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier_from_present_to_clear.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  barrier_from_present_to_clear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  barrier_from_present_to_clear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_present_to_clear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_present_to_clear.image = swapChainInfo.images[swapChainInfo.acquiredImageIndex];
+  barrier_from_present_to_clear.subresourceRange = image_subresource_range;
 
-  commandBuffer.pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
-                                 vk::PipelineStageFlagBits::eTransfer,
-                                 vk::DependencyFlagBits(),
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 1,
-                                 &barrier_from_present_to_clear );
+  vkCmdPipelineBarrier( commandBuffer, 
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        0,
+                        0,
+                        nullptr,
+                        0,
+                        nullptr,
+                        1,
+                        &barrier_from_present_to_clear );
 
-  const std::array<float, 4> color = { r, g, b, 1.0f };
-  vk::ClearColorValue clear_color(
-    color
-  );
+  VkClearColorValue clear_color = {};
+  clear_color.float32[0] = r;
+  clear_color.float32[1] = g;
+  clear_color.float32[2] = b;
+  clear_color.float32[3] = 1.0f;
 
-  commandBuffer.clearColorImage( swapChainInfo.images[swapChainInfo.acquiredImageIndex],
-                                 vk::ImageLayout::eTransferDstOptimal,
-                                 &clear_color,
-                                 1,
-                                 &image_subresource_range );
+  vkCmdClearColorImage( commandBuffer,
+	                    swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+	                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	                    &clear_color,
+	                    1,
+	                    &image_subresource_range );
 
-  vk::ImageMemoryBarrier barrier_from_clear_to_present(
-    vk::AccessFlagBits::eTransferWrite ,        // VkAccessFlags                          srcAccessMask, eMemoryRead fails validation
-    vk::AccessFlagBits::eMemoryRead,            // VkAccessFlags                          dstAccessMask
-    vk::ImageLayout::eTransferDstOptimal,       // VkImageLayout                          oldLayout
-    vk::ImageLayout::ePresentSrcKHR,            // VkImageLayout                          newLayout
-    VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               srcQueueFamilyIndex
-    VK_QUEUE_FAMILY_IGNORED,                    // uint32_t                               dstQueueFamilyIndex
-    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                                image
-    image_subresource_range                     // VkImageSubresourceRange                subresourceRange
-  );
+  VkImageMemoryBarrier barrier_from_clear_to_present = {};
+  barrier_from_clear_to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier_from_clear_to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // VK_ACCESS_MEMORY_READ_BIT fails validation
+  barrier_from_clear_to_present.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+  barrier_from_clear_to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  barrier_from_clear_to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  barrier_from_clear_to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_clear_to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier_from_clear_to_present.image = swapChainInfo.images[swapChainInfo.acquiredImageIndex];
+  barrier_from_clear_to_present.subresourceRange = image_subresource_range;
 
-  commandBuffer.pipelineBarrier( vk::PipelineStageFlagBits::eTransfer, 
-                                 vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
-                                 vk::DependencyFlagBits(),
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 1,
-                                 &barrier_from_clear_to_present );
+  vkCmdPipelineBarrier( commandBuffer,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        0,
+                        0,
+                        nullptr,
+                        0,
+                        nullptr,
+                        1,
+                        &barrier_from_clear_to_present );
 
 }
 
@@ -508,7 +512,7 @@ void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
 
   if(drawingContext.pipelineBinding != PipelineBinding::eLine) {
     // Bind line graphics pipeline
-    commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, linePipeline );
+	vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipeline );
     drawingContext.pipelineBinding = PipelineBinding::eLine; 
   }
 
@@ -523,13 +527,14 @@ void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
   pushConstants.positions[3] = vulkanPoint2[1];
   std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
 
-  commandBuffer.pushConstants( linePipelineLayout,
-                               vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                               0, // offset
-                               sizeof(LinePushConstants),
-                               &pushConstants );
-  commandBuffer.setLineWidth( drawingContext.lineWidth );
-  commandBuffer.draw( 2, 1, 0, 0 );
+  vkCmdPushConstants( commandBuffer, 
+	                  linePipelineLayout,
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                      0, // offset
+                      sizeof(LinePushConstants),
+                      &pushConstants );
+  vkCmdSetLineWidth( commandBuffer, drawingContext.lineWidth );
+  vkCmdDraw( commandBuffer, 2, 1, 0, 0 );
 }
 
 void LsRenderer::DrawPoint(float x, float y) {
@@ -539,7 +544,7 @@ void LsRenderer::DrawPoint(float x, float y) {
 
   if(drawingContext.pipelineBinding != PipelineBinding::ePoint) {
     // Bind line graphics pipeline
-    commandBuffer.bindPipeline( vk::PipelineBindPoint::eGraphics, pointPipeline );
+	vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipeline );
     drawingContext.pipelineBinding = PipelineBinding::ePoint;
   }
 
@@ -553,12 +558,13 @@ void LsRenderer::DrawPoint(float x, float y) {
   pushConstants.size = drawingContext.pointSize;
   std::copy(std::begin(drawingContext.color), std::end(drawingContext.color), std::begin(pushConstants.color));
 
-  commandBuffer.pushConstants( pointPipelineLayout,
-                               vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                               0, // offset
-                               sizeof(PointPushConstants),
-                               &pushConstants );
-  commandBuffer.draw( 1, 1, 0, 0 );
+  vkCmdPushConstants( commandBuffer, 
+	                  pointPipelineLayout,
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                      0, // offset
+                      sizeof(PointPushConstants),
+                      &pushConstants );
+  vkCmdDraw( commandBuffer, 1, 1, 0, 0 );
 }
 
 void LsRenderer::SetColor(float r, float g, float b) {
@@ -580,39 +586,43 @@ void LsRenderer::BeginDrawing() {
 
   // If queue present and graphics queue families are not the same
   // transfer ownership to graphics queue
-  vk::ImageSubresourceRange image_subresource_range(
-    vk::ImageAspectFlagBits::eColor, // VkImageAspectFlags                     aspectMask
-    0,                               // uint32_t                               baseMipLevel
-    1,                               // uint32_t                               levelCount
-    0,                               // uint32_t                               baseArrayLayer
-    1                                // uint32_t                               layerCount
-    );
+  VkImageSubresourceRange image_subresource_range = {
+	VK_IMAGE_ASPECT_COLOR_BIT,       // VkImageAspectFlags                     aspectMask
+	0,                               // uint32_t                               baseMipLevel
+	1,                               // uint32_t                               levelCount
+	0,                               // uint32_t                               baseArrayLayer
+	1                                // uint32_t                               layerCount
+  };
 
   // wait for writes from clears and draws, block draws
-  vk::ImageMemoryBarrier barrier_from_present_to_draw(
-    vk::AccessFlagBits(),                                   // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
-    vk::AccessFlagBits::eColorAttachmentWrite,              // VkAccessFlags            dstAccessMask
-    vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            oldLayout
-    vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
-    presentQueue.familyIndex,                               // uint32_t                 srcQueueFamilyIndex
-    graphicsQueue.familyIndex,                              // uint32_t                 dstQueueFamilyIndex
-    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
-    image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
-    );
+  VkImageMemoryBarrier barrier_from_present_to_draw = {
+	VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+	nullptr,
+	0,                                                      // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
+	VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,                   // VkAccessFlags            dstAccessMask
+	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,                        // VkImageLayout            oldLayout
+	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,                        // VkImageLayout            newLayout
+	presentQueue.familyIndex,                               // uint32_t                 srcQueueFamilyIndex
+	graphicsQueue.familyIndex,                              // uint32_t                 dstQueueFamilyIndex
+	swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
+	image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
+  };
 
-  commandBuffer.pipelineBarrier( 
-    vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
-    vk::PipelineStageFlagBits::eColorAttachmentOutput,
-    vk::DependencyFlagBits(),
-    0,
-    nullptr,
-    0,
-    nullptr,
-    1,
-    &barrier_from_present_to_draw);
+  vkCmdPipelineBarrier( commandBuffer,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        0,
+                        0,
+                        nullptr,
+                        0,
+                        nullptr,
+                        1,
+                        &barrier_from_present_to_draw );
 
   // Begin rendering pass
-  vk::RenderPassBeginInfo render_pass_begin_info = {
+  VkRenderPassBeginInfo render_pass_begin_info = {
+    VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+	nullptr,
     renderPass,                                     // VkRenderPass                   renderPass
     framebuffers[swapChainInfo.acquiredImageIndex], // VkFramebuffer                  framebuffer
     {                                               // VkRect2D                       renderArea
@@ -628,7 +638,8 @@ void LsRenderer::BeginDrawing() {
     0,                                              // uint32_t                       clearValueCount
     nullptr                                         // const VkClearValue            *pClearValues
   };
-  commandBuffer.beginRenderPass( &render_pass_begin_info, vk::SubpassContents::eInline );
+
+  vkCmdBeginRenderPass( commandBuffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE );
 
   // Tell drawing functions that command buffer is already prepared for drawing
   drawingContext.drawing = true;
@@ -637,37 +648,39 @@ void LsRenderer::BeginDrawing() {
 }
 
 void LsRenderer::EndDrawing() {
-  commandBuffer.endRenderPass();
+  vkCmdEndRenderPass(commandBuffer);
+  
+  VkImageSubresourceRange image_subresource_range = {
+	VK_IMAGE_ASPECT_COLOR_BIT,       // VkImageAspectFlags                     aspectMask
+	0,                               // uint32_t                               baseMipLevel
+	1,                               // uint32_t                               levelCount
+	0,                               // uint32_t                               baseArrayLayer
+	1                                // uint32_t                               layerCount
+  };
 
-  vk::ImageSubresourceRange image_subresource_range(
-    vk::ImageAspectFlagBits::eColor, // VkImageAspectFlags                     aspectMask
-    0,                               // uint32_t                               baseMipLevel
-    1,                               // uint32_t                               levelCount
-    0,                               // uint32_t                               baseArrayLayer
-    1                                // uint32_t                               layerCount
-  );
+  VkImageMemoryBarrier barrier_from_present_to_draw = {
+	VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+	nullptr,
+	VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,                   // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
+	VK_ACCESS_MEMORY_READ_BIT,                              // VkAccessFlags            dstAccessMask
+	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,                        // VkImageLayout            oldLayout
+	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,                        // VkImageLayout            newLayout
+	graphicsQueue.familyIndex,                              // uint32_t                 srcQueueFamilyIndex
+	presentQueue.familyIndex,                               // uint32_t                 dstQueueFamilyIndex
+	swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
+	image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
+  };
 
-  vk::ImageMemoryBarrier barrier_from_present_to_draw(
-    vk::AccessFlagBits::eColorAttachmentWrite,              // VkAccessFlags            srcAccessMask, eMemoryRead fails validation
-    vk::AccessFlagBits::eMemoryRead,                        // VkAccessFlags            dstAccessMask
-    vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            oldLayout
-    vk::ImageLayout::ePresentSrcKHR,                        // VkImageLayout            newLayout
-    graphicsQueue.familyIndex,                              // uint32_t                 srcQueueFamilyIndex
-    presentQueue.familyIndex,                               // uint32_t                 dstQueueFamilyIndex
-    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // VkImage                  image
-    image_subresource_range                                 // VkImageSubresourceRange  subresourceRange
-  );
-
-  commandBuffer.pipelineBarrier( 
-    vk::PipelineStageFlagBits::eColorAttachmentOutput,
-    vk::PipelineStageFlagBits::eBottomOfPipe, // need to block presentation, there's no actual stage for it,
-    vk::DependencyFlagBits(),                 // but bottom of pipe is what we need
-    0,
-    nullptr,
-    0,
-    nullptr,
-    1,
-    &barrier_from_present_to_draw);
+  vkCmdPipelineBarrier( commandBuffer, 
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // need to block presentation, there's no actual stage for it,
+                        0,                                    // but bottom of pipe is what we need
+                        0,
+                        nullptr,
+                        0,
+                        nullptr,
+                        1,
+                        &barrier_from_present_to_draw );
 
   drawingContext.drawing = false;
 }

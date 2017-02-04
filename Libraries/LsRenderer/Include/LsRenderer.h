@@ -38,61 +38,61 @@ private:
   static LsRenderer renderer;
   
   HWND window;
-  vk::Instance instance;             // Vulkan instance
-  vk::PhysicalDevice physicalDevice; // Chosen physical device
-  vk::Device device;                 // Logical device created from physicalDevice
+  VkInstance instance;             // Vulkan instance
+  VkPhysicalDevice physicalDevice; // Chosen physical device
+  VkDevice device;                 // Logical device created from physicalDevice
   
 #ifdef VULKAN_VALIDATION
-  vk::DebugReportCallbackEXT debugReportCallback; // Handle representing Vulkan debug callback
+  VkDebugReportCallbackEXT debugReportCallback; // Handle representing Vulkan debug callback
 #endif
 
   struct {
     uint32_t  familyIndex;
-    vk::Queue handle;
+    VkQueue handle;
   } graphicsQueue;
 
   struct {
     uint32_t  familyIndex;
-    vk::Queue handle;
+    VkQueue handle;
   } presentQueue;
 
-  vk::CommandPool commandPool;
-  vk::CommandBuffer commandBuffer;
+  VkCommandPool commandPool;
+  VkCommandBuffer commandBuffer;
 
   struct {
-    vk::SurfaceKHR   presentationSurface;
-    vk::SwapchainKHR swapChain;
-    vk::Format       format;
-    std::vector<vk::Image> images;
-    std::vector<vk::ImageView> imageViews;
-    vk::Extent2D extent;
+    VkSurfaceKHR   presentationSurface;
+    VkSwapchainKHR swapChain;
+    VkFormat       format;
+    std::vector<VkImage> images;
+    std::vector<VkImageView> imageViews;
+    VkExtent2D extent;
     uint32_t acquiredImageIndex;
   } swapChainInfo;
 
   bool canRender = false;
 
   struct {
-    vk::Semaphore imageAvailable;     // signals when swap chain image is acquired
-    vk::Semaphore renderingFinished;  // used to block presentation until rendering is finished
+    VkSemaphore imageAvailable;     // signals when swap chain image is acquired
+    VkSemaphore renderingFinished;  // used to block presentation until rendering is finished
   } semaphores;
 
-  vk::Fence submitCompleteFence;      // protects command buffer from being reset too soon
+  VkFence submitCompleteFence;      // protects command buffer from being reset too soon
   
-  vk::RenderPass renderPass;
+  VkRenderPass renderPass;
 
-  std::vector<vk::Framebuffer> framebuffers;
+  std::vector<VkFramebuffer> framebuffers;
 
   struct {
-    vk::ShaderModule lineVertexShader;
-    vk::ShaderModule lineFragmentShader;
-    vk::ShaderModule pointVertexShader;
-    vk::ShaderModule pointFragmentShader;
+    VkShaderModule lineVertexShader;
+    VkShaderModule lineFragmentShader;
+    VkShaderModule pointVertexShader;
+    VkShaderModule pointFragmentShader;
   } shaderModules;
 
-  vk::PipelineLayout linePipelineLayout;  // pipeline layout for line push constants
-  vk::PipelineLayout pointPipelineLayout; // pipeleine layout for point push constants
-  vk::Pipeline linePipeline;              // pipeline for drawing lines
-  vk::Pipeline pointPipeline;             // pipeline for drawing points
+  VkPipelineLayout linePipelineLayout;  // pipeline layout for line push constants
+  VkPipelineLayout pointPipelineLayout; // pipeleine layout for point push constants
+  VkPipeline linePipeline;              // pipeline for drawing lines
+  VkPipeline pointPipeline;             // pipeline for drawing points
 
   struct {
     float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };

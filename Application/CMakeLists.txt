@@ -70,3 +70,17 @@ add_custom_command(TARGET LustriousPaint POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_BINARY_DIR}/Shaders/Binary"
         "$<TARGET_FILE_DIR:LustriousPaint>/Shaders")
+
+file( WRITE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.vcxproj.user" "\
+<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<Project ToolsVersion=\"14.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">
+ <PropertyGroup Condition=\"'$(Configuration)|$(Platform)'=='Release|Win32'\">
+   <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+   <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+ </PropertyGroup>
+ <PropertyGroup Condition=\"'$(Configuration)|$(Platform)'=='Debug|Win32'\">
+   <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+   <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+</Project>\
+")
