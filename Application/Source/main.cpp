@@ -1,7 +1,7 @@
 #include <windows.h>
 #include <string>
 #include <iostream>
-
+#include <memory>
 #include <destructor.h>
 #include <LsWin32MainWindow.h>
 #include <LsRenderer.h>
@@ -44,13 +44,13 @@ HCTX OpenWintabContext(HINSTANCE hInstance, HWND hWindow)
   return WTOpenA(hWindow, &lcMine, TRUE);
 }
 
-class Application {
+class Application: LsFWin32MessageHandler {
   HINSTANCE hInstance;
   LsWin32MainWindow* window;
-  LsBrushRig brushRig;
-  LsPointGrid pointGrid;
-  LsUselessBox uselessBox;
-  LsRenderer* renderer;
+  std::shared_ptr<LsBrushRig> brushRig;
+  std::shared_ptr<LsPointGrid> pointGrid;
+  std::shared_ptr<LsUselessBox> uselessBox;
+  std::shared_ptr<LsRenderer> renderer;
   HCTX tabletContext;
 public:
   Application() {
@@ -80,11 +80,15 @@ public:
     window->HideMouse();
 
     // Initialize the rendering system
-    LsRenderer::Initialize(hInstance, window->GetWindowHandle());
+    renderer = std::make_shared<LsRenderer>(hInstance, window->GetWindowHandle());
+	renderer->RefreshSwapChain();
 
-    renderer = LsRenderer::Get();
+	// Initialize components
+	brushRig = std::make_shared<LsBrushRig>(renderer);
+	pointGrid = std::make_shared<LsPointGrid>(renderer);
+	uselessBox = std::make_shared<LsUselessBox>(renderer);
 
-    pointGrid.SetBackgroundColor(0.1f, 0.0f, 0.1f);
+    pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
   }
 
   void Run() {
@@ -92,11 +96,19 @@ public:
     while( window->ProcessMessages() ){
       window->WaitForMessages();
       renderer->BeginFrame();
-      pointGrid.Render();
-      brushRig.Render();
-      uselessBox.Render();
+      pointGrid->Render();
+      brushRig->Render();
+      uselessBox->Render();
       renderer->EndFrame();
     };
+  }
+
+  void Application::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+      case WM_SIZE:
+	    renderer->RefreshSwapChain();
+      break;
+    }
   }
 };
 

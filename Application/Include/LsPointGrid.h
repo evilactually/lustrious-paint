@@ -1,3 +1,6 @@
+#pragma once
+
+#include <memory>
 #include <LsRenderer.h>
 #include <LsFWin32MessageHandler.h>
 
@@ -17,10 +20,10 @@ class LsPointGrid: public LsFWin32MessageHandler
 
   float spacing = 32.0f;
 
-  LsRenderer* renderer;
+  std::shared_ptr<LsRenderer> renderer;
 
 public:
-  LsPointGrid();
+  LsPointGrid::LsPointGrid(std::shared_ptr<LsRenderer> renderer);
   ~LsPointGrid();
   void SetPointColor(float r, float g, float b);
   void SetBackgroundColor(float r, float g, float b);

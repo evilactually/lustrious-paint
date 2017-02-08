@@ -4,9 +4,7 @@
 #include <LsWindowsUtils.h>
 #include <LsWin32MainWindow.h>
 
-LsPointGrid::LsPointGrid() {
-  renderer = LsRenderer::Get();
-}
+LsPointGrid::LsPointGrid(std::shared_ptr<LsRenderer> renderer):renderer(renderer) {}
 
 LsPointGrid::~LsPointGrid() {
 

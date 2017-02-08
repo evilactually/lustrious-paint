@@ -57,99 +57,97 @@ std::vector<const char*> requiredInstanceValidationLayers = {
 
 // Needs device, swapchain, graphics queue
 
-LsRenderer::LsRenderer() {
+//LsRenderer::LsRenderer() {
+//
+//}
 
-}
+// LsRenderer LsRenderer::renderer;
 
-LsRenderer LsRenderer::renderer;
+//LsRenderer* LsRenderer::Get() {
+//  return &renderer;
+//}
 
-LsRenderer* LsRenderer::Get() {
-  return &renderer;
-}
-
-void LsRenderer::Initialize(HINSTANCE hInstance, HWND window) {
-  LsRenderer* renderer = LsRenderer::Get();
+LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
+  //LsRenderer* renderer = LsRenderer::Get();
   
-  renderer->window = window;
-
   LsLoadVulkanLibrary();
 
   LsLoadExportedEntryPoints();
   LsLoadGlobalLevelEntryPoints();
 
-  CreateInstance(requiredInstanceExtensions, requiredInstanceValidationLayers, &renderer->instance);
+  CreateInstance(requiredInstanceExtensions, requiredInstanceValidationLayers, &instance);
  
-  LsLoadInstanceLevelEntryPoints(renderer->instance, requiredInstanceExtensions);
+  LsLoadInstanceLevelEntryPoints(instance, requiredInstanceExtensions);
 
 #ifdef VULKAN_VALIDATION
-  CreateDebugReportCallback(renderer->instance, &renderer->debugReportCallback);
+  CreateDebugReportCallback(instance, &debugReportCallback);
 #endif
   
-  CreatePresentationSurface(renderer->instance, hInstance, window, &renderer->swapChainInfo.presentationSurface);
+  CreatePresentationSurface(instance, hInstance, window, &swapChainInfo.presentationSurface);
 
-  CreateDevice(renderer->instance, 
-               renderer->swapChainInfo.presentationSurface,
+  CreateDevice(instance, 
+               swapChainInfo.presentationSurface,
                requiredDeviceExtensions,
-               &renderer->physicalDevice,
-               &renderer->device,
-               &renderer->graphicsQueue.familyIndex,
-               &renderer->presentQueue.familyIndex);
+               &physicalDevice,
+               &device,
+               &graphicsQueue.familyIndex,
+               &presentQueue.familyIndex);
 
-  LsLoadDeviceLevelEntryPoints(LsRenderer::Get()->device, requiredDeviceExtensions);
+  LsLoadDeviceLevelEntryPoints(device, requiredDeviceExtensions);
 
-  renderer->commandPool = CreateCommandPool(renderer->device, renderer->graphicsQueue.familyIndex);
-  renderer->commandBuffer = CreateCommandBuffer(renderer->device, renderer->commandPool);
+  commandPool = CreateCommandPool(device, graphicsQueue.familyIndex);
+  commandBuffer = CreateCommandBuffer(device, commandPool);
  
-  CreateSemaphore(renderer->device, &renderer->semaphores.imageAvailable);
-  CreateSemaphore(renderer->device, &renderer->semaphores.renderingFinished);
+  CreateSemaphore(device, &semaphores.imageAvailable);
+  CreateSemaphore(device, &semaphores.renderingFinished);
 
-  renderer->shaderModules.lineVertexShader = CreateShaderModule(renderer->device, "Shaders/line.vert.spv");
-  renderer->shaderModules.lineFragmentShader = CreateShaderModule(renderer->device, "Shaders/line.frag.spv");
-  renderer->shaderModules.pointVertexShader = CreateShaderModule(renderer->device, "Shaders/point.vert.spv");
-  renderer->shaderModules.pointFragmentShader = CreateShaderModule(renderer->device, "Shaders/point.frag.spv");
+  shaderModules.lineVertexShader = CreateShaderModule(device, "Shaders/line.vert.spv");
+  shaderModules.lineFragmentShader = CreateShaderModule(device, "Shaders/line.frag.spv");
+  shaderModules.pointVertexShader = CreateShaderModule(device, "Shaders/point.vert.spv");
+  shaderModules.pointFragmentShader = CreateShaderModule(device, "Shaders/point.frag.spv");
   
-  CreateFence(renderer->device, &renderer->submitCompleteFence, true);
+  CreateFence(device, &submitCompleteFence, true);
 
-  vkGetDeviceQueue( renderer->device, renderer->graphicsQueue.familyIndex, 0, &renderer->graphicsQueue.handle );
-  vkGetDeviceQueue( renderer->device, renderer->presentQueue.familyIndex, 0, &renderer->presentQueue.handle );
+  vkGetDeviceQueue( device, graphicsQueue.familyIndex, 0, &graphicsQueue.handle );
+  vkGetDeviceQueue( device, presentQueue.familyIndex, 0, &presentQueue.handle );
 
-  if ( CreateSwapChain(renderer->physicalDevice,
-                       renderer->device,
-                       renderer->swapChainInfo.presentationSurface,
+  if ( CreateSwapChain(physicalDevice,
+                       device,
+                       swapChainInfo.presentationSurface,
                        window,
-                       &renderer->swapChainInfo.swapChain,
-                       &renderer->swapChainInfo.format,
-                       &renderer->swapChainInfo.extent) ) {
+                       &swapChainInfo.swapChain,
+                       &swapChainInfo.format,
+                       &swapChainInfo.extent) ) {
 
-    renderer->swapChainInfo.images = GetSwapChainImages(renderer->device, renderer->swapChainInfo.swapChain);
+    swapChainInfo.images = GetSwapChainImages(device, swapChainInfo.swapChain);
 
-    renderer->swapChainInfo.imageViews = CreateSwapChainImageViews(renderer->device,
-                                                                   renderer->swapChainInfo.images,
-                                                                   renderer->swapChainInfo.format);
+    swapChainInfo.imageViews = CreateSwapChainImageViews(device,
+                                                                   swapChainInfo.images,
+                                                                   swapChainInfo.format);
 
-    renderer->renderPass = CreateSimpleRenderPass(renderer->device, renderer->swapChainInfo.format);
+    renderPass = CreateSimpleRenderPass(device, swapChainInfo.format);
 
-    renderer->framebuffers = CreateFramebuffers(renderer->device, 
-                                                renderer->swapChainInfo.imageViews,
-                                                renderer->swapChainInfo.extent,
-                                                renderer->renderPass);
+    framebuffers = CreateFramebuffers(device, 
+                                                swapChainInfo.imageViews,
+                                                swapChainInfo.extent,
+                                                renderPass);
 
-    renderer->linePipelineLayout = CreatePipelineLayout(renderer->device, sizeof(LinePushConstants));
-    renderer->pointPipelineLayout = CreatePipelineLayout(renderer->device, sizeof(PointPushConstants));
+    linePipelineLayout = CreatePipelineLayout(device, sizeof(LinePushConstants));
+    pointPipelineLayout = CreatePipelineLayout(device, sizeof(PointPushConstants));
 
-    CreatePrimitivePipelines(renderer->device,
-                             renderer->shaderModules.lineVertexShader,
-                             renderer->shaderModules.lineFragmentShader,
-                             renderer->shaderModules.pointVertexShader,
-                             renderer->shaderModules.pointFragmentShader,
-                             renderer->linePipelineLayout,
-                             renderer->pointPipelineLayout,
-                             renderer->renderPass,
-                             renderer->swapChainInfo.extent,
-                             &renderer->linePipeline,
-                             &renderer->pointPipeline);
+    CreatePrimitivePipelines(device,
+                             shaderModules.lineVertexShader,
+                             shaderModules.lineFragmentShader,
+                             shaderModules.pointVertexShader,
+                             shaderModules.pointFragmentShader,
+                             linePipelineLayout,
+                             pointPipelineLayout,
+                             renderPass,
+                             swapChainInfo.extent,
+                             &linePipeline,
+                             &pointPipeline);
     
-    renderer->canRender = true;
+    canRender = true;
   }
 }
 
@@ -235,6 +233,8 @@ void LsRenderer::RefreshSwapChain() {
                              swapChainInfo.extent,
                              &linePipeline,
                              &pointPipeline);
+
+	windowToVulkanTransformation = WindowToVulkanTransformation(window);
 
     canRender = true;
   } else {
@@ -685,11 +685,11 @@ void LsRenderer::EndDrawing() {
   drawingContext.drawing = false;
 }
 
-void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  switch (uMsg) {
-    case WM_SIZE:
-    RefreshSwapChain();
-    windowToVulkanTransformation = WindowToVulkanTransformation(window);
-    break;
-  }
-}
+//void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+//  switch (uMsg) {
+//    case WM_SIZE:
+//    RefreshSwapChain();
+//    windowToVulkanTransformation = WindowToVulkanTransformation(window);
+//    break;
+//  }
+//}

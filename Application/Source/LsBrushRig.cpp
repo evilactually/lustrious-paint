@@ -14,9 +14,7 @@
 
 #define PRESSURE_SENSITIVITY 20.0f
 
-LsBrushRig::LsBrushRig() {
-  renderer = LsRenderer::Get();
-}
+LsBrushRig::LsBrushRig(std::shared_ptr<LsRenderer> renderer) :renderer(renderer) {}
 
 LsBrushRig::~LsBrushRig() {
   

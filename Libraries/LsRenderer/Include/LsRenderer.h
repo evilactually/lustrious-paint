@@ -8,10 +8,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <LsFWin32MessageHandler.h>
 
-class LsRenderer: public LsFWin32MessageHandler {
+class LsRenderer {
 public:
-  static void Initialize(HINSTANCE hInstance, HWND window);
-  static LsRenderer* Get();
+  LsRenderer(HINSTANCE hInstance, HWND window);
+  ~LsRenderer();
+  //static LsRenderer* Get();
   void BeginFrame();
   void EndFrame();
   void Clear(float r, float g, float b);
@@ -20,14 +21,10 @@ public:
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
   void SetPointSize(float size);
-  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+  void RefreshSwapChain();
 private:
-  LsRenderer();
-  ~LsRenderer();
   void BeginDrawing();
   void EndDrawing();
-  void RefreshSwapChain();
-  
   enum class PipelineBinding {
     eNone,
     eLine,
@@ -67,7 +64,7 @@ private:
     std::vector<VkImageView> imageViews;
     VkExtent2D extent;
     uint32_t acquiredImageIndex;
-  } swapChainInfo;
+  } swapChainInfo = {};
 
   bool canRender = false;
 

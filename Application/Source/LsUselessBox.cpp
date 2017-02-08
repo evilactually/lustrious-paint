@@ -5,9 +5,7 @@
 #include <LsUselessBox.h>
 #include <LsWin32MainWindow.h>
 
-LsUselessBox::LsUselessBox() {
-  renderer = LsRenderer::Get();
-}
+LsUselessBox::LsUselessBox(std::shared_ptr<LsRenderer> renderer) :renderer(renderer) {}
 
 LsUselessBox::~LsUselessBox() {
 

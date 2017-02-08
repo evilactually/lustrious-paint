@@ -1,8 +1,11 @@
+#pragma once
+
+#include <memory>
 #include <windows.h>
 
 class LsUselessBox: public LsFWin32MessageHandler
 {
-  LsRenderer* renderer;
+  std::shared_ptr<LsRenderer> renderer;
   POINT grabOffset;
   bool dragging = false;
   float x = 0.0f;
@@ -10,7 +13,7 @@ class LsUselessBox: public LsFWin32MessageHandler
   float width = 64.0f;
   float height = 64.0f;
 public:
-  LsUselessBox();
+  LsUselessBox(std::shared_ptr<LsRenderer> renderer);
   ~LsUselessBox();
   void Render();
   bool HitTest(POINT point);

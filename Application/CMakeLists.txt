@@ -7,6 +7,9 @@ set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 include( BuildInfo )
 
 set(INCLUDE_FILES
+  "Include/LsBrushRig.h"
+  "Include/LsPointGrid.h"
+  "Include/LsUselessBox.h"
   "Include/Version.h.in")
 
 set(SOURCE_FILES
