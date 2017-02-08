@@ -65,3 +65,42 @@ TEST_CASE( "lattice03", "[stuffing]" ) {
   REQUIRE ( !lattice.GetEdgeCutPoint(black02) );
   REQUIRE ( !lattice.GetEdgeCutPoint(black03) );
 }
+
+TEST_CASE("NodePosition", "[lattice]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 10, 10), 1.0f);
+  lattice.SetNodePosition(LsBCCNode(1, 1, 1), glm::vec3(0.1f, 0.2f, 0.3f));
+  lattice.SetNodePosition(LsBCCNode(2, 2, 2), glm::vec3(0.4f, 0.5f, 0.6f));
+  REQUIRE(glm::all(glm::equal(lattice.GetNodePosition(LsBCCNode(1, 1, 1)), glm::vec3(0.1f, 0.2f, 0.3f))));
+  REQUIRE(glm::all(glm::equal(lattice.GetNodePosition(LsBCCNode(2, 2, 2)), glm::vec3(0.4f, 0.5f, 0.6f))));
+}
+
+
+TEST_CASE("NodeValue", "[lattice]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 10, 10), 1.0f);
+  lattice.SetNodeValue( LsBCCNode(1, 1, 1), LsBCCValue::ePositive );
+  lattice.SetNodeValue( LsBCCNode(2, 2, 2), LsBCCValue::eZero );
+  lattice.SetNodeValue( LsBCCNode(3, 3, 3), LsBCCValue::eNegative );
+  REQUIRE( lattice.GetNodeValue(LsBCCNode(1, 1, 1)) == LsBCCValue::ePositive );
+  REQUIRE( lattice.GetNodeValue(LsBCCNode(2, 2, 2)) == LsBCCValue::eZero );
+  REQUIRE( lattice.GetNodeValue(LsBCCNode(3, 3, 3)) == LsBCCValue::eNegative );
+}
+
+TEST_CASE("NodeColor", "[lattice]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 10, 10), 1.0f);
+  REQUIRE( lattice.GetNodeColor(LsBCCNode(1, 1, 1)) == LsBCCColor::eRed );
+  REQUIRE( lattice.GetNodeColor(LsBCCNode(2, 2, 2)) == LsBCCColor::eBlack );
+  REQUIRE( lattice.GetNodeColor(LsBCCNode(1, 3, 3)) == LsBCCColor::eRed );
+  REQUIRE( lattice.GetNodeColor(LsBCCNode(2, 0, 2)) == LsBCCColor::eBlack );
+}
+
+TEST_CASE("EdgeColor", "[lattice]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 10, 10), 1.0f);
+  REQUIRE(lattice.GetEdgeColor( LsBCCEdge(LsBCCNode(1, 1, 1), LsBCCNode(3, 1, 1)) ) == LsBCCColor::eBlack);
+  REQUIRE(lattice.GetEdgeColor(LsBCCEdge(LsBCCNode(1, 1, 1), LsBCCNode(2, 2, 2))) == LsBCCColor::eRed);
+  // REQUIRE(lattice.GetEdgeColor(LsBCCEdge(LsBCCNode(1, 1, 1), LsBCCNode(5, 5, 5))) == LsBCCColor::eBlack); // TODO: This should abort, invalid edge
+}
+
+// TODO:
+// GetTetrahedronIterator
+// GetNodeEdgeIterator
+// GetEdgeIterator

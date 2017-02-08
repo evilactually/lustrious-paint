@@ -1,5 +1,5 @@
 cmake_minimum_required ( VERSION 3.5.2 )
-
+enable_testing()
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
 
 project ( LustriousPaint C CXX )

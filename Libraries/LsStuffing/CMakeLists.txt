@@ -1,5 +1,5 @@
 cmake_minimum_required ( VERSION 3.5.2 )
-
+enable_testing()
 set( LIB_NAME LsStuffing )
 
 set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )

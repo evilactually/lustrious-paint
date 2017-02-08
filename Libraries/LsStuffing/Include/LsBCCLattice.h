@@ -78,10 +78,12 @@ public:
   };
   LsBCCLattice(LsDomain domain);
   LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
+
   TetrahedronIterator GetTetrahedronIterator() const; //   TODO: Use the cube tile
   NodeIterator GetNodeIterator();
   NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
   EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+
   glm::vec3 GetNodePosition(LsBCCNode node) const;
   LsBCCColor GetNodeColor(LsBCCNode node) const;
   LsBCCValue GetNodeValue(LsBCCNode node) const;
