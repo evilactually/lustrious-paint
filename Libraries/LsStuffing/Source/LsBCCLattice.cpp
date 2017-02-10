@@ -80,9 +80,13 @@ bool NodeOffsetsEqual(LsBCCNodeOffset const & o1, LsBCCNodeOffset const & o2) {
 //-- Methods --------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-LsBCCLattice::NodeIterator::NodeIterator(LsBCCLattice const& lattice):lattice(lattice) {
-  current = lattice.nodeMetaData[currentIndex].coordinates;
+LsBCCLattice::NodeIterator::NodeIterator(LsBCCLattice const& lattice):lattice(&lattice) {
+  current = this->lattice->nodeMetaData[currentIndex].coordinates;
 };
+
+//LsBCCLattice::NodeIterator const& LsBCCLattice::NodeIterator::operator=(LsBCCLattice::NodeIterator const& other) {
+//  this->lattice = other.lattice;
+//}
 
 LsBCCLattice::NodeIterator::operator LsBCCNode() const {
   return current;
@@ -90,16 +94,16 @@ LsBCCLattice::NodeIterator::operator LsBCCNode() const {
 
 bool LsBCCLattice::NodeIterator::Next() {
   ++currentIndex;
-  if ( currentIndex < lattice.nodeMetaData.size() )
+  if ( currentIndex < lattice->nodeMetaData.size() )
   {
-    current = lattice.nodeMetaData[currentIndex].coordinates;
+    current = lattice->nodeMetaData[currentIndex].coordinates;
     return true; 
   } else {
     return false;
   }
 }
 
-LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(lattice) { };
+LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(&lattice) { };
 
 LsBCCLattice::TetrahedronIterator::operator LsBCCTetrahedron() const {
   throw 1;
@@ -115,8 +119,8 @@ LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
   throw 1;
 };
 
-LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(lattice),n1(node) {
-  assert( lattice.NodeExists(node));
+LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(&lattice),n1(node) {
+  assert( this->lattice->NodeExists(node) );
   currentAdjacentIndex = -1; // Use Next() method to find first valid edge,
   Next();                    // in case if first edge doesn't exist
 };
@@ -136,7 +140,7 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
   {
     LsBCCNode n2 = AddNodeOffset(n1, adjacentOffsets[currentAdjacentIndex]);
     current = LsBCCEdge(n1, n2);
-    if (lattice.NodeExists(n2))
+    if (lattice->NodeExists(n2))
     {
       return true;
     }
@@ -146,15 +150,19 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
   }
 }
 
+LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(&lattice), nodeIterator(lattice.GetNodeIterator()) { }
+
 LsBCCLattice::EdgeIterator::operator LsBCCEdge() const {
+  
   // iterate over nodes, then over edges stored at node
   // can reuse NodeEdgeIterator here
   throw 1;
 }
 
-LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(lattice) { };
+//LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(lattice) { };
 
 LsOptional<LsBCCEdge> LsBCCLattice::EdgeIterator::Next() {
+  
   throw 1;
 }
 
@@ -196,15 +204,17 @@ LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() const {
   return TetrahedronIterator(*this);
 }
 
-LsBCCLattice::NodeIterator LsBCCLattice::GetNodeIterator() {
+LsBCCLattice::NodeIterator LsBCCLattice::GetNodeIterator() const {
   return NodeIterator(*this);
 }
 
-LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node) {
+LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node) const {
   return NodeEdgeIterator(*this, node);
 }
 
-// BCCLattice::EdgeIterator BCCLattice::GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+LsBCCLattice::EdgeIterator LsBCCLattice::GetEdgeIterator() const {               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+  throw 1;
+}
 
 glm::vec3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
   return GetNodeMetaDataConstReference(node).position;

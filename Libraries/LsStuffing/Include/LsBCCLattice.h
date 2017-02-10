@@ -37,7 +37,7 @@ public:
     operator LsBCCNode() const;
   private:
     NodeIterator(LsBCCLattice const& lattice);
-    LsBCCLattice const& lattice;
+    LsBCCLattice const* lattice;
     LsBCCNode current;
     size_t currentIndex = 0;
   };
@@ -49,7 +49,7 @@ public:
     operator LsBCCTetrahedron() const;
   private:
     TetrahedronIterator(LsBCCLattice const& lattice);
-    LsBCCLattice const& lattice;
+    LsBCCLattice const* lattice;
   };
 
   class NodeEdgeIterator {
@@ -59,7 +59,7 @@ public:
     operator LsBCCEdge() const;
   private:
     NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node);
-    LsBCCLattice const& lattice;
+    LsBCCLattice const* lattice;
     LsBCCNode n1;
     LsBCCEdge current;
     short currentAdjacentIndex = 0;
@@ -72,17 +72,17 @@ public:
     operator LsBCCEdge() const;
   private:
     EdgeIterator(LsBCCLattice const& lattice);
-    LsBCCLattice const& lattice;
-    size_t currentNodeIndex = 0;
+    LsBCCLattice const* lattice;
+	NodeIterator nodeIterator;
     int currentNexusIndex = 0;
   };
   LsBCCLattice(LsDomain domain);
   LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
 
   TetrahedronIterator GetTetrahedronIterator() const; //   TODO: Use the cube tile
-  NodeIterator GetNodeIterator();
-  NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node);
-  EdgeIterator GetEdgeIterator();               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+  NodeIterator GetNodeIterator() const;
+  NodeEdgeIterator GetNodeEdgeIterator(LsBCCNode node) const;
+  EdgeIterator GetEdgeIterator() const;               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
 
   glm::vec3 GetNodePosition(LsBCCNode node) const;
   LsBCCColor GetNodeColor(LsBCCNode node) const;
