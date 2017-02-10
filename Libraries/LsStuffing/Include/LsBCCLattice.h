@@ -45,7 +45,7 @@ public:
   class TetrahedronIterator {
   friend LsBCCLattice;
   public:
-    LsOptional<LsBCCTetrahedron> Next();
+    bool Next();
     operator LsBCCTetrahedron() const;
   private:
     TetrahedronIterator(LsBCCLattice const& lattice);

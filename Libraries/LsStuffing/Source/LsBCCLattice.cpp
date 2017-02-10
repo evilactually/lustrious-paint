@@ -109,7 +109,7 @@ LsBCCLattice::TetrahedronIterator::operator LsBCCTetrahedron() const {
   throw 1;
 }
 
-LsOptional<LsBCCTetrahedron> LsBCCLattice::TetrahedronIterator::Next() {
+bool LsBCCLattice::TetrahedronIterator::Next() {
   // expand minima and maxima to include next back(even) nodes if they are red
   // subtract from minima, and add to maxima
   // iterate in "cubes", each cube contains 3*4 tetrahedra
