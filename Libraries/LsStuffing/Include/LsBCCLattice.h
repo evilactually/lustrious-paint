@@ -68,12 +68,13 @@ public:
   class EdgeIterator {
   friend LsBCCLattice;
   public:
-    LsOptional<LsBCCEdge> Next();
+    bool Next();
     operator LsBCCEdge() const;
   private:
     EdgeIterator(LsBCCLattice const& lattice);
     LsBCCLattice const* lattice;
-	NodeIterator nodeIterator;
+	  NodeIterator nodeIterator;
+	  LsBCCEdge current;
     int currentNexusIndex = 0;
   };
   LsBCCLattice(LsDomain domain);
@@ -97,7 +98,7 @@ protected:
   std::tuple<int, int, int> minima;
   std::tuple<int, int, int> maxima;
   std::vector<NodeMetaData> nodeMetaData;
-  LsOptional<int> GetEdgeIndexInNexus(LsBCCLattice::LsBCCEdge edge) const;
+  LsOptional<int> GetEdgeIndexInNexus(LsBCCEdge edge) const;
   void FindEdgeInNexus(LsBCCEdge edge, LsBCCNode* nexusNode, int* nexusOffset) const;
   NodeMetaData& GetNodeMetaDataReference(LsBCCNode node);
   NodeMetaData const& GetNodeMetaDataConstReference(LsBCCNode node) const;
