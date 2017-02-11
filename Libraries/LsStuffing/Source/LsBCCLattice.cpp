@@ -169,7 +169,13 @@ bool LsBCCLattice::EdgeIterator::Next() {
     return Next(); // Keep looking for next valid edge
   }
   else {
-    return false;
+    if ( nodeIterator.Next() ) {
+      currentNexusIndex = -1; // Recursive call to Next() will make it 0
+      return Next();
+    }
+    else {
+      return false; // No more nodes
+    }
   }
 }
 
@@ -220,7 +226,7 @@ LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node)
 }
 
 LsBCCLattice::EdgeIterator LsBCCLattice::GetEdgeIterator() const {               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
-  throw 1;
+  return EdgeIterator(*this);
 }
 
 glm::vec3 LsBCCLattice::GetNodePosition(LsBCCNode node) const {
