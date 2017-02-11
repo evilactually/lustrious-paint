@@ -131,7 +131,7 @@ LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, Ls
 // Get the current edge. The origin node is guaranteed to be the first node of the edge.
 //-------------------------------------------------------------------------------
 LsBCCLattice::NodeEdgeIterator::operator LsBCCEdge() const {
-  return current;
+  return current; //TODO: assert that this is valid
 }
 
 bool LsBCCLattice::NodeEdgeIterator::Next() {
@@ -153,17 +153,24 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
 LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(&lattice), nodeIterator(lattice.GetNodeIterator()) { }
 
 LsBCCLattice::EdgeIterator::operator LsBCCEdge() const {
-  
-  // iterate over nodes, then over edges stored at node
-  // can reuse NodeEdgeIterator here
-  throw 1;
+  return current;
 }
 
-//LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(lattice) { };
-
-LsOptional<LsBCCEdge> LsBCCLattice::EdgeIterator::Next() {
-  
-  throw 1;
+bool LsBCCLattice::EdgeIterator::Next() {
+  ++currentNexusIndex;
+  if ( currentNexusIndex < 7 ) {
+    LsBCCNode n1 = nodeIterator;
+    LsBCCNode n2 = AddNodeOffset(n1, nexusOffsets[currentNexusIndex]);
+    current = LsBCCEdge(n1, n2);
+    if (lattice->NodeExists(n2))
+    {
+      return true;
+    }
+    return Next(); // Keep looking for next valid edge
+  }
+  else {
+    return false;
+  }
 }
 
 LsBCCLattice::LsBCCLattice(LsDomain domain) {
