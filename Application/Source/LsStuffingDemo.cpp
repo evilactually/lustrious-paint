@@ -10,24 +10,12 @@ glm::mat4x4 makeTSR(glm::vec3 rotation, float scale, glm::vec3 offset) {
   m = glm::rotate(m, rotation[2], glm::vec3(1.0f, 0.0f, 0.0f));
   m = glm::rotate(m, rotation[1], glm::vec3(0.0f, 1.0f, 0.0f));
   m = glm::rotate(m, rotation[0], glm::vec3(0.0f, 0.0f, 1.0f));
-  
-  
   return m;
 }
 
 glm::vec4 project(glm::vec4 point) {
   return glm::vec4(point[0] / point[2], point[1] / point[2], point[2], point[3]);
 }
-
-
-/*
- Track mouse events, make a spin view, add delta x to RX, y to RY. 
- Iterate over edges to draw edges.
- Iterate over nodes to draw points for nodes, etc.
- Stuffed mesh can be draw by iterating over indecies and sampling vertecies from LsTetrahedronMesh class.
- Make simple animations and record them to gifs.
- Need a perspective projection(calculated on host for now, since I'm using LsRenderer to draw).
-*/
 
 LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer): renderer(renderer) { }
 
