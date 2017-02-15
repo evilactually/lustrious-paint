@@ -90,7 +90,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
   LsBCCLattice::TetrahedronIterator iterator = lattice.GetTetrahedronIterator();
   do {
     LsBCCTetrahedron tetrahedron = iterator;   
-    if ( pppp.Match(lattice, tetrahedron) ) {       // Group 1
+    if ( pppp.Match(lattice, tetrahedron) ) {        // Group 1
       mesh.AddTetrahedron( pppp.GetNodePosition(1),
                            pppp.GetNodePosition(2),
                            pppp.GetNodePosition(3),

@@ -22,6 +22,8 @@ public:
   void SetLineWidth(float width);
   void SetPointSize(float size);
   void RefreshSwapChain();
+  int GetSurfaceWidth();
+  int GetSurfaceHeight();
 private:
   void BeginDrawing();
   void EndDrawing();

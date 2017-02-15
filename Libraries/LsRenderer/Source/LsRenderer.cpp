@@ -242,6 +242,16 @@ void LsRenderer::RefreshSwapChain() {
   }
 }
 
+int LsRenderer::GetSurfaceWidth()
+{
+  return swapChainInfo.extent.width;
+}
+
+int LsRenderer::GetSurfaceHeight()
+{
+  return swapChainInfo.extent.height;
+}
+
 LsRenderer::~LsRenderer() {
   canRender = false;
 
