@@ -1,0 +1,1 @@
+Build something like a little "game" engine with camera and scene graph and ability to construct and render scenes, keep in in the code base for later when I will need to add 3d support and just to play around.
