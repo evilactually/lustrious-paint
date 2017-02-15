@@ -4,6 +4,7 @@
 #include <LsRenderer.h>
 #include <glm/glm.hpp>
 #include <windows.h>
+#include <LsBCCLattice.h>
 
 class LsStuffingDemo: public LsFWin32MessageHandler
 {
@@ -13,6 +14,7 @@ public:
   void Render();
   virtual void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 private:
+  std::shared_ptr<LsBCCLattice> lattice;
   std::shared_ptr<LsRenderer> renderer;
   glm::vec3 rotation = { 0.0f, 0.0f, 0.0f};
   float scale = 1.0f;
