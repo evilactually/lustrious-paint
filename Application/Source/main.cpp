@@ -11,6 +11,7 @@
 #include <LsBrushRig.h>
 #include <LsPointGrid.h>
 #include <LsUselessBox.h>
+#include <LsStuffingDemo.h>
 #include <LsConsole.h>
 #include <LsError.h>
 // #include <Test.h>
@@ -50,6 +51,7 @@ class Application: LsFWin32MessageHandler {
   std::shared_ptr<LsBrushRig> brushRig;
   std::shared_ptr<LsPointGrid> pointGrid;
   std::shared_ptr<LsUselessBox> uselessBox;
+  std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
   HCTX tabletContext;
 public:
@@ -81,12 +83,13 @@ public:
 
     // Initialize the rendering system
     renderer = std::make_shared<LsRenderer>(hInstance, window->GetWindowHandle());
-	renderer->RefreshSwapChain();
+	  renderer->RefreshSwapChain();
 
-	// Initialize components
-	brushRig = std::make_shared<LsBrushRig>(renderer);
-	pointGrid = std::make_shared<LsPointGrid>(renderer);
-	uselessBox = std::make_shared<LsUselessBox>(renderer);
+	  // Initialize components
+	  brushRig = std::make_shared<LsBrushRig>(renderer);
+	  pointGrid = std::make_shared<LsPointGrid>(renderer);
+	  uselessBox = std::make_shared<LsUselessBox>(renderer);
+    stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
   }
@@ -99,6 +102,7 @@ public:
       pointGrid->Render();
       brushRig->Render();
       uselessBox->Render();
+      stuffingDemo->Render();
       renderer->EndFrame();
     };
   }

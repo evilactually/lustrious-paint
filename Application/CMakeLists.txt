@@ -10,6 +10,7 @@ set(INCLUDE_FILES
   "Include/LsBrushRig.h"
   "Include/LsPointGrid.h"
   "Include/LsUselessBox.h"
+  "Include/LsStuffingDemo.h"
   "Include/Version.h.in")
 
 set(SOURCE_FILES
@@ -17,7 +18,8 @@ set(SOURCE_FILES
   "Source/Main.cpp"
   "Source/LsBrushRig.cpp"
   "Source/LsPointGrid.cpp"
-  "Source/LsUselessBox.cpp")
+  "Source/LsUselessBox.cpp"
+  "Source/LsStuffingDemo.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"
