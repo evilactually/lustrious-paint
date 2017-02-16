@@ -150,7 +150,10 @@ bool LsBCCLattice::NodeEdgeIterator::Next() {
   }
 }
 
-LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(&lattice), nodeIterator(lattice.GetNodeIterator()) { }
+LsBCCLattice::EdgeIterator::EdgeIterator(LsBCCLattice const& lattice):lattice(&lattice), nodeIterator(lattice.GetNodeIterator()) {
+  currentNexusIndex = -1; 
+  Next();
+}
 
 LsBCCLattice::EdgeIterator::operator LsBCCEdge() const {
   return current;
