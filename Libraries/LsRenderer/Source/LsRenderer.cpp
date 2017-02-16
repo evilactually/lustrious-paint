@@ -318,10 +318,12 @@ LsRenderer::~LsRenderer() {
 
   if ( swapChainInfo.presentationSurface )
     vkDestroySurfaceKHR( instance, swapChainInfo.presentationSurface, nullptr );
-  
+
+#ifdef VULKAN_VALIDATION
   if ( debugReportCallback )
     vkDestroyDebugReportCallbackEXT( instance, debugReportCallback, nullptr );
-  
+#endif // VULKAN_VALIDATION
+
   if (instance)
     vkDestroyInstance( instance, nullptr );
 
