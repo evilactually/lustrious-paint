@@ -14,6 +14,7 @@ public:
   void Render();
   virtual void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 private:
+  glm::vec3 pan = { 0.0f, 0.0f, 0.0f };
   std::shared_ptr<LsBCCLattice> lattice;
   std::shared_ptr<LsRenderer> renderer;
   glm::vec3 rotation = { 0.0f, 0.0f, 0.0f};
