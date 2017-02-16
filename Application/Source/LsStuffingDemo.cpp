@@ -23,7 +23,7 @@ glm::vec4 project(glm::vec4 point) {
 }
 
 LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer): renderer(renderer) {
-  lattice = std::make_shared<LsBCCLattice>(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(16, 16, 16), 0.5f);
+  lattice = std::make_shared<LsBCCLattice>(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 4, 4), 0.5f);
 }
 
 LsStuffingDemo::~LsStuffingDemo()
@@ -36,17 +36,23 @@ void LsStuffingDemo::Render()
                           { 1.0f, 0.0f, 0.0f, 1.0f },
                           { 0.0f, 1.0f, 0.0f, 1.0f },
                           { 0.0f, 0.0f, 1.0f, 1.0f } };
+
+  // Pan transformation
+  glm::mat4x4 pan_xform = glm::translate(glm::tmat4x4<float>(1.0f), pan);
+
   // Construct a matrix to place an object in view
-  glm::mat4x4 m = makeTSR( rotation, scale, offset );
+  glm::mat4x4 m = makeTSR( rotation, scale, offset )*pan_xform;
+
+  glm::mat4x4 m_no_pan = makeTSR(rotation, scale, offset);
   
   // Construct post-projection transformation
   glm::mat4x4 m2 = glm::translate(glm::tmat4x4<float>(1.0f), { renderer->GetSurfaceWidth() / 2.0f, renderer->GetSurfaceHeight() / 2.0f, 0.0f });
-  m2 = glm::scale(m2, glm::vec3(1024.0f, -1024.0f, 1024.0f));
+  m2 = glm::scale(m2, glm::vec3(1024.0f, -1024.0f, 1.0f));
   
   // Transform all points
   for (int i = 0; i < 4; i++)
   {
-    points[i] = m2*project(m*points[i]);
+    points[i] = m2*project(m_no_pan*points[i]);
   }
   
   renderer->SetLineWidth(1.0f);
@@ -56,7 +62,29 @@ void LsStuffingDemo::Render()
   renderer->DrawLine(points[0][0], points[0][1], points[2][0], points[2][1]);
   renderer->SetColor(0.0f, 0.0f, 1.0f);
   renderer->DrawLine(points[0][0], points[0][1], points[3][0], points[3][1]);
-    
+  
+  // Draw lattice edges
+  renderer->SetLineWidth(1.0f);
+  renderer->SetColor(1.0f, 1.0f, 1.0f);
+  LsBCCLattice::EdgeIterator it2 = lattice->GetEdgeIterator();
+  do
+  {
+    LsBCCEdge edge = it2;
+    LsBCCNode n1 = std::get<0>(edge);
+    LsBCCNode n2 = std::get<1>(edge);
+    glm::vec4 p1 = glm::vec4(lattice->GetNodePosition(n1), 1.0f);
+    glm::vec4 p2 = glm::vec4(lattice->GetNodePosition(n2), 1.0f);
+    p1 = m2*project(m*p1);
+    p2 = m2*project(m*p2);
+    if (lattice->GetEdgeColor(edge) == LsBCCColor::eRed) {
+      renderer->SetColor(1.0f, 0.0f, 0.0f);
+    }
+    else {
+      renderer->SetColor(1.0f, 1.0f, 0.0f);
+    }
+    renderer->DrawLine(p1[0], p1[1], p2[0], p2[1]);
+  } while (it2.Next());
+
   // Draw lattice nodes
   renderer->SetPointSize(5.0f);
   LsBCCLattice::NodeIterator it = lattice->GetNodeIterator();
@@ -64,8 +92,6 @@ void LsStuffingDemo::Render()
   {
     LsBCCNode node = it;
     glm::vec4 position(lattice->GetNodePosition(node), 1.0f);
-    glm::mat4x4 pan_xform = glm::translate(glm::tmat4x4<float>(1.0f), pan);
-    position = pan_xform*position;
     position = m2*project(m*position);
     if (lattice->GetNodeColor(node) == LsBCCColor::eRed) {
       renderer->SetColor(1.0f, 0.0f, 0.0f);
@@ -76,6 +102,7 @@ void LsStuffingDemo::Render()
     renderer->DrawPoint(position[0], position[1]);
   } while (it.Next());
 
+  // Draw pan axis in world space
   glm::vec4 points2[3] = { { 0.0f, 0.0f, 0.0f, 1.0f },
                            { 1.0f, 0.0f, 0.0f, 1.0f },
                            { 0.0f, 1.0f, 0.0f, 1.0f } };
@@ -96,6 +123,7 @@ void LsStuffingDemo::Render()
   renderer->DrawLine(points2[0][0], points2[0][1], points2[1][0], points2[1][1]);
   renderer->SetColor(0.0f, 1.0f, 0.0f);
   renderer->DrawLine(points2[0][0], points2[0][1], points2[2][0], points2[2][1]);
+
 }
 
 void LsStuffingDemo::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam)
