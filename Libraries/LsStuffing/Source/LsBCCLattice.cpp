@@ -56,6 +56,26 @@ static const LsBCCNodeOffset adjacentOffsets[14] = {
   {0,0,-2}
 };
 
+// We iterate all tetrahedra following a tiling pattern. The pattern has it's origin at some black node.
+// The pattern has three axes along x, y and z with with adjacent black nodes at 2 units offsets.
+// Surrounding each of those 3 axes are 4 tetrahedra, making up a pattern of total 12 tetrahedra.
+// To iterate over all tetrahedra we iterate over all black vertecies and then over every tetrahedra in
+// the pattern.
+static const LsBCCNodeOffset tetrahedraOffsets[12][3] = {
+  {{2,0,0},{1,1,-1},{1,-1,-1}}, // x-axis
+  {{2,0,0},{1,1,1},{1,1,-1}},
+  {{2,0,0},{1,-1,1},{1,1,1}},
+  {{2,0,0},{1,-1,-1},{1,-1,1}},
+  {{0,2,0},{-1,1,-1},{1,1,-1}}, // y-axis
+  {{0,2,0},{1,1,1},{1,1,-1}},
+  {{0,2,0},{-1,1,1},{1,1,1}},
+  {{0,2,0},{-1,1,1},{-1,1,-1}},
+  {{0,0,2},{-1,1,1},{1,1,1}},   // z-axis
+  {{0,0,2},{1,1,1},{1,-1,1}},
+  {{0,0,2},{-1,-1,1},{1,-1,1}},
+  {{0,0,2},{-1,1,1},{-1,-1,1}}
+};
+
 //-------------------------------------------------------------------------------
 //-- Functions ------------------------------------------------------------------
 //-------------------------------------------------------------------------------
@@ -103,20 +123,62 @@ bool LsBCCLattice::NodeIterator::Next() {
   }
 }
 
-LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(&lattice) { };
+LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& lattice):lattice(&lattice) {
+  // Iteration pattern goes in steps of two, so to make sure all tetrahedra get the coverage
+  // we have to expand lattice bounds into even, if they already aren't.
+  minima.x = std::get<0>(this->lattice->minima);
+  minima.y = std::get<1>(this->lattice->minima);
+  minima.z = std::get<2>(this->lattice->minima);
+  if (LsOdd(minima.x)) minima.x = std::get<0>(this->lattice->minima) - 1;
+  if (LsOdd(minima.x)) minima.y = std::get<1>(this->lattice->minima) - 1;
+  if (LsOdd(minima.x)) minima.z = std::get<2>(this->lattice->minima) - 1;
+  maxima.x = std::get<0>(this->lattice->maxima);
+  maxima.y = std::get<1>(this->lattice->maxima);
+  maxima.z = std::get<2>(this->lattice->maxima);
+  if (LsOdd(maxima.x)) maxima.x = std::get<0>(this->lattice->maxima) + 1;
+  if (LsOdd(maxima.y)) maxima.y = std::get<1>(this->lattice->maxima) + 1;
+  if (LsOdd(maxima.z)) maxima.z = std::get<2>(this->lattice->maxima) + 1;
+  currentNode.x = minima.x;
+  currentNode.y = minima.y;
+  currentNode.z = minima.z;
+  currentPatternIndex = -1;
+  Next();
+};
 
 LsBCCLattice::TetrahedronIterator::operator LsBCCTetrahedron() const {
-  throw 1;
+  return currentTetrahedron;
 }
 
 bool LsBCCLattice::TetrahedronIterator::Next() {
-  // expand minima and maxima to include next back(even) nodes if they are red
-  // subtract from minima, and add to maxima
-  // iterate in "cubes", each cube contains 3*4 tetrahedra
-  // each 4-pack of them is wrapped around the three axial edges
-  // connecting it's center(red) with +2 center next(also red).
-  // we could go left-down-deep counterclockwise order for example
-  throw 1;
+  ++currentPatternIndex;
+  if ( currentPatternIndex < 12 ) {
+    LsBCCNode n1 = { currentNode.x, currentNode.y, currentNode.z };
+    LsBCCNode n2 = AddNodeOffset(n1, tetrahedraOffsets[currentPatternIndex][0]);
+    LsBCCNode n3 = AddNodeOffset(n1, tetrahedraOffsets[currentPatternIndex][1]);
+    LsBCCNode n4 = AddNodeOffset(n1, tetrahedraOffsets[currentPatternIndex][2]);
+    currentTetrahedron = { n1, n2, n3, n4 };
+    if (lattice->NodeExists(n1) && lattice->NodeExists(n2) && lattice->NodeExists(n3) && lattice->NodeExists(n4)) {
+      return true;
+    }
+    else {
+      return Next(); // Try to find another node
+    }
+  } else {
+    currentNode.x += 2;
+    if (currentNode.x > maxima.x) {
+      currentNode.x = 0;
+      currentNode.y += 2;
+      if (currentNode.y > maxima.y) {
+        currentNode.y = 0;
+        currentNode.z += 2;
+        if (currentNode.z > maxima.z) {
+          return false; // No more nodes
+        }
+      }
+    }
+    currentPatternIndex = -1;
+    return Next();
+  }
 };
 
 LsBCCLattice::NodeEdgeIterator::NodeEdgeIterator(LsBCCLattice const& lattice, LsBCCNode node):lattice(&lattice),n1(node) {
@@ -216,7 +278,7 @@ LsBCCLattice::LsBCCLattice(std::tuple<int, int, int> minima,
   }
 }
 
-LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() const {   //   TODO: ???
+LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() const {
   return TetrahedronIterator(*this);
 }
 
@@ -228,7 +290,7 @@ LsBCCLattice::NodeEdgeIterator LsBCCLattice::GetNodeEdgeIterator(LsBCCNode node)
   return NodeEdgeIterator(*this, node);
 }
 
-LsBCCLattice::EdgeIterator LsBCCLattice::GetEdgeIterator() const {               //   TODO: iterate over vertecies, iterate over nexus edges, use bounds to filter non-existent 
+LsBCCLattice::EdgeIterator LsBCCLattice::GetEdgeIterator() const {
   return EdgeIterator(*this);
 }
 

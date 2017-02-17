@@ -50,6 +50,23 @@ public:
   private:
     TetrahedronIterator(LsBCCLattice const& lattice);
     LsBCCLattice const* lattice;
+    struct {
+      int x;
+      int y;
+      int z;
+    } minima;
+    struct {
+      int x;
+      int y;
+      int z;
+    } maxima;
+    struct {
+      int x;
+      int y;
+      int z;
+    } currentNode;
+    int currentPatternIndex;
+    LsBCCTetrahedron currentTetrahedron;
   };
 
   class NodeEdgeIterator {
