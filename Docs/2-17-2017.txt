@@ -1,0 +1,13 @@
+What is a next-generation painting application?
+
+Leaf brush with a more natural response to match current hardware capabilities
+
+Use of 3d to aid scene setup
+
+Physics-based pallets
+
+Stencils for detail replication
+
+Dynamic resolution
+
+
