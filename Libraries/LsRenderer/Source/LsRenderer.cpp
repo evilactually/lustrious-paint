@@ -549,6 +549,11 @@ void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
   vkCmdDraw( commandBuffer, 2, 1, 0, 0 );
 }
 
+void LsRenderer::DrawLine(glm::vec2 p1, glm::vec2 p2)
+{
+  DrawLine(p1[0], p1[1], p2[0], p2[1]);
+}
+
 void LsRenderer::DrawPoint(float x, float y) {
   if( !drawingContext.drawing ) {
     BeginDrawing();

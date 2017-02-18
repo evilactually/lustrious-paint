@@ -17,6 +17,7 @@ public:
   void EndFrame();
   void Clear(float r, float g, float b);
   void DrawLine(float x1, float y1, float x2, float y2);
+  void DrawLine(glm::vec2 p1, glm::vec2 p2);
   void DrawPoint(float x, float y);
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
