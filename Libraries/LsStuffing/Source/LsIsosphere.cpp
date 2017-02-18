@@ -12,7 +12,7 @@ LsIsosphere::LsIsosphere(glm::vec3 position, float radius):position(position), r
 LsIsosphere::~LsIsosphere() {};
 
 LsDomain LsIsosphere::GetDomain() const {
-  LsDomain domain = {};
+  LsDomain domain;
   domain.x1 = position.x - radius;
   domain.y1 = position.y - radius;
   domain.z1 = position.z - radius;

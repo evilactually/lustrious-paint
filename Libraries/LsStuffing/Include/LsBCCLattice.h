@@ -94,7 +94,7 @@ public:
 	  LsBCCEdge current;
     int currentNexusIndex = 0;
   };
-  LsBCCLattice(LsDomain domain);
+  LsBCCLattice(LsDomain domain, float step);
   LsBCCLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
 
   TetrahedronIterator GetTetrahedronIterator() const; //   TODO: Use the cube tile
@@ -115,6 +115,7 @@ protected:
   std::tuple<int, int, int> minima;
   std::tuple<int, int, int> maxima;
   std::vector<NodeMetaData> nodeMetaData;
+  void CreateLattice(std::tuple<int, int, int> minima, std::tuple<int, int, int> maxima, float step);
   LsOptional<int> GetEdgeIndexInNexus(LsBCCEdge edge) const;
   void FindEdgeInNexus(LsBCCEdge edge, LsBCCNode* nexusNode, int* nexusOffset) const;
   NodeMetaData& GetNodeMetaDataReference(LsBCCNode node);

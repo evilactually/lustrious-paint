@@ -25,7 +25,7 @@ bool operator<(LsBCCValue const& v1, LsBCCValue const& v2) {
 // }
 
 void LsIsosurfaceStuffer::Stuff(LsTetrahedronMesh& mesh, LsIsosurface const& stuffable) {
-  LsBCCLattice bccLattice(stuffable.GetDomain());
+  LsBCCLattice bccLattice(stuffable.GetDomain(), 1.0f);
   UpdateValues(bccLattice, stuffable);
   UpdateCutPoints(bccLattice, stuffable);
   Warp(bccLattice);

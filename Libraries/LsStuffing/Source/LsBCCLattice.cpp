@@ -13,6 +13,7 @@
 #include <LsBCCLattice.h>
 #include <LsMath.h>
 #include <assert.h>
+#include <cmath>
 
 //-------------------------------------------------------------------------------
 //-- Typedefs -------------------------------------------------------------------
@@ -130,17 +131,18 @@ LsBCCLattice::TetrahedronIterator::TetrahedronIterator(LsBCCLattice const& latti
   minima.y = std::get<1>(this->lattice->minima);
   minima.z = std::get<2>(this->lattice->minima);
   if (LsOdd(minima.x)) minima.x = std::get<0>(this->lattice->minima) - 1;
-  if (LsOdd(minima.x)) minima.y = std::get<1>(this->lattice->minima) - 1;
-  if (LsOdd(minima.x)) minima.z = std::get<2>(this->lattice->minima) - 1;
+  if (LsOdd(minima.y)) minima.y = std::get<1>(this->lattice->minima) - 1;
+  if (LsOdd(minima.z)) minima.z = std::get<2>(this->lattice->minima) - 1;
   maxima.x = std::get<0>(this->lattice->maxima);
   maxima.y = std::get<1>(this->lattice->maxima);
   maxima.z = std::get<2>(this->lattice->maxima);
   if (LsOdd(maxima.x)) maxima.x = std::get<0>(this->lattice->maxima) + 1;
   if (LsOdd(maxima.y)) maxima.y = std::get<1>(this->lattice->maxima) + 1;
   if (LsOdd(maxima.z)) maxima.z = std::get<2>(this->lattice->maxima) + 1;
-  currentNode.x = minima.x;
-  currentNode.y = minima.y;
+  currentNode.x = minima.x; // It's normal if the currentNode is not part of the lattice, at the boundaries we have to
+  currentNode.y = minima.y; // outside the grid to apply the pattern. The node mast be valid though(all even or all odd coordinates).
   currentNode.z = minima.z;
+  assert(this->lattice->Valid(std::make_tuple(currentNode.x, currentNode.y, currentNode.z)));
   currentPatternIndex = -1;
   Next();
 };
@@ -244,10 +246,14 @@ bool LsBCCLattice::EdgeIterator::Next() {
   }
 }
 
-LsBCCLattice::LsBCCLattice(LsDomain domain) {
+LsBCCLattice::LsBCCLattice(LsDomain domain, float step) {
   // TODO: Implement this in terms of previous constructor code. Domain is a floating 
   // point bounding box. The grid must include every tetrahedron that is touched by it.
   // It can be accomplished simply by rounding up by step size outwards.
+  std::tuple<int, int, int> minima = { floor(domain.x1 / step)-1, floor(domain.y1 / step)-1, floor(domain.z1 / step)-1 };
+  std::tuple<int, int, int> maxima = { ceil(domain.x2 / step)+1, ceil(domain.y2 / step)+1, ceil(domain.z2 / step)+1 };
+
+  CreateLattice(minima, maxima, step); // TODO: floor, ceiling, round up and down to even
 }
 
 //-------------------------------------------------------------------------------
@@ -257,25 +263,8 @@ LsBCCLattice::LsBCCLattice(LsDomain domain) {
 //-------------------------------------------------------------------------------
 LsBCCLattice::LsBCCLattice(std::tuple<int, int, int> minima,
                            std::tuple<int, int, int> maxima,
-                           float step):minima(minima), maxima(maxima) {
-  for (int z = std::get<2>(minima); z <= std::get<2>(maxima); ++z)
-  {
-    for (int y = std::get<1>(minima); y <= std::get<1>(maxima); ++y)
-    {
-      for (int x = std::get<0>(minima); x <= std::get<0>(maxima); ++x)
-      {
-        LsBCCNode node = {x,y,z};
-        if ( Valid(node) )
-        {
-          NodeMetaData nodeInfo;
-          nodeInfo.coordinates = node;
-          nodeInfo.position = step*glm::vec3(x,y,z); // Vertex coordinates correspond to 
-          nodeInfo.value = LsBCCValue::eUnassigned;  // BCC grid coordinates scaled by step
-          nodeMetaData.push_back(nodeInfo);
-        }
-      }
-    }
-  }
+                           float step) {
+  CreateLattice(minima, maxima, step);
 }
 
 LsBCCLattice::TetrahedronIterator LsBCCLattice::GetTetrahedronIterator() const {
@@ -354,6 +343,31 @@ LsBCCColor LsBCCLattice::GetEdgeColor(LsBCCEdge edge) const {
     return LsBCCColor::eBlack;
   } else {
     return LsBCCColor::eRed;
+  }
+}
+
+void LsBCCLattice::CreateLattice(std::tuple<int, int, int> minima,
+  std::tuple<int, int, int> maxima,
+  float step) {
+  this->minima = minima;
+  this->maxima = maxima;
+  for (int z = std::get<2>(minima); z <= std::get<2>(maxima); ++z)
+  {
+    for (int y = std::get<1>(minima); y <= std::get<1>(maxima); ++y)
+    {
+      for (int x = std::get<0>(minima); x <= std::get<0>(maxima); ++x)
+      {
+        LsBCCNode node = { x,y,z };
+        if (Valid(node))
+        {
+          NodeMetaData nodeInfo;
+          nodeInfo.coordinates = node;
+          nodeInfo.position = step*glm::vec3(x, y, z); // Vertex coordinates correspond to 
+          nodeInfo.value = LsBCCValue::eUnassigned;    // BCC grid coordinates scaled by step
+          nodeMetaData.push_back(nodeInfo);
+        }
+      }
+    }
   }
 }
 

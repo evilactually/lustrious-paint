@@ -16,6 +16,8 @@
 // Describes extent of isosurface domain
 //-------------------------------------------------------------------------------
 struct LsDomain {
+  LsDomain() : x1(0), y1(0), z1(0), x2(0), y2(0), z2(0) {};
+  LsDomain(float x1, float y1, float z1, float x2, float y2, float z2): x1(x1), y1(y1), z1(z1), x2(x2), y2(y2), z2(z2) {};
   float x1;
   float y1;
   float z1;
