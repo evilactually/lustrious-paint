@@ -188,3 +188,17 @@ LsNZPPMatcher::LsNZPPMatcher() {
   AddEdge(4, 1, LsBCCColor::eRed);
   AddEdge(4, 2, LsBCCColor::eRed);
 }
+
+LsNNPPMatcher::LsNNPPMatcher()
+{
+  AddNode(1, LsBCCValue::ePositive);
+  AddNode(2, LsBCCValue::eNegative);
+  AddNode(3, LsBCCValue::ePositive);
+  AddNode(4, LsBCCValue::eNegative);
+  AddEdge(1, 2, LsBCCColor::eBlack);
+  AddEdge(3, 4, LsBCCColor::eBlack);
+  AddEdge(1, 4, LsBCCColor::eRed);
+  AddEdge(1, 3, LsBCCColor::eRed);
+  AddEdge(2, 4, LsBCCColor::eRed);
+  AddEdge(2, 3, LsBCCColor::eRed);
+}

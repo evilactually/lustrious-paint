@@ -50,6 +50,7 @@ private:
   LsNNZPMatcher nnzp;
   LsNNNPMatcher nnnp;
   LsNZPPMatcher nzpp; // Group 3
+  LsNZPPMatcher nnpp;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);

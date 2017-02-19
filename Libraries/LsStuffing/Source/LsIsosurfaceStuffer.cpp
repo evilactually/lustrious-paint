@@ -130,8 +130,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            nnnp.GetEdgeCutPoint(4, 2),
                            nnnp.GetEdgeCutPoint(4, 3),
                            nnnp.GetNodePosition(4) );
-    }
-    else if ( nzpp.Match(lattice, tetrahedron) ) { // Group 3
+    } else if ( nzpp.Match(lattice, tetrahedron) ) { // Group 3
       mesh.AddTetrahedron( nzpp.GetNodePosition(2),
                            nzpp.GetNodePosition(3),
                            nzpp.GetNodePosition(4),
@@ -140,6 +139,19 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            nzpp.GetNodePosition(3),
                            nzpp.GetNodePosition(4),
                            nzpp.GetEdgeCutPoint(1, 2));
+    } else if (nzpp.Match(lattice, tetrahedron)) {
+      mesh.AddTetrahedron( nnpp.GetNodePosition(1),
+                           nnpp.GetEdgeCutPoint(1, 2),
+                           nnpp.GetEdgeCutPoint(3, 4),
+                           nnpp.GetEdgeCutPoint(1, 4) );
+      mesh.AddTetrahedron( nnpp.GetNodePosition(1),
+                           nnpp.GetEdgeCutPoint(1, 2),
+                           nnpp.GetNodePosition(3),
+                           nnpp.GetEdgeCutPoint(3, 4) );
+      mesh.AddTetrahedron( nnpp.GetEdgeCutPoint(2, 3),
+                           nnpp.GetEdgeCutPoint(1, 2),
+                           nnpp.GetNodePosition(3),
+                           nnpp.GetEdgeCutPoint(3, 4) );
     }
 
   } while ( iterator.Next() );
