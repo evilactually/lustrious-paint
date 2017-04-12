@@ -102,3 +102,40 @@ static glm::tmat3x3<float> WindowToVulkanTransformation(HWND windowHandle) {
 
   return transformation;
 }
+
+// Find a memory type in "memoryTypeBits" that includes all of "properties"
+int32_t FindMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
+{
+  for (int32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+  {
+    if ((memoryTypeBits & (1 << i)) &&
+      ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
+      return i;
+  }
+  return -1;
+}
+
+void CmdImageBarrier(VkCommandBuffer cmdBuffer,
+                     VkAccessFlags srcAccessMask,
+                     VkAccessFlags  dstAccessMask,
+                     VkImageLayout oldLayout,
+                     VkImageLayout newLayout,
+                     uint32_t srcQueueFamilyIndex,
+                     uint32_t dstQueueFamilyIndex,
+                     VkImage image,
+                     VkImageSubresourceRange subresourceRange,
+                     VkPipelineStageFlags srcStageMask,
+                     VkPipelineStageFlags dstStageMask,
+                     VkDependencyFlags dependencyFlags) {
+  VkImageMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.srcAccessMask = srcAccessMask;
+  barrier.dstAccessMask = dstAccessMask;
+  barrier.oldLayout = oldLayout;
+  barrier.newLayout = newLayout;
+  barrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
+  barrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
+  barrier.image = image;
+  barrier.subresourceRange = subresourceRange;
+  vkCmdPipelineBarrier(cmdBuffer, srcAccessMask, dstAccessMask, dependencyFlags, 0, nullptr, 0, nullptr, 1, &barrier);
+}

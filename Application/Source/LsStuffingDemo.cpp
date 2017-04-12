@@ -9,6 +9,8 @@
 #include <LsBCCLatticeTypes.h>
 #include <LsMath.h>
 
+#define STEP 1.0f
+
 glm::mat4x4 makeTSR(glm::vec3 rotation, float scale, glm::vec3 offset) {
   glm::mat4x4 m = glm::tmat4x4<float>(1.0f);
   m = glm::translate(glm::tmat4x4<float>(1.0f), offset);
@@ -26,7 +28,7 @@ glm::vec4 project(glm::vec4 point) {
 LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer): renderer(renderer) {
   //lattice = std::make_shared<LsBCCLattice>(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(8, 8, 8), 0.5f);
   domain = LsDomain(0.0f, 0.0f, 0.0f, 4.0f, 4.0f, 4.0f);
-  lattice = std::make_shared<LsBCCLattice>(domain, 2.0f);
+  lattice = std::make_shared<LsBCCLattice>(domain, STEP);
 }
 
 LsStuffingDemo::~LsStuffingDemo()
@@ -120,15 +122,15 @@ void LsStuffingDemo::Render()
     glm::vec3 p4 = lattice->GetNodePosition(std::get<3>(tetrahedron));
     glm::vec4 avg = glm::vec4((p1 + p2 + p3 + p4) / 4.0f, 1.0f);
     
-    float red = sin(avg.x / 4.0f);
-    float green = sin(avg.y / 4.0f);
-    float blue = sin(avg.z/4.0f);
+    float red = sin(avg.x / (domain.x2 - domain.x1));
+    float green = sin(avg.y / (domain.y2 - domain.y1));
+    float blue = sin(avg.z / (domain.z2 - domain.z1));
     
     avg = m2*project(m*avg);
     
-    //float red = LsRandom();
-    //float green = LsRandom();
-    //float blue = LsRandom();
+    //red = 1.0f;// LsRandom();
+    //green = 1.0f;// LsRandom();
+    //blue = 0.0f; // LsRandom();
     
     renderer->SetColor(red, green, blue);
     renderer->DrawPoint(avg[0], avg[1]);
@@ -240,7 +242,7 @@ void LsStuffingDemo::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam)
   case WM_KEYDOWN:
     domain.x2 += 0.1;// = LsDomain(0.0f, 0.0f, 0.0f, 4.1f, 6.9f, 4.1f);
     domain.x1 += 0.1;
-    lattice = std::make_shared<LsBCCLattice>(domain, 2.0f);
+    lattice = std::make_shared<LsBCCLattice>(domain, STEP);
     break;
   }
 }

@@ -75,6 +75,10 @@ LsOptional<VkImageUsageFlags> GetSwapChainUsageFlags( VkSurfaceCapabilitiesKHR &
   // We can define other usage flags but we always need to check if they are supported
   VkImageUsageFlags additionalImageUsageFlags = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
+#ifdef GIF_RECORDING
+  additionalImageUsageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+#endif
+
   if( surface_capabilities.supportedUsageFlags & additionalImageUsageFlags ) {
     return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | additionalImageUsageFlags;
   }

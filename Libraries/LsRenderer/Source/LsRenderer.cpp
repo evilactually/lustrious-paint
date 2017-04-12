@@ -18,6 +18,10 @@
 #include <LsVulkanCommandBuffers.h>
 #include <LsRenderer.h>
 
+#ifdef GIF_RECORDING
+#include <FreeImage.h>
+#endif
+
 using namespace lslib;
 
 //-------------------------------------------------------------------------------
@@ -67,9 +71,322 @@ std::vector<const char*> requiredInstanceValidationLayers = {
 //  return &renderer;
 //}
 
+#ifdef GIF_RECORDING
+void LsRenderer::CreateCapturedFrameImage() {
+  VkImageCreateInfo imageCreateInfo = {};
+  imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  imageCreateInfo.flags = 0;
+  imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+  imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+  imageCreateInfo.extent = { swapChainInfo.extent.width, swapChainInfo.extent.height, 1 };
+  imageCreateInfo.mipLevels = 1;
+  imageCreateInfo.arrayLayers = 1;
+  imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+  imageCreateInfo.tiling = VK_IMAGE_TILING_LINEAR;
+  imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  imageCreateInfo.queueFamilyIndexCount = 0;
+  imageCreateInfo.pQueueFamilyIndices = nullptr;
+  imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+  VkMemoryRequirements memoryRequirements;
+  if (vkCreateImage(device, &imageCreateInfo, nullptr, &captureInfo.capturedFrameImage.image) != VK_SUCCESS) {
+    throw std::string("Could not create image!");
+  }
+  
+  vkGetImageMemoryRequirements(device, captureInfo.capturedFrameImage.image, &memoryRequirements);
+  // memory requirements give required flags only, not exact type index, we have to find that
+
+  VkPhysicalDeviceMemoryProperties memoryProperties;
+  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+  int32_t memoryType = FindMemoryType(memoryProperties, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+                                                                                           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  VkMemoryAllocateInfo memoryAllocationInfo = {};
+  memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  memoryAllocationInfo.allocationSize = memoryRequirements.size;
+  memoryAllocationInfo.memoryTypeIndex = memoryType;
+  
+  vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &captureInfo.capturedFrameImage.memory);
+  vkBindImageMemory(device, captureInfo.capturedFrameImage.image, captureInfo.capturedFrameImage.memory, 0);
+  // frame memory size used later for writing to file, and later it doubles as frame pitch for reading
+  captureInfo.capturedFrameImage.size = memoryRequirements.size;
+}
+
+void LsRenderer::RecordFrameCaptureCmds() {
+  VkCommandBufferBeginInfo cmd_buffer_begin_info = {};
+  cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cmd_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+  cmd_buffer_begin_info.pInheritanceInfo = nullptr;
+  
+  vkBeginCommandBuffer( captureInfo.captureFrameCmds, &cmd_buffer_begin_info );
+  
+  VkImageSubresourceRange imageSubresourceRange;
+  imageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSubresourceRange.baseMipLevel = 0;
+  imageSubresourceRange.levelCount = 1;
+  imageSubresourceRange.baseArrayLayer = 0;
+  imageSubresourceRange.layerCount = 1;
+
+  // transition swap chain image into transfer source layout
+  CmdImageBarrier(captureInfo.captureFrameCmds, // cmdBuffer
+    VK_ACCESS_MEMORY_READ_BIT,                  // srcAccessMask
+    VK_ACCESS_TRANSFER_READ_BIT,                // dstAccessMask
+    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,            // oldLayout
+    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,       // newLayout
+    VK_QUEUE_FAMILY_IGNORED,                    // srcQueueFamilyIndex
+    VK_QUEUE_FAMILY_IGNORED,                    // dstQueueFamilyIndex                             
+    swapChainInfo.images[swapChainInfo.acquiredImageIndex], // image
+    imageSubresourceRange,                      // subresourceRange
+    0,                                          // srcStageMask, wait for nothing
+    VK_PIPELINE_STAGE_TRANSFER_BIT,             // dstStageMask, block transfer
+    0);                                         // dependencyFlags
+
+  // transition captureInfo.capturedFrameImage.image to transfer destination layout
+  CmdImageBarrier(captureInfo.captureFrameCmds,  // cmdBuffer
+                  0,                             // srcAccessMask
+                  VK_ACCESS_TRANSFER_WRITE_BIT,  // dstAccessMask
+                  VK_IMAGE_LAYOUT_UNDEFINED,     // oldLayout
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // newLayout
+                  VK_QUEUE_FAMILY_IGNORED,
+                  VK_QUEUE_FAMILY_IGNORED,
+                  captureInfo.capturedFrameImage.image,
+                  imageSubresourceRange,
+                  0,                              // wait for nothing
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, // block transfer
+                  0);
+
+  VkImageSubresourceLayers subresourceLayers = {
+    VK_IMAGE_ASPECT_COLOR_BIT, // VkImageAspectFlags                     aspectMask
+    0,                         // uint32_t                               mipLevel
+    0,                         // uint32_t                               baseArrayLayer
+    1                          // uint32_t                               layerCount
+  };
+
+  VkImageCopy region = {
+    subresourceLayers,
+    { 0,0,0 },
+    subresourceLayers,
+    { 0,0,0 },
+    { swapChainInfo.extent.width, swapChainInfo.extent.height, 1 }
+  };
+
+  vkCmdCopyImage(captureInfo.captureFrameCmds,
+                 swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 captureInfo.capturedFrameImage.image,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 1,
+                 &region);
+
+  // transition captureInfo.capturedFrameImage.image to host read layout
+  CmdImageBarrier(captureInfo.captureFrameCmds,
+                  VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_ACCESS_HOST_READ_BIT,        // image memory will be mapped for reading later
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  VK_IMAGE_LAYOUT_GENERAL,        // layout that supports host access
+                  VK_QUEUE_FAMILY_IGNORED,
+                  VK_QUEUE_FAMILY_IGNORED,
+                  captureInfo.capturedFrameImage.image,
+                  imageSubresourceRange,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, // wait for transfer
+                  VK_PIPELINE_STAGE_HOST_BIT,     // guarantee visibility of writes to host
+                  0);
+
+  // transition swap chain image back to presentation layout
+  CmdImageBarrier(captureInfo.captureFrameCmds,
+                  VK_ACCESS_TRANSFER_READ_BIT,
+                  VK_ACCESS_MEMORY_READ_BIT,
+                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                  VK_QUEUE_FAMILY_IGNORED,
+                  VK_QUEUE_FAMILY_IGNORED,
+                  swapChainInfo.images[swapChainInfo.acquiredImageIndex],
+                  imageSubresourceRange,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, // wait for transfer
+                  0,                              // block nothing, because nothing comes next
+                  0);
+  vkEndCommandBuffer(captureInfo.captureFrameCmds);
+}
+
+void LsRenderer::StartGIFRecording(std::string filename) {
+  std::cout << "Recording started" << std::endl;
+  OpenBufferFile();
+  CreateCapturedFrameImage();
+  RecordFrameCaptureCmds();
+  // frame row pitch is used for decoding frame memory
+  VkImageSubresource imageSubresource = {
+    VK_IMAGE_ASPECT_COLOR_BIT,
+    0,
+    0
+  };
+
+  VkSubresourceLayout subresourceLayout;
+  vkGetImageSubresourceLayout(device, 
+                              captureInfo.capturedFrameImage.image,
+                              &imageSubresource,
+                              &subresourceLayout);
+
+  captureInfo.capturedFrameImage.rowPitch = subresourceLayout.rowPitch;
+  // capture frame extent
+  captureInfo.capturedFrameImage.extent = swapChainInfo.extent;
+  //RecordFrameCaptureCmds();
+  captureInfo.capturing = true;
+  captureInfo.captureFrameCount = 0;
+  captureInfo.startTime = std::chrono::high_resolution_clock::now();
+  captureInfo.filename = filename;
+}
+
+void LsRenderer::StopGIFRecording() {
+  std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
+  BYTE* captureData = (BYTE*)malloc(captureInfo.capturedFrameImage.size);
+  DWORD bytesRead;
+  std::cout << "Recording stopped" << std::endl;
+  SetFilePointer(captureInfo.hCaptureBufferFile,// hFile
+    0,                                          // lDistanceToMove
+    0,                                          // lpDistanceToMoveHigh
+    FILE_BEGIN);                                // dwMoveMethod
+  char fileName[1024];
+  //BOOL dialogResult = ShowSaveAsDialog(fileName, sizeof(fileName), "*.gif", "gif");
+  //if (!dialogResult) {
+  //  free(captureData);
+  //  CloseHandle(captureInfo.hCaptureBufferFile);
+  //  captureInfo.capturing = false;
+  //  return;
+  //}
+  std::cout << "Saving to " << captureInfo.filename << std::endl;
+  FIMULTIBITMAP* multibitmap = FreeImage_OpenMultiBitmap(
+    FIF_GIF,
+    captureInfo.filename.c_str(),
+    TRUE,
+    FALSE);
+  if (!multibitmap)
+  {
+    throw std::string("FreeImage_OpenMultiBitmap failed to create gif file!");
+  }
+  double captureDuration = std::chrono::duration<double, std::milli>(endTime - captureInfo.startTime).count() / 1000.0;
+  double fps = 30.0f;//((double)captureInfo.captureFrameCount)/captureDuration;
+  DWORD frameTimeMs = (DWORD)((1000.0 / fps) + 0.5);
+  //DWORD frameTimeMs = (DWORD)( ((double)captureInfo.captureFrameCount)/captureDuration + 0.5);
+  std::cout << ((double)captureInfo.captureFrameCount)/captureDuration << std::endl;
+
+  FITAG* tag = FreeImage_CreateTag();
+  FreeImage_SetTagKey(tag, "FrameTime");
+  FreeImage_SetTagType(tag, FIDT_LONG);
+  FreeImage_SetTagCount(tag, 1);
+  FreeImage_SetTagLength(tag, 4);
+  FreeImage_SetTagValue(tag, &frameTimeMs);
+  while (captureInfo.captureFrameCount) {
+    // read next captured frame
+    BOOL readResult = ReadFile(captureInfo.hCaptureBufferFile,
+      captureData,
+      captureInfo.capturedFrameImage.size,
+      &bytesRead,
+      nullptr);
+    if (!readResult || (bytesRead != captureInfo.capturedFrameImage.size)) {
+      std::cout << "ReadFile failed:" << GetLastError() << std::endl;
+      throw std::string("ReadFile failed");
+    }
+    FIBITMAP* bitmap = FreeImage_Allocate(captureInfo.capturedFrameImage.extent.width,
+      captureInfo.capturedFrameImage.extent.height,
+      24);
+    RGBQUAD color;
+    for (int y = 0; y < captureInfo.capturedFrameImage.extent.height; ++y)
+    {
+      for (int x = 0; x < captureInfo.capturedFrameImage.extent.width; ++x)
+      {
+        BYTE* pixel = captureData + captureInfo.capturedFrameImage.rowPitch*y + 4 * x;
+        color.rgbRed = *(pixel + 2);
+        color.rgbGreen = *(pixel + 1);
+        color.rgbBlue = *pixel;
+        FreeImage_SetPixelColor(bitmap, x, captureInfo.capturedFrameImage.extent.height - y, &color);
+      }
+    }
+    FIBITMAP* quantized = FreeImage_ColorQuantize(bitmap, FIQ_WUQUANT);
+    // Reset animation metadata
+    FreeImage_SetMetadata(FIMD_ANIMATION, quantized, NULL, NULL);
+    FreeImage_SetMetadata(FIMD_ANIMATION, quantized, FreeImage_GetTagKey(tag), tag);
+    //FreeImage_Save(FIF_PNG, bitmap, (std::to_string(captureInfo.captureFrameCount)+std::string(".png")).c_str(), 0);
+    FreeImage_AppendPage(multibitmap, quantized);
+    if (quantized) {
+      FreeImage_Unload(quantized);
+    }
+    FreeImage_Unload(bitmap);
+    captureInfo.captureFrameCount--;
+    //captureData += captureInfo.capturedFrameImage.size;
+  }
+  FreeImage_CloseMultiBitmap(multibitmap);
+  free(captureData);
+  //UnmapViewOfFile(captureData);
+  //CloseHandle(hMapping);
+  CloseHandle(captureInfo.hCaptureBufferFile);
+  captureInfo.capturing = false;
+}
+
+void LsRenderer::OpenBufferFile() {
+  TCHAR tmpPath[MAX_PATH];
+  TCHAR tmpFilePath[MAX_PATH];
+  DWORD result = GetTempPath(MAX_PATH, tmpPath);
+  if ((result > MAX_PATH) || (result == 0)) {
+    throw std::string("GetTempPath failed!");
+  }
+  std::cout << "Using temporary path:" << tmpPath << std::endl;
+  result = GetTempFileName(tmpPath, TEXT("ls"), 0, tmpFilePath);
+  std::cout << "Buffer temporary file" << tmpFilePath << std::endl;
+  if (!result) {
+    throw std::string("GetTempFileName failed!");
+  }
+
+  captureInfo.hCaptureBufferFile = CreateFile(tmpFilePath,
+    GENERIC_WRITE | GENERIC_READ,
+    0,
+    NULL,
+    CREATE_ALWAYS,
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+    NULL);
+  if (captureInfo.hCaptureBufferFile == INVALID_HANDLE_VALUE) {
+    throw std::string("Failed to create a file!");
+  }
+}
+
+bool LsRenderer::CheckFrameSavingFinished() {
+  if (captureInfo.hSavingThread) {
+    DWORD result = WaitForSingleObject(captureInfo.hSavingThread, 0); // no wait
+    return !result; // it's 0 when finished
+  }
+  else {
+    return true; // no thread was started
+  }
+}
+
+DWORD WINAPI WriteFrameThread(LPVOID lpParam) {
+  LsRenderer* renderer = (LsRenderer*)lpParam;
+  void* data;
+  DWORD written;
+  vkMapMemory(renderer->device, renderer->captureInfo.capturedFrameImage.memory, 0, renderer->captureInfo.capturedFrameImage.size, 0, &data);
+  DWORD result = WriteFile(renderer->captureInfo.hCaptureBufferFile, data, renderer->captureInfo.capturedFrameImage.size, &written, nullptr);
+  vkUnmapMemory(renderer->device, renderer->captureInfo.capturedFrameImage.memory);
+  //TODO: What if write fails?
+  return 0;
+}
+
+void LsRenderer::BeginSavingCapturedFrame() {
+  captureInfo.captureFrameCount++;
+  captureInfo.hSavingThread = CreateThread(NULL,
+    0,
+    WriteFrameThread,
+    this, // pass instance of LsRenderer
+    0,
+    NULL);
+}
+#endif
+
 LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
   //LsRenderer* renderer = LsRenderer::Get();
   
+#ifdef GIF_RECORDING
+  FreeImage_Initialise();
+#endif
+
   LsLoadVulkanLibrary();
 
   LsLoadExportedEntryPoints();
@@ -97,9 +414,15 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
 
   commandPool = CreateCommandPool(device, graphicsQueue.familyIndex);
   commandBuffer = CreateCommandBuffer(device, commandPool);
+#ifdef GIF_RECORDING
+  captureInfo.captureFrameCmds = CreateCommandBuffer(device, commandPool);
+#endif
  
   CreateSemaphore(device, &semaphores.imageAvailable);
   CreateSemaphore(device, &semaphores.renderingFinished);
+#ifdef GIF_RECORDING
+  CreateSemaphore(device, &captureInfo.captureFinishedSemaphore);
+#endif
 
   shaderModules.lineVertexShader = CreateShaderModule(device, "Shaders/line.vert.spv");
   shaderModules.lineFragmentShader = CreateShaderModule(device, "Shaders/line.frag.spv");
@@ -107,6 +430,9 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
   shaderModules.pointFragmentShader = CreateShaderModule(device, "Shaders/point.frag.spv");
   
   CreateFence(device, &submitCompleteFence, true);
+#ifdef GIF_RECORDING
+  CreateFence(device, &captureInfo.captureCompleteFence, false);
+#endif
 
   vkGetDeviceQueue( device, graphicsQueue.familyIndex, 0, &graphicsQueue.handle );
   vkGetDeviceQueue( device, presentQueue.familyIndex, 0, &presentQueue.handle );
@@ -385,7 +711,7 @@ void LsRenderer::BeginFrame() {
   barrier_from_present_to_draw.subresourceRange = image_subresource_range;
 
   vkCmdPipelineBarrier( commandBuffer, 
-	                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,//VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 
+	                      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,//VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 
                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
                         0,
                         0,
@@ -397,6 +723,9 @@ void LsRenderer::BeginFrame() {
 }
 
 void LsRenderer::EndFrame() {
+#ifdef GIF_RECORDING
+  BOOL captureInitiated = false;
+#endif
   if( drawingContext.drawing ) {
     EndDrawing();
   }
@@ -407,7 +736,7 @@ void LsRenderer::EndFrame() {
 
   // stall these stages until image is available from swap chain
   VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-	                                         VK_PIPELINE_STAGE_TRANSFER_BIT;
+	                                           VK_PIPELINE_STAGE_TRANSFER_BIT;
   VkSubmitInfo submit_info = {};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.waitSemaphoreCount = 1;
@@ -422,10 +751,43 @@ void LsRenderer::EndFrame() {
     throw std::string("Submit to queue failed!");
   }
 
+  VkSemaphore presentBlockingSemaphore = semaphores.renderingFinished;
+
+#ifdef GIF_RECORDING
+  if (captureInfo.capturing) {
+    // capture next frame only if previous capture already finished
+    if (CheckFrameSavingFinished()) {
+      std::cout << captureInfo.captureFrameCount << std::endl;
+      // stall transfer stage until rendering is finished 
+      wait_dst_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+      submit_info.waitSemaphoreCount = 1;
+      submit_info.pWaitSemaphores = &semaphores.renderingFinished;
+      submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
+      submit_info.commandBufferCount = 1;
+      submit_info.pCommandBuffers = &captureInfo.captureFrameCmds;
+      submit_info.signalSemaphoreCount = 1;
+      submit_info.pSignalSemaphores = &captureInfo.captureFinishedSemaphore;
+
+      vkResetFences( device, 1, &captureInfo.captureCompleteFence );
+      if (vkQueueSubmit( graphicsQueue.handle, 1, &submit_info, captureInfo.captureCompleteFence) != VK_SUCCESS ) {
+        throw std::string("Submit to queue failed!");
+      }
+      // make present wait for capture instead of just render
+      presentBlockingSemaphore = captureInfo.captureFinishedSemaphore;
+      // resume presentation as soon as possible, using this flag to resume capture
+      captureInitiated = true;
+    }
+    else {
+      std::cout << "Frame skipped, still writing!" << std::endl;
+    }
+  }
+#endif
+
   VkPresentInfoKHR present_info = {};
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.waitSemaphoreCount = 1;
-  present_info.pWaitSemaphores = &semaphores.renderingFinished;
+  present_info.pWaitSemaphores = &presentBlockingSemaphore;
   present_info.swapchainCount = 1;
   present_info.pSwapchains = &swapChainInfo.swapChain;
   present_info.pImageIndices = &swapChainInfo.acquiredImageIndex;
@@ -443,6 +805,17 @@ void LsRenderer::EndFrame() {
     default:
     throw std::string("Problem occurred during image presentation!");
   }
+
+#ifdef GIF_RECORDING
+  if (captureInitiated) {
+    // wait for capture submission to finish
+    if (vkWaitForFences(device, 1, &captureInfo.captureCompleteFence, VK_FALSE, 1000000000) != VK_SUCCESS) {
+      throw std::string("Waiting for fence takes too long!");
+    }
+    // async copy frame to file
+    BeginSavingCapturedFrame();
+  }
+#endif
 }
 
 void LsRenderer::Clear(float r, float g, float b) {

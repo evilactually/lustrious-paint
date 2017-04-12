@@ -25,7 +25,7 @@ using namespace lslib;
 HCTX OpenWintabContext(HINSTANCE hInstance, HWND hWindow)
 {
   AXIS            dvcX, dvcY;         // The maximum tablet size
-  LOGCONTEXT      lcMine;             // The context of the tablet
+  LOGCONTEXT      lcMine = {};        // The context of the tablet
   WTInfoA(WTI_DEFSYSCTX, 0, &lcMine); // get system logical context
   // Modify the digitizing region
   wsprintf(lcMine.lcName, "Lustrious Paint Digitizing %x", hInstance);
@@ -111,6 +111,15 @@ public:
     switch (uMsg) {
       case WM_SIZE:
 	    renderer->RefreshSwapChain();
+      break;
+      case WM_KEYDOWN:
+        if (wParam == VK_F12) {
+          renderer->StartGIFRecording("C:\\Users\\Public\\Downloads\\out.gif");
+          std::cout << "PRESSED" << std::endl;
+        }
+        else if (wParam == VK_F11) {
+          renderer->StopGIFRecording();
+        }
       break;
     }
   }

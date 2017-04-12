@@ -7,12 +7,20 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <LsFWin32MessageHandler.h>
+#include <chrono>
+
+typedef void (*LsFrameCaptureCallback)();
 
 class LsRenderer {
+  friend DWORD WINAPI WriteFrameThread(LPVOID lpParam);
 public:
   LsRenderer(HINSTANCE hInstance, HWND window);
   ~LsRenderer();
   //static LsRenderer* Get();
+#ifdef GIF_RECORDING
+  void StartGIFRecording(std::string filename);
+  void StopGIFRecording();
+#endif
   void BeginFrame();
   void EndFrame();
   void Clear(float r, float g, float b);
@@ -28,14 +36,19 @@ public:
 private:
   void BeginDrawing();
   void EndDrawing();
+#ifdef GIF_RECORDING
+  void CreateCapturedFrameImage();
+  void RecordFrameCaptureCmds();
+  void OpenBufferFile();
+  void BeginSavingCapturedFrame();
+  bool CheckFrameSavingFinished();
+#endif
+  
   enum class PipelineBinding {
     eNone,
     eLine,
     ePoint
   };
-
-  // Singleton instance of the LsRenderer
-  static LsRenderer renderer;
   
   HWND window;
   VkInstance instance;             // Vulkan instance
@@ -68,6 +81,27 @@ private:
     VkExtent2D extent;
     uint32_t acquiredImageIndex;
   } swapChainInfo = {};
+
+  struct {
+    VkFence captureCompleteFence;          // used to wait by host for copy to complete
+    VkSemaphore captureFinishedSemaphore;  // used to block presentation while copying
+    VkCommandBuffer captureFrameCmds;      // commands used to capture a frame
+    struct {
+      VkImage image;
+      VkDeviceMemory memory;
+      VkDeviceSize size;
+      VkExtent2D extent;
+      uint32_t rowPitch;
+    } capturedFrameImage;                  // captured frame image buffer and information about it
+
+    HANDLE hCaptureBufferFile;             // temporary file to store frames before processing
+    HANDLE hSavingThread = NULL;           // handle to thread that is currently saving a frame to temporary file
+    uint32_t captureFrameCount;            // running count of captured frames in a recording
+
+    BOOL capturing = false;                // flag indicating whether we are currently capturing
+    std::chrono::high_resolution_clock::time_point startTime;
+    std::string filename;
+  } captureInfo;                           // time when capture was started(used to estimate framerate)
 
   bool canRender = false;
 

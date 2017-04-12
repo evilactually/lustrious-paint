@@ -1,0 +1,5 @@
+Leave old design for gif recording, just with external controls.
+
+StartRecording
+StopRecording
+SetRecordingOutput

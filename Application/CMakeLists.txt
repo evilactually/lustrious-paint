@@ -52,7 +52,7 @@ target_include_directories( LustriousPaint PUBLIC Include
                                                   "${LIBRARY_SOURCE_DIR}/LsWintabLoader/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanSystem/Include"
                                                   ${VULKAN_INCLUDE_DIR}
-                                                  ${FREEIMAGE_INCLUDE_DIR} )
+                                                  ${FREEIMAGE_INCLUDE_DIR} ) # TODO: Don't need FreeImage here
 
 target_link_libraries( LustriousPaint LsMath
                                       LsUtility
