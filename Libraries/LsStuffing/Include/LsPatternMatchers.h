@@ -46,7 +46,7 @@ private:
 protected:
   LsPatternMatcher() {};
   void AddNode(int id, LsBCCValue value);
-  void AddEdge(int id1, int id2, LsBCCMaybeColor maybeColor);
+  void AddEdge(int id1, int id2, LsBCCMaybeColor maybeColor); // Note: if you want to match a cut point, you just specify +/- edge
 };
 
 class LsPPPPMatcher: public LsPatternMatcher {
@@ -101,4 +101,22 @@ class LsNNPPMatcher : public LsPatternMatcher {
 public:
   LsNNPPMatcher();
   ~LsNNPPMatcher() {};
+};
+
+class LsNZPPParityMatcher : public LsPatternMatcher {
+public:
+  LsNZPPParityMatcher();
+  ~LsNZPPParityMatcher() {};
+};
+
+class LsNPPPParityMatcher : public LsPatternMatcher {
+public:
+  LsNPPPParityMatcher();
+  ~LsNPPPParityMatcher() {};
+};
+
+class LsNNPPParityMatcher : public LsPatternMatcher {
+public:
+  LsNNPPParityMatcher();
+  ~LsNNPPParityMatcher() {};
 };

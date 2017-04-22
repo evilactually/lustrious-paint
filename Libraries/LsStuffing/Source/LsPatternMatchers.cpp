@@ -181,10 +181,10 @@ LsNZPPMatcher::LsNZPPMatcher() {
   AddNode(2, LsBCCValue::ePositive);
   AddNode(3, LsBCCValue::ePositive);
   AddNode(4, LsBCCValue::eZero);
-  AddEdge(1, 2, LsBCCColor::eBlack);
-  AddEdge(3, 4, LsBCCColor::eBlack);
+  AddEdge(1, 2, LsBCCColor::eBlack); // Cut red
+  AddEdge(3, 4, LsBCCColor::eBlack); 
   AddEdge(3, 2, LsBCCColor::eRed);
-  AddEdge(3, 1, LsBCCColor::eRed);
+  AddEdge(3, 1, LsBCCColor::eRed); // Cut black
   AddEdge(4, 1, LsBCCColor::eRed);
   AddEdge(4, 2, LsBCCColor::eRed);
 }
@@ -202,3 +202,44 @@ LsNNPPMatcher::LsNNPPMatcher()
   AddEdge(2, 4, LsBCCColor::eRed);
   AddEdge(2, 3, LsBCCColor::eRed);
 }
+
+LsNZPPParityMatcher::LsNZPPParityMatcher() {
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::eZero);
+  AddNode(3, LsBCCValue::ePositive);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCColor::eBlack); // Note: This looks like previous NZPP pattern, but nodes have different signs!
+  AddEdge(3, 4, LsBCCColor::eBlack);
+  AddEdge(3, 2, LsBCCColor::eRed);
+  AddEdge(3, 1, LsBCCColor::eRed); // Cut red
+  AddEdge(4, 1, LsBCCColor::eRed); // Cut red
+  AddEdge(4, 2, LsBCCColor::eRed);
+}
+
+LsNPPPParityMatcher::LsNPPPParityMatcher() {
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::ePositive);
+  AddNode(3, LsBCCValue::ePositive);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCColor::eBlack); // Cut black
+  AddEdge(3, 4, LsBCCColor::eBlack);
+  AddEdge(3, 2, LsBCCColor::eRed);
+  AddEdge(3, 1, LsBCCColor::eRed); // Cut red
+  AddEdge(4, 1, LsBCCColor::eRed); // Cut red
+  AddEdge(4, 2, LsBCCColor::eRed);
+}
+
+LsNNPPParityMatcher::LsNNPPParityMatcher()
+{
+  AddNode(1, LsBCCValue::eNegative);
+  AddNode(2, LsBCCValue::eNegative);
+  AddNode(3, LsBCCValue::ePositive);
+  AddNode(4, LsBCCValue::ePositive);
+  AddEdge(1, 2, LsBCCColor::eBlack);
+  AddEdge(3, 4, LsBCCColor::eBlack);
+  AddEdge(1, 4, LsBCCColor::eRed); // Cut red
+  AddEdge(1, 3, LsBCCColor::eRed); // Cut red
+  AddEdge(2, 4, LsBCCColor::eRed); // Cut red
+  AddEdge(2, 3, LsBCCColor::eRed); // Cut red
+}
+
