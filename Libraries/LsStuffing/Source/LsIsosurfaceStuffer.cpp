@@ -139,7 +139,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            nzpp.GetNodePosition(3),
                            nzpp.GetNodePosition(4),
                            nzpp.GetEdgeCutPoint(1, 2));
-    } else if (nzpp.Match(lattice, tetrahedron)) {
+    } else if (nnpp.Match(lattice, tetrahedron)) {
       mesh.AddTetrahedron( nnpp.GetNodePosition(1),
                            nnpp.GetEdgeCutPoint(1, 2),
                            nnpp.GetEdgeCutPoint(3, 4),
