@@ -30,8 +30,18 @@ LsBCCNode LsPatternMatcher::GetNodeById(int id) {
   }
 }
 
+glm::vec3 LsPatternMatcher::GetNodePosition(int id)
+{
+  return pLattice->GetNodePosition(GetNodeById(id));
+}
+
 LsOptional<glm::vec3> LsPatternMatcher::GetEdgeCutPoint(int id1, int id2) {
   return pLattice->GetEdgeCutPoint(LsBCCEdge(GetNodeById(id1), GetNodeById(id2)));
+}
+
+LsBCCColor LsPatternMatcher::GetNodeColor(int id)
+{
+  return pLattice->GetNodeColor(GetNodeById(id));
 }
 
 LsBCCColor LsPatternMatcher::GetEdgeColor(int id1, int id2) {

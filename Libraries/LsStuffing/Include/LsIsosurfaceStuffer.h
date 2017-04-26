@@ -51,6 +51,9 @@ private:
   LsNNNPMatcher nnnp;
   LsNZPPMatcher nzpp; // Group 3
   LsNZPPMatcher nnpp;
+  LsNZPPParityMatcher nzpp_parity; // Group 4
+  LsNPPPParityMatcher nppp_parity;
+  LsNNPPParityMatcher nnpp_parity;
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);

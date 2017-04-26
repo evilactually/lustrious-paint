@@ -24,8 +24,16 @@ bool operator<(LsBCCValue const& v1, LsBCCValue const& v2) {
 //   return to_underlying(v1) <= to_underlying(v2);
 // }
 
+LsIsosurfaceStuffer::LsIsosurfaceStuffer()
+{
+}
+
+LsIsosurfaceStuffer::~LsIsosurfaceStuffer()
+{
+}
+
 void LsIsosurfaceStuffer::Stuff(LsTetrahedronMesh& mesh, LsIsosurface const& stuffable) {
-  LsBCCLattice bccLattice(stuffable.GetDomain(), 1.0f);
+  LsBCCLattice bccLattice(stuffable.GetDomain(), 0.1f);
   UpdateValues(bccLattice, stuffable);
   UpdateCutPoints(bccLattice, stuffable);
   Warp(bccLattice);
@@ -65,6 +73,9 @@ void LsIsosurfaceStuffer::Warp(LsBCCLattice& lattice) {
     LsBCCLattice::NodeEdgeIterator edgeIterator = lattice.GetNodeEdgeIterator(n1);
     do {
       LsBCCEdge edge = edgeIterator;
+      if (!lattice.GetEdgeCutPoint(edge)) {
+        continue;
+      }
       LsBCCNode n2 = std::get<1>(edge);
       glm::vec3 cutPoint = lattice.GetEdgeCutPoint(edge);
       glm::vec3 p1 = lattice.GetNodePosition(n1);
@@ -90,7 +101,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
   LsBCCLattice::TetrahedronIterator iterator = lattice.GetTetrahedronIterator();
   do {
     LsBCCTetrahedron tetrahedron = iterator;   
-    if ( pppp.Match(lattice, tetrahedron) ) {        // Group 1
+    if ( pppp.Match(lattice, tetrahedron) ) { // Group 1
       mesh.AddTetrahedron( pppp.GetNodePosition(1),
                            pppp.GetNodePosition(2),
                            pppp.GetNodePosition(3),
@@ -152,8 +163,87 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            nnpp.GetEdgeCutPoint(1, 2),
                            nnpp.GetNodePosition(3),
                            nnpp.GetEdgeCutPoint(3, 4) );
+    } else if (nnpp_parity.Match(lattice, tetrahedron)) {  // Group 4
+      if ( nnpp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
+           nnpp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
+        mesh.AddTetrahedron( nnpp_parity.GetNodePosition(3),
+                             nnpp_parity.GetEdgeCutPoint(2, 3),
+                             nnpp_parity.GetEdgeCutPoint(1, 3),
+                             nnpp_parity.GetEdgeCutPoint(1, 4) );
+        mesh.AddTetrahedron( nnpp_parity.GetNodePosition(3),
+                             nnpp_parity.GetNodePosition(4),
+                             nnpp_parity.GetEdgeCutPoint(1, 4),
+                             nnpp_parity.GetEdgeCutPoint(2, 3) );
+        mesh.AddTetrahedron( nnpp_parity.GetEdgeCutPoint(2, 3),
+                             nnpp_parity.GetNodePosition(4),
+                             nnpp_parity.GetEdgeCutPoint(1, 4),
+                             nnpp_parity.GetEdgeCutPoint(2, 4) );
+      } else {
+        mesh.AddTetrahedron( nnpp_parity.GetNodePosition(4),
+                             nnpp_parity.GetEdgeCutPoint(4, 2),
+                             nnpp_parity.GetEdgeCutPoint(4, 1),
+                             nnpp_parity.GetEdgeCutPoint(1, 3) );
+        mesh.AddTetrahedron( nnpp_parity.GetNodePosition(3),
+                             nnpp_parity.GetEdgeCutPoint(1, 3),
+                             nnpp_parity.GetEdgeCutPoint(2, 3),
+                             nnpp_parity.GetEdgeCutPoint(4, 2) );
+        mesh.AddTetrahedron( nnpp_parity.GetNodePosition(4),
+                             nnpp_parity.GetNodePosition(3),
+                             nnpp_parity.GetEdgeCutPoint(1, 3),
+                             nnpp_parity.GetEdgeCutPoint(4, 2) );
+      }
+    } else if (nppp_parity.Match(lattice, tetrahedron)) {
+      if ( nppp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
+           nppp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
+                             nppp_parity.GetEdgeCutPoint(1, 4),
+                             nppp_parity.GetEdgeCutPoint(1, 2),
+                             nppp_parity.GetEdgeCutPoint(1, 3) );
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
+                             nppp_parity.GetNodePosition(4),
+                             nppp_parity.GetNodePosition(2),
+                             nppp_parity.GetEdgeCutPoint(1, 2) );
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
+                             nppp_parity.GetNodePosition(4),
+                             nppp_parity.GetEdgeCutPoint(1, 4),
+                             nppp_parity.GetEdgeCutPoint(1, 2) );
+      } else {
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(4),
+                             nppp_parity.GetEdgeCutPoint(1, 4),
+                             nppp_parity.GetEdgeCutPoint(1, 2),
+                             nppp_parity.GetEdgeCutPoint(1, 3) );
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
+                             nppp_parity.GetNodePosition(4),
+                             nppp_parity.GetNodePosition(2),
+                             nppp_parity.GetEdgeCutPoint(1, 2) );
+        mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
+                             nppp_parity.GetNodePosition(4),
+                             nppp_parity.GetEdgeCutPoint(1, 3),
+                             nppp_parity.GetEdgeCutPoint(1, 2) );
+      }
+    } else if (nzpp_parity.Match(lattice, tetrahedron)) {
+      if ( nzpp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
+           nzpp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
+        mesh.AddTetrahedron( nzpp_parity.GetNodePosition(2),
+                             nzpp_parity.GetEdgeCutPoint(1, 4),
+                             nzpp_parity.GetEdgeCutPoint(1, 3),
+                             nzpp_parity.GetNodePosition(3) );
+        mesh.AddTetrahedron( nzpp_parity.GetNodePosition(2),
+                             nzpp_parity.GetEdgeCutPoint(1, 4),
+                             nzpp_parity.GetEdgeCutPoint(1, 3),
+                             nzpp_parity.GetNodePosition(3) );
+      }
+      else {
+        mesh.AddTetrahedron( nzpp_parity.GetNodePosition(2),
+                             nzpp_parity.GetEdgeCutPoint(1, 4),
+                             nzpp_parity.GetEdgeCutPoint(1, 3),
+                             nzpp_parity.GetNodePosition(4) );
+        mesh.AddTetrahedron( nzpp_parity.GetNodePosition(3),
+                             nzpp_parity.GetNodePosition(2),
+                             nzpp_parity.GetEdgeCutPoint(1, 3),
+                             nzpp_parity.GetNodePosition(4) );
+      }
     }
-
   } while ( iterator.Next() );
 }
 
