@@ -33,6 +33,11 @@ public:
   void RefreshSwapChain();
   int GetSurfaceWidth();
   int GetSurfaceHeight();
+  // SetTransformation(glm::max4x4& transformation)
+  // CreateVertexBuffer (separate class)
+  // SetVertexBuffer(&VertexBuffer)
+  // DrawLines(void)
+  // DrawPoints(void)
 private:
   void BeginDrawing();
   void EndDrawing();

@@ -6,6 +6,9 @@
 #include <windows.h>
 #include <LsBCCLattice.h>
 #include <LsBCCLatticeTypes.h>
+#include <LsIsosphere.h>
+#include <LsTetrahedronMesh.h>
+#include <LsIsosurfaceStuffer.h>
 
 class LsStuffingDemo: public LsFWin32MessageHandler
 {
@@ -24,4 +27,8 @@ private:
   glm::vec3 offset = {0.0f, 0.0f, 10.0f};
   float posx_previous = 0.0f;
   float posy_previous = 0.0f;
+  // stuffing
+  LsIsosphere sphere;
+  LsTetrahedronMesh mesh;
+  LsIsosurfaceStuffer stuffer;
 };

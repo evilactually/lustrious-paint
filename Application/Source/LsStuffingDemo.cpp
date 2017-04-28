@@ -25,10 +25,14 @@ glm::vec4 project(glm::vec4 point) {
   return glm::vec4(point[0] / point[2], point[1] / point[2], point[2], point[3]);
 }
 
-LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer): renderer(renderer) {
+LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer) : renderer(renderer) {
   //lattice = std::make_shared<LsBCCLattice>(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(8, 8, 8), 0.5f);
   domain = LsDomain(0.0f, 0.0f, 0.0f, 4.0f, 4.0f, 4.0f);
   lattice = std::make_shared<LsBCCLattice>(domain, STEP);
+  sphere = LsIsosphere( { 0.0f, 0.0f, 0.0f }, 4.0f );
+  stuffer.SetStep(1.0f);
+  stuffer.Stuff(mesh, sphere);
+  //mesh.Optimize();
 }
 
 LsStuffingDemo::~LsStuffingDemo()
@@ -203,6 +207,29 @@ void LsStuffingDemo::Render()
   renderer->SetColor(0.0f, 1.0f, 0.0f);
   renderer->DrawLine(points2[0][0], points2[0][1], points2[2][0], points2[2][1]);
 
+  // Draw stuffed mesh
+  std::vector<LsTetrahedronMesh::LsTetrahedron> indecies = mesh.GetIndecies();
+  std::vector<glm::vec3> vertecies = mesh.GetVertecies();
+  for (size_t i = 0; i < indecies.size(); i++)
+  {
+    LsTetrahedronMesh::LsTetrahedron tetrahedron = indecies[i];
+    glm::vec4 points3[4] = { glm::vec4(vertecies[tetrahedron[0]], 1.0f),
+                             glm::vec4(vertecies[tetrahedron[1]], 1.0f),
+                             glm::vec4(vertecies[tetrahedron[2]], 1.0f),
+                             glm::vec4(vertecies[tetrahedron[3]], 1.0f) };
+    points3[0] = m2*project(m*points3[0]);
+    points3[1] = m2*project(m*points3[1]);
+    points3[2] = m2*project(m*points3[2]);
+    points3[3] = m2*project(m*points3[3]);
+    renderer->SetLineWidth(1.0f);
+    renderer->DrawLine(points3[0].xy, points3[1].xy);
+    renderer->DrawLine(points3[0].xy, points3[2].xy);
+    renderer->DrawLine(points3[0].xy, points3[3].xy);
+    renderer->DrawLine(points3[1].xy, points3[2].xy);
+    renderer->DrawLine(points3[2].xy, points3[3].xy);
+    renderer->DrawLine(points3[3].xy, points3[1].xy);
+
+  }
 }
 
 void LsStuffingDemo::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam)

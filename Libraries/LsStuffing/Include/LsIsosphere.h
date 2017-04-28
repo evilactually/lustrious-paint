@@ -1,3 +1,5 @@
+#pragma once
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "LsIsosurfaceStuffer.h"
@@ -9,6 +11,7 @@ private:
   float radius;
   glm::vec3 position;
 public:
+  LsIsosphere();
   LsIsosphere(glm::vec3 position, float radius);
   ~LsIsosphere();
   LsDomain GetDomain() const override;

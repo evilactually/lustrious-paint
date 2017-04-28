@@ -40,6 +40,7 @@ public:
 #ifndef TESTING
 private:
 #endif
+  float step = 1.0f;
   float alphaLong = 0.24999f;
   float alphaShort = 0.40173f;
   LsPPPPMatcher pppp; // Group 1

@@ -5,9 +5,9 @@
 #include <LsIsosphere.h>
 #include <LsMath.h>
 
-LsIsosphere::LsIsosphere(glm::vec3 position, float radius):position(position), radius(radius) {
-  
-};
+LsIsosphere::LsIsosphere() :position({ 0.0f, 0.0f, 0.0f }), radius(0.0f) { };
+
+LsIsosphere::LsIsosphere(glm::vec3 position, float radius):position(position), radius(radius) { };
 
 LsIsosphere::~LsIsosphere() {};
 

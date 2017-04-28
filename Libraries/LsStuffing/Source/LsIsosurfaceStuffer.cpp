@@ -33,11 +33,26 @@ LsIsosurfaceStuffer::~LsIsosurfaceStuffer()
 }
 
 void LsIsosurfaceStuffer::Stuff(LsTetrahedronMesh& mesh, LsIsosurface const& stuffable) {
-  LsBCCLattice bccLattice(stuffable.GetDomain(), 0.1f);
+  LsBCCLattice bccLattice(stuffable.GetDomain(), step);
   UpdateValues(bccLattice, stuffable);
   UpdateCutPoints(bccLattice, stuffable);
   Warp(bccLattice);
   Fill(bccLattice, mesh);
+}
+
+void LsIsosurfaceStuffer::SetAlphaLong(float a)
+{
+  alphaLong = a;
+}
+
+void LsIsosurfaceStuffer::SetAlphaShort(float a)
+{
+  alphaShort = a;
+}
+
+void LsIsosurfaceStuffer::SetStep(float step)
+{
+  this->step = step;
 }
 
 void LsIsosurfaceStuffer::UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable) {

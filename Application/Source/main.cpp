@@ -16,6 +16,10 @@
 #include <LsError.h>
 // #include <Test.h>
 
+#include <LsIsosphere.h>
+#include <LsTetrahedronMesh.h>
+#include <LsIsosurfaceStuffer.h>
+
 #define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
 #define PACKETMODE 0
 #include "wintab/PKTDEF.h"
@@ -96,7 +100,7 @@ public:
 
   void Run() {
     window->Show();
-    while( window->ProcessMessages() ){
+    while ( window->ProcessMessages() ) {
       window->WaitForMessages();
       renderer->BeginFrame();
       pointGrid->Render();
@@ -126,12 +130,15 @@ public:
 };
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+  //LsIsosphere sphere({0.0f, 0.0f, 0.0f}, 1.0f);
+  //LsTetrahedronMesh mesh;
+  //LsIsosurfaceStuffer stuffer;
+  //stuffer.Stuff(mesh, sphere);
   try {
     Application application;
     application.Initialize(hInstance);// test();
     application.Run();
-  }
-  catch (std::string m) {
+  } catch (std::string m) {
     LsErrorMessage(m, "Error");
   }
 }
