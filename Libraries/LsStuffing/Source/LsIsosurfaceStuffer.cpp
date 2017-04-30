@@ -1,5 +1,6 @@
 #include "LsBCCLattice.h"
 #include <LsIsosurfaceStuffer.h>
+#include <iostream>
 
 template <typename E>
 constexpr auto to_underlying(E e) noexcept
@@ -181,6 +182,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
     } else if (nnpp_parity.Match(lattice, tetrahedron)) {  // Group 4
       if ( nnpp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
            nnpp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
+        std::cout << "g4 nnpp" << std::endl;
         mesh.AddTetrahedron( nnpp_parity.GetNodePosition(3),
                              nnpp_parity.GetEdgeCutPoint(2, 3),
                              nnpp_parity.GetEdgeCutPoint(1, 3),
@@ -210,6 +212,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
     } else if (nppp_parity.Match(lattice, tetrahedron)) {
       if ( nppp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
            nppp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
+        std::cout << "g4 nppp" << std::endl;
         mesh.AddTetrahedron( nppp_parity.GetNodePosition(3),
                              nppp_parity.GetEdgeCutPoint(1, 4),
                              nppp_parity.GetEdgeCutPoint(1, 2),
@@ -223,6 +226,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                              nppp_parity.GetEdgeCutPoint(1, 4),
                              nppp_parity.GetEdgeCutPoint(1, 2) );
       } else {
+        std::cout << "g4 nppp flip" << std::endl;
         mesh.AddTetrahedron( nppp_parity.GetNodePosition(4),
                              nppp_parity.GetEdgeCutPoint(1, 4),
                              nppp_parity.GetEdgeCutPoint(1, 2),

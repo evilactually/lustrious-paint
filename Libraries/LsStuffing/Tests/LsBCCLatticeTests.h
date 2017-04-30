@@ -23,6 +23,12 @@ TEST_CASE( "NodeCount", "[stuffing]" ) {
   REQUIRE ( CountPoints(&lattice) == 54 );
 }
 
+TEST_CASE("NodeCountNegativeBounds", "[stuffing]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(-10, -10, -10), std::tuple<int, int, int>(0, 0, 0), 1.0f);
+  REQUIRE(CountPoints(&lattice) == 341);
+  //lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(5, 5, 5), 1.0f);
+  //REQUIRE(CountPoints(&lattice) == 54);
+}
 
 TEST_CASE( "NodeColor", "[lattice]" ) {
   LsBCCLattice lattice = LsBCCLattice(std::tuple<int,int,int>(0,0,0), std::tuple<int,int,int>(10,10,10), 1.0f);
@@ -94,7 +100,30 @@ TEST_CASE("NodeValue", "[lattice]") {
   REQUIRE( lattice.GetNodeValue(LsBCCNode(3, 3, 3)) == LsBCCValue::eNegative );
 }
 
+TEST_CASE("TetrahedronIterator", "[lattice]") {
+  LsBCCLattice lattice = LsBCCLattice(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(10, 10, 10), 1.0f);
+  LsBCCLattice::TetrahedronIterator it = lattice.GetTetrahedronIterator();
+  int i = 0;
+  do {
+    i++;
+  } while ( it.Next() );
 
+  LsBCCLattice lattice2 = LsBCCLattice(std::tuple<int, int, int>(5, 5, 5), std::tuple<int, int, int>(15, 15, 15), 1.0f);
+  LsBCCLattice::TetrahedronIterator it2 = lattice2.GetTetrahedronIterator();
+  int j = 0;
+  do {
+    j++;
+  } while (it2.Next());
+  REQUIRE(i == j);
+  std::cout << "123" << std::endl;
+  LsBCCLattice lattice3 = LsBCCLattice(std::tuple<int, int, int>(-10, -10, -10), std::tuple<int, int, int>(0, 0, 0), 1.0f);
+  LsBCCLattice::TetrahedronIterator it3 = lattice3.GetTetrahedronIterator();
+  int k = 0;
+  do {
+    k++;
+  } while (it3.Next());
+  REQUIRE(i==k);
+}
 // TODO:
 // GetTetrahedronIterator
 // GetNodeEdgeIterator

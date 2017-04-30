@@ -15,6 +15,8 @@
 #include <assert.h>
 #include <cmath>
 
+#include <iostream> // test only
+
 //-------------------------------------------------------------------------------
 //-- Typedefs -------------------------------------------------------------------
 //-------------------------------------------------------------------------------
@@ -151,6 +153,10 @@ LsBCCLattice::TetrahedronIterator::operator LsBCCTetrahedron() const {
   return currentTetrahedron;
 }
 
+void printNode(LsBCCNode& node) {
+  std::cout << "(" << std::get<0>(node) << ", " << std::get<1>(node) << ", " << std::get<2>(node) << ") ";
+}
+
 bool LsBCCLattice::TetrahedronIterator::Next() {
   ++currentPatternIndex;
   if ( currentPatternIndex < 12 ) {
@@ -168,10 +174,10 @@ bool LsBCCLattice::TetrahedronIterator::Next() {
   } else {
     currentNode.x += 2;
     if (currentNode.x > maxima.x) {
-      currentNode.x = 0;
+      currentNode.x = minima.x;
       currentNode.y += 2;
       if (currentNode.y > maxima.y) {
-        currentNode.y = 0;
+        currentNode.y = minima.y;
         currentNode.z += 2;
         if (currentNode.z > maxima.z) {
           return false; // No more nodes
@@ -463,6 +469,9 @@ int LsBCCLattice::GetNodeIndex(LsBCCNode node) const {
 }
 
 bool LsBCCLattice::WithinBounds(LsBCCNode node) const {
+  if (std::get<0>(node) == 1 && std::get<1>(node) == -9 && std::get<2>(node) == -9) {
+    std::cout << " ";
+  }
   return std::get<0>(node) >= std::get<0>(minima) &&
          std::get<1>(node) >= std::get<1>(minima) &&
          std::get<2>(node) >= std::get<2>(minima) &&

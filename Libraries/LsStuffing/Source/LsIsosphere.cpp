@@ -52,9 +52,9 @@ glm::vec3 LsIsosphere::IntersectByEdge(glm::vec3 p1, glm::vec3 p2) const {
   float c = pow(p1.x - position.x, 2) + pow(p1.y - position.y, 2) + pow(p1.z - position.z, 2) - pow(radius, 2);
   float t1 = (-b + sqrt(pow(b,2) - 4*a*c))/(2*a);
   float t2 = (-b - sqrt(pow(b,2) - 4*a*c))/(2*a);
-  std::cout << "Params:" << std::endl;
-  std::cout << t1 << std::endl;
-  std::cout << t2 << std::endl;
+  //std::cout << "Params:" << std::endl;
+  //std::cout << t1 << std::endl;
+  //std::cout << t2 << std::endl;
   //assert((t1 > 0.0f) || (t2 > 0.0f));
   float t;
   if ( t1 > 0.0f && t1 < 1.0f ) { // Choose positive root that is in 0 to 1 range

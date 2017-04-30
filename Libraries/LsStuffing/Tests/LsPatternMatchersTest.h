@@ -4,9 +4,10 @@
 #include <LsBCCLattice.h>
 #include <LsBCCLatticeTypes.h>
 #include <LsPatternMatchers.h>
-
-
-
+// MAGIC WHITESPACE
+// MAGIC WHITESPACE
+// MAGIC WHITESPACE
+// MAGIC WHITESPACE
 TEST_CASE( "pppp01" ) {
   LsPPPPMatcher pppp;
   LsBCCLattice lattice = LsBCCLattice(std::tuple<int,int,int>(0,0,0), std::tuple<int,int,int>(10,10,10), 1.0f);
