@@ -1,0 +1,10 @@
+Isosurface stuffing is nearing completion after half a year working on it, it is time to consider what to do next. The next natural step is to actually make the brush mesh that will be used for simulation, calculate spring coefficients, upload it to video memory and perform the simulation. I cannot use my LsRenderer class for that task, it would be too slow, the data would have to be shuttled back and forth between CPU and GPU, so I will scrap all my code and start from scratch, and just copy-paste/borrow what I've written before. LsRenderer served me well for debugging and I will evolve it into something more usable in final product, but for now it's too restricting.
+
+The brush is defined by with, length and profile. Thickness and mesh density are implementation details that should be hidden away from the user. The ideal thickness is zero and the implementation should try to approximate that. Thickness and spring hardness will affect brush rigidity. Rigidity is something that user might want to control. Probably the most straight forward way to control rigidity is to leave out thickness as fixed and only control base values of spring coefficients, called young's modulus.
+
+Summary of physical brush characteristics:
+  * Width
+  * Length
+  * Profile
+  * Rigidity
+  * Friction
