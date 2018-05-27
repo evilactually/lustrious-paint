@@ -15,6 +15,7 @@
 #include "LsBCCLattice.h"
 #include "LsTetrahedronMesh.h"
 #include "LsPatternMatchers.h"
+#include "LsITetrahedronProcessor.h"
 
 //-------------------------------------------------------------------------------
 // @ LsIsosurface
@@ -28,11 +29,14 @@ public:
   virtual glm::vec3 IntersectByEdge(glm::vec3 p1, glm::vec3 p2) const = 0;
 };
 
+class ILsTetrahedronProcessor;
+
 class LsIsosurfaceStuffer
 {
 public:
   LsIsosurfaceStuffer();
   ~LsIsosurfaceStuffer();
+  void Stuff(LsITetrahedronProcessor& processor, LsIsosurface const& stuffable);
   void Stuff(LsTetrahedronMesh& mesh, LsIsosurface const& stuffable);
   void SetAlphaLong(float a);
   void SetAlphaShort(float a);
@@ -58,5 +62,6 @@ private:
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);
+  void Fill(LsBCCLattice const& lattice, ILsTetrahedronProcessor& mesh);
   void Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& mesh);
 };

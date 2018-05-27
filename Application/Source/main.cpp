@@ -24,6 +24,8 @@
 #define PACKETMODE 0
 #include "wintab/PKTDEF.h"
 
+//#define ENABLE_WINTAB
+
 using namespace lslib;
 
 HCTX OpenWintabContext(HINSTANCE hInstance, HWND hWindow)
@@ -73,15 +75,19 @@ public:
     // Get a pointer to main window singleton
     window = LsWin32MainWindow::Get();
 
+#ifdef ENABLE_WINTAB
     // Load Wintab
     LsLoadWintabLibrary();
     LsLoadWintabEntryPoints();
+#endif
    
     window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
+#ifdef ENABLE_WINTAB
     // Open Wintab Context
     OpenWintabContext(hInstance, window->GetWindowHandle());
+#endif
 
     window->HideMouse();
 

@@ -15,11 +15,15 @@ if (WIN32)
       "$ENV{VK_SDK_PATH}/Bin")
     find_file(GLSLANG_VALIDATOR "glslangValidator.exe" HINTS
       "$ENV{VULKAN_SDK}/Bin"
-      "$ENV{VK_SDK_PATH}/Bin")
+      "$ENV{VK_SDK_PATH}/Bin"
+      "$ENV{VULKAN_SDK}/Lib"
+      "$ENV{VK_SDK_PATH}/Lib")
   else()
     find_library(VULKAN_LIBRARY NAMES vulkan-1 HINTS
       "$ENV{VULKAN_SDK}/Bin32"
-      "$ENV{VK_SDK_PATH}/Bin32")
+      "$ENV{VK_SDK_PATH}/Bin32"
+      "$ENV{VULKAN_SDK}/Lib32"
+      "$ENV{VK_SDK_PATH}/Lib32")
     find_file(GLSLANG_VALIDATOR "glslangValidator.exe" HINTS
       "$ENV{VULKAN_SDK}/Bin32"
       "$ENV{VK_SDK_PATH}/Bin32")

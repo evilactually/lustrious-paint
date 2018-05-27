@@ -1,0 +1,50 @@
+I'm reviving the project after a very long pause(a year?).
+
+The brush will have two components to it: the visual and the physical. The physical is the tetrahedral mesh used for simulation. It is generated from cutting lattice into shape with a brush outline. The visual is what we will actually render as mask to produce brush stencil and make a mark on the canvas. The visual polygon outline will be produced from cutting a quad grid with a polygon.
+
+For each quad in a grid, perform the clipping procedure from my rasterizer project. Result is a polygon. It needs to be triangulazied somehow, I can start by simple fan method first. 
+
+Another option is to make another stuffer, but for 2d triangles instead of tetrahedra. In that case I'll put it off until after simulation is done.
+
+
+
+Panting with solid colors is... so boring! What if you could paint in the material itself? Like a BRDF? One side of BRDF is clear, you paint what hits the eye. 
+So instead of painting what hits the eye directly, you paint the light that hits the surface, that gets processed through BRDF function and converts into realistic-looking material. Inputs: surface direction, input light direction, color, intensity.
+
+Stroke of paint: out comes the shiny plastic in mid afternoon sun. Another. Metal. Sand. Skin. Fuzzy barchat of distant mountain. There's a lot of research in physics based rendering. Turn it to physics based painting. Don't just dub colors, make informed decisions, paint with light.
+
+Give surfaces angles. Paint them in, make them part oif the scene. If you paint a book on the desk. That's a surface. Surface can be defined PER PIXEL. So it can be practically PAINTED IN.
+
+Surface angle
+Incoming angle
+Incoming light color and intensity
+
+This does not cover transperent materials. 
+This does not cover participating media, like smoke or fog.
+This does not cover complex behaviour like subsurface scattering, where light bounces inside the material before leaving.
+It does cover opaque materials where light interacts only at the surface.
+
+You can go two ways about an idea: you can just start implementing it until you hit the first snag and get disappointed. Or like John Carmack said, you can anhiliate the idea, try as hard as you can find a flaw in it.
+
+The data should look like this in the end:
+
+v1: v2 0.5, v3 0.1, ...
+v2
+v3
+v4
+v5
+
+For each vertex all we have to do is compute the force from known current positions.
+
+My data doesn't look anything like that right now. 
+
+hash[v1][v2].k = 0.5;
+
+hash[v1][v2].tetrahedron_volume += calc_volume(terahedron);
+
+Along with the spring, store tetrahedron volume.
+
+
+hash[v]: vector of springs with ks calculated from tetrahedron_volume
+
+

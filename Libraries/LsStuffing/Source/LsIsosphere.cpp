@@ -46,7 +46,7 @@ LsBCCValue LsIsosphere::EvaluateAt(glm::vec3 vertex) const {
   x^2 + y^2 + z^2 = r^2 OR
   (x-x0)^2 + (y-y0)^2 + (z-z0)^2 = r^2
 */
-glm::vec3 LsIsosphere::IntersectByEdge(glm::vec3 p1, glm::vec3 p2) const {
+glm::vec3 LsIsosphere::IntersectByEdge(glm::vec3 p1, glm::vec3 p2) const { // FIXME: this is too difficult to program, use some automatic method, like raymarching
   float a = pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2) + pow(p2.z - p1.z, 2);
   float b = 2*((p1.x - position.x)*(p2.x - p1.x) + (p1.y - position.y)*(p2.y - p1.y) + (p1.z - position.z)*(p2.z - p1.z));
   float c = pow(p1.x - position.x, 2) + pow(p1.y - position.y, 2) + pow(p1.z - position.z, 2) - pow(radius, 2);

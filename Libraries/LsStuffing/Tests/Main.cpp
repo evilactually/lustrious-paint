@@ -4,6 +4,7 @@
 #include "LsBCCLatticeTests.h"
 #include "LsPatternMatchersTest.h"
 #include "LsIsosphereTests.h"
+#include "LsHashingTest.h"
 
 TEST_CASE( "aaa", "bbb" ) {
   REQUIRE ( 8 == 8 );

@@ -29,7 +29,7 @@ LsStuffingDemo::LsStuffingDemo(std::shared_ptr<LsRenderer> renderer) : renderer(
   //lattice = std::make_shared<LsBCCLattice>(std::tuple<int, int, int>(0, 0, 0), std::tuple<int, int, int>(8, 8, 8), 0.5f);
   domain = LsDomain(0.0f, 0.0f, 0.0f, 4.0f, 4.0f, 4.0f);
   lattice = std::make_shared<LsBCCLattice>(domain, STEP);
-  sphere = LsIsosphere( { 0.0f, 0.0f, 0.0f }, 4.0f );
+  sphere = LsIsosphere( { 0.0f, 0.0f, 0.0f }, 10.0f );
   stuffer.SetStep(1.0f);
   stuffer.Stuff(mesh, sphere);
   //mesh.Optimize();

@@ -1,6 +1,9 @@
 #include "LsBCCLattice.h"
 #include <LsIsosurfaceStuffer.h>
 #include <iostream>
+#include <unordered_map>
+#include <string>
+#include "LsITetrahedronProcessor.h"
 
 template <typename E>
 constexpr auto to_underlying(E e) noexcept
@@ -31,6 +34,14 @@ LsIsosurfaceStuffer::LsIsosurfaceStuffer()
 
 LsIsosurfaceStuffer::~LsIsosurfaceStuffer()
 {
+}
+
+void LsIsosurfaceStuffer::Stuff(LsITetrahedronProcessor& processor, LsIsosurface const& stuffable) {
+  //LsBCCLattice bccLattice(stuffable.GetDomain(), step);
+  //UpdateValues(bccLattice, stuffable);
+  //UpdateCutPoints(bccLattice, stuffable);
+  //Warp(bccLattice);
+  //Fill(bccLattice, mesh);
 }
 
 void LsIsosurfaceStuffer::Stuff(LsTetrahedronMesh& mesh, LsIsosurface const& stuffable) {
@@ -113,11 +124,24 @@ void LsIsosurfaceStuffer::Warp(LsBCCLattice& lattice) {
   } while ( nodeIterator.Next() );
 }
 
+// void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsITetrahedronProcessor& processor) {
+//   //std::unordered_map<LsBCCNode,int> ids;
+//   // hash[v1].terahedra_volume_summ[v2]
+//   //         .
+
+//   // hash[v1].stiffness
+
+//   //processor
+// }
+
 void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& mesh) {
+  std::unordered_map<std::string,int> ids;
+  
   LsBCCLattice::TetrahedronIterator iterator = lattice.GetTetrahedronIterator();
   do {
     LsBCCTetrahedron tetrahedron = iterator;   
     if ( pppp.Match(lattice, tetrahedron) ) { // Group 1
+
       mesh.AddTetrahedron( pppp.GetNodePosition(1),
                            pppp.GetNodePosition(2),
                            pppp.GetNodePosition(3),
@@ -138,7 +162,7 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& m
                            zzzp.GetNodePosition(3),
                            zzzp.GetNodePosition(4) );
     } else if ( nzzp.Match(lattice, tetrahedron) ) {  // Group 2
-      mesh.AddTetrahedron( nzzp.GetEdgeCutPoint(4, 1),
+      mesh.AddTetrahedron( nzzp.GetEdgeCutPoint(4, 1), // LsCutPoint(GetNodeById(4),GetNodeById(1))
                            nzzp.GetNodePosition(2),
                            nzzp.GetNodePosition(3),
                            nzzp.GetNodePosition(4) );
