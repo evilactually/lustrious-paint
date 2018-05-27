@@ -18,22 +18,44 @@ class LsBCCLattice;
 class LsLatticeVertexRefHasher;
 
 class LsLatticeVertexRef {
+  friend std::hash<LsLatticeVertexRef>;
   private:
-  	bool isCutPointReference;
-  	LsBCCLattice const* pLattice;
-  	LsBCCNode node1;
-  	LsBCCNode node2;
+    bool isCutPointReference;
+    LsBCCLattice const* pLattice;
+    LsBCCNode node1;
+    LsBCCNode node2;
     LsLatticeVertexRef(LsBCCLattice const* lattice, LsBCCNode node);
     LsLatticeVertexRef(LsBCCLattice const* lattice, LsBCCNode node1, LsBCCNode node2);
   public:
     glm::vec3 GetPosition();
-    std::size_t GetHash() const;
     bool operator==( const LsLatticeVertexRef& other ) const;
     static LsLatticeVertexRef MkNodeRef(LsBCCLattice const* lattice, LsBCCNode node);
     static LsLatticeVertexRef MkCutPointRef(LsBCCLattice const* lattice, LsBCCNode node1, LsBCCNode node2);
 };
 
 std::size_t hash_lattice_vertex_ref(LsLatticeVertexRef const& ref);
+
+namespace std {
+    template <>
+    class hash<LsLatticeVertexRef>
+    {
+    public:
+        std::size_t operator()(const LsLatticeVertexRef& ref) const {
+            std::size_t hash = 0;
+            // XORing hashes because XOR truth table has even distribution of 1s and 0s
+            hash ^= std::hash<int>()(std::get<0>(ref.node1));
+            hash ^= std::hash<int>()(std::get<1>(ref.node1));
+            hash ^= std::hash<int>()(std::get<2>(ref.node1));
+            if(ref.isCutPointReference) {
+                hash ^= std::hash<int>()(std::get<0>(ref.node2));
+                hash ^= std::hash<int>()(std::get<1>(ref.node2));
+                hash ^= std::hash<int>()(std::get<2>(ref.node2));
+            }
+            return hash;
+        }
+        
+    };
+};
 
 // class LsLatticeVertexRefHasher {
 // public:

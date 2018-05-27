@@ -20,20 +20,6 @@ glm::vec3 LsLatticeVertexRef::GetPosition() {
 	}
 }
 
-std::size_t LsLatticeVertexRef::GetHash() const {
-  std::size_t hash = 0;
-  // XORing hashes because XOR truth table has even distribution of 1s and 0s
-  hash ^= std::hash<int>()(std::get<0>(this->node1));
-  hash ^= std::hash<int>()(std::get<1>(this->node1));
-  hash ^= std::hash<int>()(std::get<2>(this->node1));
-  if(isCutPointReference) {
-  	hash ^= std::hash<int>()(std::get<0>(this->node2));
-    hash ^= std::hash<int>()(std::get<1>(this->node2));
-    hash ^= std::hash<int>()(std::get<2>(this->node2));
-  }
-  return hash;
-}
-
 bool LsLatticeVertexRef::operator==( const LsLatticeVertexRef& other ) const {
   if(isCutPointReference) {
   	return other.node1 == node1 && other.node2 == node2; 
@@ -50,6 +36,3 @@ LsLatticeVertexRef LsLatticeVertexRef::MkCutPointRef(LsBCCLattice const* lattice
   return LsLatticeVertexRef(lattice, node1, node2);
 }
 
-std::size_t hash_lattice_vertex_ref(LsLatticeVertexRef const& ref) {
-    return ref.GetHash();
-}

@@ -23,3 +23,11 @@ float DistanceToLine(glm::vec2 a, glm::vec2 b, glm::vec2 p);
 // of the edges
 //-------------------------------------------------------------------------------
 int PolygonInOutTest(std::vector<glm::vec2> polygon, glm::vec2 p);
+
+//-------------------------------------------------------------------------------
+// @ TetrahedtaVolume(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4)
+//-------------------------------------------------------------------------------
+// 
+// Returns volume of a tetrahedron defined by four vertecies 
+//-------------------------------------------------------------------------------
+double TetrahedronVolume(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);

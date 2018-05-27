@@ -41,3 +41,7 @@ int PolygonInOutTest(std::vector<glm::vec2> polygon, glm::vec2 p) {
   }
   return 1; // if it got thus far, the point was not outside or on the edge of any of the half-spaces
 }
+
+double TetrahedronVolume(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
+  return 0.0;
+}
