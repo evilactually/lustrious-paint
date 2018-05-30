@@ -27,13 +27,11 @@ class LsLatticeVertexRef {
     LsLatticeVertexRef(LsBCCLattice const* lattice, LsBCCNode node);
     LsLatticeVertexRef(LsBCCLattice const* lattice, LsBCCNode node1, LsBCCNode node2);
   public:
-    glm::vec3 GetPosition();
+    glm::vec3 GetPosition() const;
     bool operator==( const LsLatticeVertexRef& other ) const;
     static LsLatticeVertexRef MkNodeRef(LsBCCLattice const* lattice, LsBCCNode node);
     static LsLatticeVertexRef MkCutPointRef(LsBCCLattice const* lattice, LsBCCNode node1, LsBCCNode node2);
 };
-
-std::size_t hash_lattice_vertex_ref(LsLatticeVertexRef const& ref);
 
 namespace std {
     template <>

@@ -43,5 +43,9 @@ int PolygonInOutTest(std::vector<glm::vec2> polygon, glm::vec2 p) {
 }
 
 double TetrahedronVolume(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
-  return 0.0;
+  glm::vec3 a = p2 - p1;
+  glm::vec3 b = p3 - p1;
+  glm::vec3 c = p4 - p1;
+  double volume = (1.0/6.0)*glm::abs(glm::dot(a, glm::cross(c,b)));
+  return volume;
 }

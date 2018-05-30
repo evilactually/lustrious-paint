@@ -62,6 +62,6 @@ private:
   void UpdateValues(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void UpdateCutPoints(LsBCCLattice& lattice, LsIsosurface const& stuffable);
   void Warp(LsBCCLattice& lattice);
-  void Fill(LsBCCLattice const& lattice, ILsTetrahedronProcessor& mesh);
+  void Fill(LsBCCLattice const& lattice, LsITetrahedronProcessor& processor);
   void Fill(LsBCCLattice const& lattice, LsTetrahedronMesh& mesh);
 };
