@@ -1,16 +1,19 @@
 #pragma once
 
+#include "LsBCCLatticeRef.h"
 #include "LsITetrahedronProcessor.h"
-#include "LsLatticeVertexRef.h"
+#include "LsHashedBCCLatticeVertex.h"
 #include <unordered_map>
+
+class LsBCCLattice;
 
 class LsSpringMeshBuilder: public LsITetrahedronProcessor {
 private:
 	typedef struct {
  		double edgeAdjacentTetrahedronVolume;
 	} LsTmpSpringInfo;
-	typedef std::unordered_map<LsLatticeVertexRef, LsTmpSpringInfo> LsTmpSpringMeshNodeInfo;
-	std::unordered_map<LsLatticeVertexRef, LsTmpSpringMeshNodeInfo> temporarySpringMesh;
+	typedef std::unordered_map<LsHashedBCCLatticeVertex, LsTmpSpringInfo> LsTmpSpringMeshNodeInfo;
+	std::unordered_map<LsHashedBCCLatticeVertex, LsTmpSpringMeshNodeInfo> temporarySpringMesh;
 public:
 
     // @ void LsSpringMeshBuilder::Reset()
@@ -24,7 +27,7 @@ public:
     // LsSpringMeshBuilder class will receive tetrahedra as they are being filled 
     // through this callback and store in temporary data structure.
     //-------------------------------------------------------------------------------
-    void OnTetrahedronEmitted(const LsLatticeVertexRef& ref1, const LsLatticeVertexRef& ref2, const LsLatticeVertexRef& ref3, const LsLatticeVertexRef& ref4);
+    void OnTetrahedronEmitted(const LsBCCLattice& lattice, const LsBCCLatticeRef& ref1, const LsBCCLatticeRef& ref2, const LsBCCLatticeRef& ref3, const LsBCCLatticeRef& ref4);
 
     // @ LsSpringMesh LsSpringMeshBuilder::Build()
 	//-------------------------------------------------------------------------------

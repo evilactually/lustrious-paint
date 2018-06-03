@@ -12,19 +12,21 @@ set( INCLUDE_FILES
   Include/LsBCCLattice.h
   Include/LsPatternMatchers.h
   Include/LsIsosphere.h
-  Include/LsLatticeVertexRef.h
   Include/LsITetrahedronProcessor.h
   Include/LsSpringMeshBuilder.h
+  Include/LsBCCLatticeRef.h
+  Include/LsHashedBCCLatticeVertex.h
 )
 
-set( SOURCE_FILES
+set(SOURCE_FILES 
   Source/LsIsosurfaceStuffer.cpp
   Source/LsTetrahedronMesh.cpp
   Source/LsBCCLattice.cpp
   Source/LsPatternMatchers.cpp
   Source/LsIsosphere.cpp
-  Source/LsLatticeVertexRef.cpp
   Source/LsSpringMeshBuilder.cpp
+  Source/LsBCCLatticeRef.cpp
+  Source/LsHashedBCCLatticeVertex.cpp
 )
 
 set( TEST_FILES

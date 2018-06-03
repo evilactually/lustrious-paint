@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <string>
 #include "LsITetrahedronProcessor.h"
-#include "LsLatticeVertexRef.h"
+#include "LsBCCLatticeRef.h"
 
 template <typename E>
 constexpr auto to_underlying(E e) noexcept
@@ -131,149 +131,178 @@ void LsIsosurfaceStuffer::Fill(LsBCCLattice const& lattice, LsITetrahedronProces
     LsBCCTetrahedron tetrahedron = iterator;   
     if ( pppp.Match(lattice, tetrahedron) ) { // Group 1
 
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, pppp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, pppp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, pppp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, pppp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(pppp.GetNodeById(1)),
+                                      LsBCCLatticeRef::NodeRef(pppp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(pppp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(pppp.GetNodeById(4)) );
     } else if ( zppp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, zppp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zppp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zppp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zppp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(zppp.GetNodeById(1)),
+                                      LsBCCLatticeRef::NodeRef(zppp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(zppp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(zppp.GetNodeById(4)) );
     } else if ( zzpp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, zzpp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzpp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzpp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(zzpp.GetNodeById(1)),
+                                      LsBCCLatticeRef::NodeRef(zzpp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(zzpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(zzpp.GetNodeById(4)) );
     } else if ( zzzp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, zzzp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzzp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzzp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, zzzp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(zzzp.GetNodeById(1)),
+                                      LsBCCLatticeRef::NodeRef(zzzp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(zzzp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(zzzp.GetNodeById(4)) );
     } else if ( nzzp.Match(lattice, tetrahedron) ) {  // Group 2
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nzzp.GetNodeById(4), nzzp.GetNodeById(1)), // LsCutPoint(GetNodeById(4),GetNodeById(1))
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzzp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzzp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzzp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nzzp.GetNodeById(4), nzzp.GetNodeById(1)), // LsCutPoint(GetNodeById(4),GetNodeById(1))
+                                      LsBCCLatticeRef::NodeRef(nzzp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(nzzp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nzzp.GetNodeById(4)) );
     } else if ( nnzp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nnzp.GetNodeById(4), nnzp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnzp.GetNodeById(4), nnzp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnzp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnzp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnzp.GetNodeById(4), nnzp.GetNodeById(1)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnzp.GetNodeById(4), nnzp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(nnzp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nnzp.GetNodeById(4)) );
     } else if ( nnnp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnnp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(1)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(2)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nnnp.GetNodeById(4)) );
     } else if ( nnnp.Match(lattice, tetrahedron) ) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnnp.GetNodeById(4), nnnp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnnp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(1)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(2)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnnp.GetNodeById(4), nnnp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nnnp.GetNodeById(4)) );
     } else if ( nzpp.Match(lattice, tetrahedron) ) { // Group 3
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nzpp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzpp.GetNodeById(4)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp.GetNodeById(1), nzpp.GetNodeById(2)) );
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp.GetNodeById(1), nzpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nzpp.GetNodeById(4)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp.GetNodeById(1), nzpp.GetNodeById(2)));
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(nzpp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(nzpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nzpp.GetNodeById(4)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nzpp.GetNodeById(1), nzpp.GetNodeById(2)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nzpp.GetNodeById(1), nzpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nzpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::NodeRef(nzpp.GetNodeById(4)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nzpp.GetNodeById(1), nzpp.GetNodeById(2)));
     } else if (nnpp.Match(lattice, tetrahedron)) {
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(3), nnpp.GetNodeById(4)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(1), nnpp.GetNodeById(4)) );
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp.GetNodeById(1)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(3), nnpp.GetNodeById(4)) );
-      processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(2), nnpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
-                                      LsLatticeVertexRef::MkNodeRef(&lattice, nnpp.GetNodeById(3)),
-                                      LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp.GetNodeById(3), nnpp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(nnpp.GetNodeById(1)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(3), nnpp.GetNodeById(4)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(1), nnpp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::NodeRef(nnpp.GetNodeById(1)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(nnpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(3), nnpp.GetNodeById(4)) );
+      processor.OnTetrahedronEmitted( lattice,
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(2), nnpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(1), nnpp.GetNodeById(2)),
+                                      LsBCCLatticeRef::NodeRef(nnpp.GetNodeById(3)),
+                                      LsBCCLatticeRef::EdgeCutPointRef(nnpp.GetNodeById(3), nnpp.GetNodeById(4)) );
     } else if (nnpp_parity.Match(lattice, tetrahedron)) {  // Group 4
       if ( nnpp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
            nnpp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
         std::cout << "g4 nnpp" << std::endl;
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(4)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(4)) );
       } else {
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(1)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(1)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(2), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::NodeRef(nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(1), nnpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nnpp_parity.GetNodeById(4), nnpp_parity.GetNodeById(2)) );
       }
     } else if (nppp_parity.Match(lattice, tetrahedron)) {
       if ( nppp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
            nppp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
         std::cout << "g4 nppp" << std::endl;
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
       } else {
         std::cout << "g4 nppp flip" << std::endl;
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nppp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nppp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nppp_parity.GetNodeById(1), nppp_parity.GetNodeById(2)) );
       }
     } else if (nzpp_parity.Match(lattice, tetrahedron)) {
       if ( nzpp_parity.GetNodeColor(3) == LsBCCColor::eBlack &&
            nzpp_parity.GetNodeColor(4) == LsBCCColor::eBlack ) {
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(3)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(3)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(3)) );
       }
       else {
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(4)) );
-        processor.OnTetrahedronEmitted( LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(2)),
-                                        LsLatticeVertexRef::MkCutPointRef(&lattice, nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
-                                        LsLatticeVertexRef::MkNodeRef(&lattice, nzpp_parity.GetNodeById(4)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(4)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(4)) );
+        processor.OnTetrahedronEmitted( lattice,
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(2)),
+                                        LsBCCLatticeRef::EdgeCutPointRef(nzpp_parity.GetNodeById(1), nzpp_parity.GetNodeById(3)),
+                                        LsBCCLatticeRef::NodeRef(nzpp_parity.GetNodeById(4)) );
       }
     }
   } while ( iterator.Next() );

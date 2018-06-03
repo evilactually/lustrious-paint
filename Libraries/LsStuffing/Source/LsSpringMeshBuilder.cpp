@@ -1,7 +1,10 @@
+
+
 #include "LsSpringMeshBuilder.h"
-#include "LsLatticeVertexRef.h"
+#include "LsHashedBCCLatticeVertex.h"
 #include "LsGeometry.h"
 #include <vector>
+#include "LsBCCLatticeRef.h"
 
 //#include <iostream>
 // typedef struct {
@@ -9,38 +12,37 @@
 
 // } LsTmpSpringInfo;
 
-// typedef std::unordered_map<LsLatticeVertexRef, LsTmpSpringInfo, std::function<decltype(hash_lattice_vertex_ref)>> LsTmpSpringMeshNodeInfo;
+// typedef std::unordered_map<LsHashedBCCLatticeVertex, LsTmpSpringInfo, std::function<decltype(hash_lattice_vertex_ref)>> LsTmpSpringMeshNodeInfo;
 
-void LsSpringMeshBuilder::OnTetrahedronEmitted(const LsLatticeVertexRef& ref1, const LsLatticeVertexRef& ref2, const LsLatticeVertexRef& ref3, const LsLatticeVertexRef& ref4) {
-  glm::vec3 p1 = ref1.GetPosition();
-  glm::vec3 p2 = ref2.GetPosition();
-  glm::vec3 p3 = ref3.GetPosition();
-  glm::vec3 p4 = ref4.GetPosition();
+void LsSpringMeshBuilder::OnTetrahedronEmitted(const LsBCCLattice& lattice, const LsBCCLatticeRef& ref1, const LsBCCLatticeRef& ref2, const LsBCCLatticeRef& ref3, const LsBCCLatticeRef& ref4) {
+  LsHashedBCCLatticeVertex v1(lattice, ref1), v2(lattice, ref2), v3(lattice, ref3), v4(lattice, ref4);
+
   // Add the six edges of tetrahedron and store volume of the tetrahedron.
-  double volume = TetrahedronVolume(ref1.GetPosition(), ref2.GetPosition(), ref3.GetPosition(), ref4.GetPosition());
+  double volume = TetrahedronVolume(v1.GetPosition(), v2.GetPosition(), v3.GetPosition(), v4.GetPosition());
+  
   // 1
-  temporarySpringMesh[ref1][ref2].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref2][ref1].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v1][v2].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v2][v1].edgeAdjacentTetrahedronVolume += volume;
   
   // 2
-  temporarySpringMesh[ref1][ref3].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref3][ref1].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v1][v3].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v3][v1].edgeAdjacentTetrahedronVolume += volume;
 
   // 3
-  temporarySpringMesh[ref1][ref4].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref4][ref1].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v1][v4].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v4][v1].edgeAdjacentTetrahedronVolume += volume;
 
   // 4
-  temporarySpringMesh[ref4][ref3].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref3][ref4].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v4][v3].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v3][v4].edgeAdjacentTetrahedronVolume += volume;
 
   // 5 
-  temporarySpringMesh[ref3][ref2].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref2][ref3].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v3][v2].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v2][v3].edgeAdjacentTetrahedronVolume += volume;
 
   // 6
-  temporarySpringMesh[ref2][ref4].edgeAdjacentTetrahedronVolume += volume;
-  temporarySpringMesh[ref4][ref2].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v2][v4].edgeAdjacentTetrahedronVolume += volume;
+  temporarySpringMesh[v4][v2].edgeAdjacentTetrahedronVolume += volume;
 }
 
 typedef struct {
@@ -58,7 +60,7 @@ typedef struct {
 
 void LsSpringMeshBuilder::Build() {
   std::vector<LsSpringNode> nodes;
-  std::unordered_map<LsLatticeVertexRef, size_t> offset_map; // Used to resolve references to nodes in second pass
+  std::unordered_map<LsHashedBCCLatticeVertex, size_t> offset_map; // Used to resolve references to nodes in second pass
 
   // Phase 1: Add node positions and fill in look-up map
   for (auto it = temporarySpringMesh.begin(); it != temporarySpringMesh.end(); ++it)
@@ -68,10 +70,10 @@ void LsSpringMeshBuilder::Build() {
     offset_map[it->first] = nodes.size() - 1;
   }
 
-  // Phase 2
+  // Phase 2: Flattening hash maps into vectors
   for (auto it = temporarySpringMesh.begin(); it != temporarySpringMesh.end(); ++it)
   {
-    LsLatticeVertexRef current_node_ref = it->first;
+    LsHashedBCCLatticeVertex current_node_ref = it->first;
     size_t offset = offset_map[current_node_ref];
     LsSpringNode& current_spring_node = nodes[offset];
     LsTmpSpringMeshNodeInfo const& src_tmp_spring_node_info = temporarySpringMesh[current_node_ref];
