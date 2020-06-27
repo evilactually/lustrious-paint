@@ -126,18 +126,61 @@ bool FindQueueFamilies(VkPhysicalDevice physicalDevice,
   return true;
 }
 
+bool FindComputeQueueFamily(VkPhysicalDevice physicalDevice, uint32_t* computeQueueFamily)
+{
+  uint32_t queueFamilyCount;
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+  assert(queueFamilyCount >= 1);
+
+  std::vector<VkQueueFamilyProperties> queueFamilyProperties;
+  queueFamilyProperties.resize(queueFamilyCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+
+    // Some devices have dedicated compute queues, so we first try to find a queue that supports compute and not graphics
+  bool computeQueueFound = false;
+  for (uint32_t i = 0; i < static_cast<uint32_t>(queueFamilyProperties.size()); i++)
+  {
+    if ((queueFamilyProperties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && ((queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0))
+    {
+      *computeQueueFamily = i;
+      computeQueueFound = true;
+      return true;
+      break;
+    }
+  }
+
+  // If there is no dedicated compute queue, just find the first queue family that supports compute
+  if (!computeQueueFound)
+  {
+    for (uint32_t i = 0; i < static_cast<uint32_t>(queueFamilyProperties.size()); i++)
+    {
+      if (queueFamilyProperties[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+      {
+        *computeQueueFamily = i;
+        computeQueueFound = true;
+        return true;
+        break;
+      }
+    }
+  } 
+
+  return false;
+}
+
 bool TryCreateDevice(VkPhysicalDevice physicalDevice,
                      VkSurfaceKHR presentationSurface,
                      std::vector<const char*> const& extensions,
                      VkDevice* device,
                      uint32_t* graphicsQueueFamily,
-                     uint32_t* presentQueueFamily) {
+                     uint32_t* presentQueueFamily,
+                     uint32_t* computeQueueFamily) {
   uint32_t selectedGraphicsQueueFamily;
   uint32_t selectedPresentQueueFamily;
   if ( CheckPhysicalDeviceExtensions(physicalDevice, extensions) &&
        CheckPhysicalDeviceProperties(physicalDevice) &&
        CheckPhysicalDeviceFeatures(physicalDevice) &&
-       FindQueueFamilies(physicalDevice, presentationSurface, &selectedGraphicsQueueFamily, &selectedPresentQueueFamily) ) {
+       FindQueueFamilies(physicalDevice, presentationSurface, &selectedGraphicsQueueFamily, &selectedPresentQueueFamily) &&
+       FindComputeQueueFamily(physicalDevice, computeQueueFamily) ) {
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::vector<float> queuePriorities = { 1.0f }; // This is required, even for single queue
 	
@@ -158,6 +201,10 @@ bool TryCreateDevice(VkPhysicalDevice physicalDevice,
    	  queueCreateInfo.queueFamilyIndex = selectedPresentQueueFamily;
       queueCreateInfos.push_back(queueCreateInfo);
     }
+
+  // Add compute family queue
+  queueCreateInfo.queueFamilyIndex = *computeQueueFamily;
+  queueCreateInfos.push_back(queueCreateInfo);
 
 	VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.wideLines = VK_TRUE;
@@ -190,7 +237,8 @@ void CreateDevice(VkInstance instance,
                   VkPhysicalDevice* physicalDevice,
                   VkDevice* device,
                   uint32_t* graphicsQueueFamily,
-                  uint32_t* presentQueueFamily) {
+                  uint32_t* presentQueueFamily,
+                  uint32_t* computeQueueFamily) {
   uint32_t physicalDeviceCount = 0;
   VkResult result = vkEnumeratePhysicalDevices( instance, &physicalDeviceCount, NULL);
   if( result != VK_SUCCESS || physicalDeviceCount == 0 ) {
@@ -204,7 +252,7 @@ void CreateDevice(VkInstance instance,
   }
 
   for( uint32_t i = 0; i < physicalDeviceCount; ++i ) {
-    if( TryCreateDevice(physicalDevices[i], presentationSurface, extensions, device, graphicsQueueFamily, presentQueueFamily) ) {
+    if( TryCreateDevice(physicalDevices[i], presentationSurface, extensions, device, graphicsQueueFamily, presentQueueFamily, computeQueueFamily) ) {
       *physicalDevice = physicalDevices[i];
       return;
     }

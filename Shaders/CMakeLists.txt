@@ -4,7 +4,8 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 
 file(GLOB_RECURSE SHADER_SOURCE_FILES
     "*.frag"
-    "*.vert")
+    "*.vert"
+    "*.comp")
 
 source_group( "Source" FILES ${SHADER_SOURCE_FILES} )
 

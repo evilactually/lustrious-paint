@@ -24,6 +24,8 @@
 
 using namespace lslib;
 
+// TODO: GIF_RECORDING feature is leaking resources, needs to get fixed
+
 //-------------------------------------------------------------------------------
 // @ requiredInstanceExtensions
 //-------------------------------------------------------------------------------
@@ -55,7 +57,8 @@ std::vector<const char*> requiredDeviceExtensions = {
 //-------------------------------------------------------------------------------
 std::vector<const char*> requiredInstanceValidationLayers = {
 #ifdef VULKAN_VALIDATION
-  "VK_LAYER_LUNARG_standard_validation"
+  "VK_LAYER_LUNARG_standard_validation",
+  "VK_LAYER_KHRONOS_validation"
 #endif
 };
 
@@ -184,8 +187,8 @@ void LsRenderer::RecordFrameCaptureCmds() {
                   VK_ACCESS_HOST_READ_BIT,        // image memory will be mapped for reading later
                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                   VK_IMAGE_LAYOUT_GENERAL,        // layout that supports host access
-                  VK_QUEUE_FAMILY_IGNORED,
-                  VK_QUEUE_FAMILY_IGNORED,
+                  VK_QUEUE_FAMILY_IGNORED,        // srcQueueFamilyIndex
+                  VK_QUEUE_FAMILY_IGNORED,        // dstQueueFamilyIndex
                   captureInfo.capturedFrameImage.image,
                   imageSubresourceRange,
                   VK_PIPELINE_STAGE_TRANSFER_BIT, // wait for transfer
@@ -408,7 +411,8 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
                &physicalDevice,
                &device,
                &graphicsQueue.familyIndex,
-               &presentQueue.familyIndex);
+               &presentQueue.familyIndex,
+               &canvasState.queueFamilyIndex);
 
   LsLoadDeviceLevelEntryPoints(device, requiredDeviceExtensions);
 
@@ -475,6 +479,8 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
     
     canRender = true;
   }
+
+  InitializeCanvas(640, 800);
 }
 
 void LsRenderer::RefreshSwapChain() {
@@ -890,6 +896,14 @@ void LsRenderer::Clear(float r, float g, float b) {
 
 }
 
+LsImage LsRenderer::CreateImage(uint32_t width, uint32_t height) {
+  return LsImage(width, height, *this);
+}
+
+void LsRenderer::DrawImage(glm::vec2 p1, glm::vec2 p2, LsImage image) {
+
+}
+
 void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
   if( !drawingContext.drawing ) {
     BeginDrawing();
@@ -957,6 +971,10 @@ void LsRenderer::DrawPoint(float x, float y) {
   vkCmdDraw( commandBuffer, 1, 1, 0, 0 );
 }
 
+void DrawImage(glm::vec2 p1, glm::vec2 p2, LsImage image) {
+  
+}
+
 void LsRenderer::SetColor(float r, float g, float b) {
   drawingContext.color[0] = r;
   drawingContext.color[1] = g;
@@ -969,6 +987,228 @@ void LsRenderer::SetLineWidth(float width) {
 
 void LsRenderer::SetPointSize(float size) {
   drawingContext.pointSize = size;
+}
+
+// Find and create a compute capable device queue
+void LsRenderer::getComputeQueue()
+{
+  //uint32_t queueFamilyCount;
+  //vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+  //assert(queueFamilyCount >= 1);
+
+  //std::vector<VkQueueFamilyProperties> queueFamilyProperties;
+  //queueFamilyProperties.resize(queueFamilyCount);
+  //vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+
+  //  // Some devices have dedicated compute queues, so we first try to find a queue that supports compute and not graphics
+  //bool computeQueueFound = false;
+  //for (uint32_t i = 0; i < static_cast<uint32_t>(queueFamilyProperties.size()); i++)
+  //{
+  //  if ((queueFamilyProperties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && ((queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0))
+  //  {
+  //    canvasState.queueFamilyIndex = i;
+  //    computeQueueFound = true;
+  //    break;
+  //  }
+  //}
+
+  //// If there is no dedicated compute queue, just find the first queue family that supports compute
+  //if (!computeQueueFound)
+  //{
+  //  for (uint32_t i = 0; i < static_cast<uint32_t>(queueFamilyProperties.size()); i++)
+  //  {
+  //    if (queueFamilyProperties[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+  //    {
+  //      canvasState.queueFamilyIndex = i;
+  //      computeQueueFound = true;
+  //      break;
+  //    }
+  //  }
+  //} 
+
+  //  // Compute is mandatory in Vulkan, so there must be at least one queue family that supports compute
+  //assert(computeQueueFound);
+  //  // Get a compute queue from the device
+  //
+  //(device, canvasState.queueFamilyIndex, 0, &canvasState.queue);
+}
+
+void LsRenderer::InitializeCanvas(uint32_t width, uint32_t height) {
+  this->canvasState.width = width;
+  this->canvasState.height = height;
+  this->canvasState.format = VK_FORMAT_R8G8B8A8_UNORM;
+
+  VkImageCreateInfo imageCreateInfo = {};
+  imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  imageCreateInfo.flags = 0;
+  imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+  imageCreateInfo.format = this->canvasState.format;
+  imageCreateInfo.extent = { width, height, 1 };
+  imageCreateInfo.mipLevels = 1;
+  imageCreateInfo.arrayLayers = 1;
+  imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+  imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+  imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+  imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  imageCreateInfo.queueFamilyIndexCount = 0;
+  imageCreateInfo.pQueueFamilyIndices = nullptr;
+  imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+  VkMemoryRequirements memoryRequirements;
+  if (vkCreateImage(device, &imageCreateInfo, nullptr, &canvasState.image) != VK_SUCCESS) {
+      throw std::string("Could not create image!");
+  }
+
+  vkGetImageMemoryRequirements(device, canvasState.image, &memoryRequirements);
+  // memory requirements give required flags only, not exact type index, we have to find that
+
+  VkPhysicalDeviceMemoryProperties memoryProperties;
+  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+  int32_t memoryType = FindMemoryType(memoryProperties, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  
+  VkMemoryAllocateInfo memoryAllocationInfo = {};
+  memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  memoryAllocationInfo.allocationSize = memoryRequirements.size;
+  memoryAllocationInfo.memoryTypeIndex = memoryType;
+
+  vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &canvasState.memory);
+  vkBindImageMemory(device, canvasState.image, canvasState.memory, 0);
+  // frame memory size used later for writing to file, and later it doubles as frame pitch for reading
+  canvasState.size = memoryRequirements.size;
+
+  // Create sampler
+  VkSamplerCreateInfo samplerCreateInfo {};
+  samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  samplerCreateInfo.maxAnisotropy = 1.0f;
+  samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+  samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+  samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  samplerCreateInfo.addressModeV = samplerCreateInfo.addressModeU;
+  samplerCreateInfo.addressModeW = samplerCreateInfo.addressModeU;
+  samplerCreateInfo.mipLodBias = 0.0f;
+  samplerCreateInfo.maxAnisotropy = 1.0f;
+  samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
+  samplerCreateInfo.minLod = 0.0f;
+  samplerCreateInfo.maxLod = 1;
+  samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+  vkCreateSampler(device, &samplerCreateInfo, nullptr, &canvasState.sampler);
+
+  // Create image view
+  VkImageViewCreateInfo imageViewCreateInfo {};
+  imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+  imageViewCreateInfo.format = canvasState.format;
+  imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+  imageViewCreateInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+  imageViewCreateInfo.image = canvasState.image;
+  vkCreateImageView(device, &imageViewCreateInfo, nullptr, &canvasState.view);
+
+  // Set image layout 
+  canvasState.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+  canvasState.descriptor.sampler = canvasState.sampler;
+  canvasState.descriptor.imageView = canvasState.view;
+  canvasState.descriptor.imageLayout = canvasState.imageLayout;
+
+ 
+
+  // Create pipeline layout
+
+  // std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+  //     // Binding 1: Output image (write)
+  //     vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 1),
+  //   };
+
+  // Pipeline
+  //    DescriptorSet
+  //    
+
+  // Create vkDescriptorSetLayout, needed by Allocate and CreatePipeline
+  VkDescriptorSetLayoutBinding setLayoutBinding {};
+  setLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+  setLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  setLayoutBinding.binding = 0;
+  setLayoutBinding.descriptorCount = 1;
+
+
+  VkDescriptorSetLayoutCreateInfo descriptorLayout {};
+  descriptorLayout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  descriptorLayout.pBindings = &setLayoutBinding;
+  descriptorLayout.bindingCount = 1;
+
+  vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr, &canvasState.descriptorSetLayout);
+
+   // Descriptor pool
+  VkDescriptorPool descriptorPool;
+  VkDescriptorPoolSize descriptorPoolSize {};
+  descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+  descriptorPoolSize.descriptorCount = 1;
+
+  VkDescriptorPoolCreateInfo descriptorPoolInfo {};
+  descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  descriptorPoolInfo.poolSizeCount = 1;
+  descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
+  descriptorPoolInfo.maxSets = 1;
+  
+  vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool);
+
+  // Allocate descriptor sets
+  VkDescriptorSetAllocateInfo descriptorSetAllocateInfo {};
+  descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+  descriptorSetAllocateInfo.pSetLayouts = &canvasState.descriptorSetLayout; // NULL POINTER !
+  descriptorSetAllocateInfo.descriptorSetCount = 1;
+
+  vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &canvasState.descriptorSet);
+
+  VkWriteDescriptorSet writeDescriptorSet {};
+  writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writeDescriptorSet.dstSet = canvasState.descriptorSet;
+  writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+  writeDescriptorSet.dstBinding = 0;
+  writeDescriptorSet.pImageInfo = &canvasState.descriptor;
+  writeDescriptorSet.descriptorCount = 1;
+  vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, NULL);
+
+  // Create Pipeline Layout
+  VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo {};
+  pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  pipelineLayoutCreateInfo.setLayoutCount = 1;
+  pipelineLayoutCreateInfo.pSetLayouts = &canvasState.descriptorSetLayout;
+
+  vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &canvasState.pipelineLayout);
+
+  // Create pipeline
+  VkComputePipelineCreateInfo computePipelineCreateInfo {};
+  computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  computePipelineCreateInfo.layout = canvasState.pipelineLayout;
+  computePipelineCreateInfo.flags = 0;
+
+  // ...shader stage
+  VkPipelineShaderStageCreateInfo shaderStage = {};
+  shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  shaderStage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  shaderStage.module = CreateShaderModule(device, "Shaders/paint.comp.spv" );
+  shaderStage.pName = "main"; // todo : make param
+  assert(shaderStage.module != VK_NULL_HANDLE);
+  canvasState.paintComputeShader = shaderStage.module;
+
+  computePipelineCreateInfo.stage = shaderStage;
+
+  vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &canvasState.pipeline);
+
+  //getComputeQueue();
+
+  vkGetDeviceQueue(device, canvasState.queueFamilyIndex, 0, &canvasState.queue);
+  // Separate command pool as queue family for compute may be different than graphics
+  //VkCommandPoolCreateInfo cmdPoolInfo = {};
+  //cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  //cmdPoolInfo.queueFamilyIndex = compute.queueFamilyIndex;
+  //cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  //vkCreateCommandPool(device, &r, nullptr, &compute.commandPool);
+
+  // command b`uffers
+
 }
 
 void LsRenderer::BeginDrawing() {

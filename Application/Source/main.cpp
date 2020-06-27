@@ -14,6 +14,7 @@
 #include <LsStuffingDemo.h>
 #include <LsConsole.h>
 #include <LsError.h>
+#include <LsImage.h>
 // #include <Test.h>
 
 #include <LsIsosphere.h>
@@ -93,9 +94,16 @@ public:
 	  brushRig = std::make_shared<LsBrushRig>(renderer);
 	  pointGrid = std::make_shared<LsPointGrid>(renderer);
 	  uselessBox = std::make_shared<LsUselessBox>(renderer);
-    stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
+    //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
+
+    LsImage image = renderer->CreateImage(640, 800);
+    renderer->CreateImage(8000, 8000);
+    renderer->CreateImage(8000, 8000);
+    renderer->CreateImage(8000, 8000);
+    // image = renderer->CreateImage(8000, 8000);
+    // image = renderer->CreateImage(8000, 8000);
   }
 
   void Run() {
@@ -105,10 +113,12 @@ public:
       renderer->BeginFrame();
       pointGrid->Render();
       brushRig->Render();
-      uselessBox->Render();
-      stuffingDemo->Render();
+      //uselessBox->Render();
+      //stuffingDemo->Render();
       renderer->EndFrame();
     };
+
+
   }
 
   void Application::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -117,6 +127,7 @@ public:
 	    renderer->RefreshSwapChain();
       break;
       case WM_KEYDOWN:
+#ifdef GIF_RECORDING
         if (wParam == VK_F12) {
           renderer->StartGIFRecording("C:\\Users\\Public\\Downloads\\out.gif");
           std::cout << "PRESSED" << std::endl;
@@ -124,6 +135,7 @@ public:
         else if (wParam == VK_F11) {
           renderer->StopGIFRecording();
         }
+#endif
       break;
     }
   }
@@ -141,4 +153,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   } catch (std::string m) {
     LsErrorMessage(m, "Error");
   }
+
+  system("pause");
 }

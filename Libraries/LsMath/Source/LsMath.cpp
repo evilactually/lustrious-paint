@@ -13,7 +13,7 @@
 
 //#include "IvTypes.h"
 #include <LsMath.h>
-#include <math.h>
+#include <cmath>
 #include <algorithm>
 
 float IvSqrt( float val )        { return sqrtf( val ); }
@@ -137,7 +137,7 @@ int LsOddCount(int min, int max) {
   int N = max - min;
   if ( LsEven(min) )
   {
-    return std::ceil(N/2.0f);
+    return std::ceil(N/2.0f); 
   } else {
     return std::floor(N/2.0f) + 1;
   }

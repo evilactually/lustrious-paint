@@ -1,29 +1,37 @@
 #pragma once
 
 #include <windows.h>
+#pragma once
+
 #include <vector>
 #include <memory>
 #include <vulkan_dynamic.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <LsFWin32MessageHandler.h>
+#include <LsImage.h>
 #include <chrono>
+#include <string>
+#include <cstdint> // uint_32
 
 typedef void (*LsFrameCaptureCallback)();
 
 class LsRenderer {
   friend DWORD WINAPI WriteFrameThread(LPVOID lpParam);
+  friend class LsImage;
 public:
   LsRenderer(HINSTANCE hInstance, HWND window);
   ~LsRenderer();
   //static LsRenderer* Get();
 #ifdef GIF_RECORDING
-  void StartGIFRecording(std::string filename);
+  void StartGIFRecording(std::string filename); 
   void StopGIFRecording();
 #endif
   void BeginFrame();
   void EndFrame();
   void Clear(float r, float g, float b);
+  LsImage CreateImage(uint32_t width, uint32_t height);
+  void DrawImage(glm::vec2 p1, glm::vec2 p2, LsImage image);
   void DrawLine(float x1, float y1, float x2, float y2);
   void DrawLine(glm::vec2 p1, glm::vec2 p2);
   void DrawPoint(float x, float y);
@@ -39,6 +47,10 @@ public:
   // DrawLines(void)
   // DrawPoints(void)
 private:
+  // TODO: Decouple canvas code from rendering, it doesn't belong here, but it needs low level Vulkan access
+  void InitializeCanvas(uint32_t width, uint32_t height);
+  void getComputeQueue();
+  //void CanvasStroke();
   void BeginDrawing();
   void EndDrawing();
 #ifdef GIF_RECORDING
@@ -146,4 +158,23 @@ private:
     0.0f, 1.0f, 0.0f,
     0.0f, 0.0f, 1.0f
   };
+
+  struct {
+    VkImage image;
+    VkDeviceMemory memory;
+    VkDeviceSize size;
+    uint32_t width, height;
+    VkSampler sampler;
+    VkFormat format;
+    VkImageView view;
+    VkImageLayout imageLayout;
+    VkDescriptorImageInfo descriptor;
+    VkDescriptorSetLayout descriptorSetLayout;
+    VkDescriptorSet descriptorSet;
+    VkPipelineLayout pipelineLayout;
+    VkShaderModule paintComputeShader;
+    VkPipeline pipeline;
+    uint32_t queueFamilyIndex;
+    VkQueue queue;
+  } canvasState;
 };

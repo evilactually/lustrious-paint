@@ -8,15 +8,16 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan_dynamic.hpp>
 #include <LsFile.h>
+#include <LsError.h>
 
-VKAPI_ATTR VkBool32 VKAPI_CALL LsDebugReportCallback( VkDebugReportFlagsEXT flags, 
+static VKAPI_ATTR VkBool32 VKAPI_CALL LsDebugReportCallback( VkDebugReportFlagsEXT flags, 
     VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, 
     int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData ) {
     std::cout << pLayerPrefix << ": " << pMessage << std::endl;
     return VK_FALSE;
 }
 
-void CreateDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT* debugReportCallback) {
+static void CreateDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT* debugReportCallback) {
 	VkDebugReportCallbackCreateInfoEXT callbackCreateInfo = {};
 	callbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
 	callbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
@@ -24,7 +25,7 @@ void CreateDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT* de
 	vkCreateDebugReportCallbackEXT(instance, &callbackCreateInfo, nullptr, debugReportCallback);
 }
 
-bool CheckExtensionAvailability( const char *extensionName, 
+static bool CheckExtensionAvailability( const char *extensionName, 
                                  std::vector<VkExtensionProperties> const& availableExtensions ) {
   for( size_t i = 0; i < availableExtensions.size(); ++i ) {
     if( !strcmp(availableExtensions[i].extensionName, extensionName) ) {
@@ -34,7 +35,7 @@ bool CheckExtensionAvailability( const char *extensionName,
   return false;
 }
 
-bool CheckLayerAvailability( const char *layerName, 
+static bool CheckLayerAvailability( const char *layerName, 
                              std::vector<VkLayerProperties> const& availableLayers ) {
   for( size_t i = 0; i < availableLayers.size(); ++i ) {
     if( !strcmp(availableLayers[i].layerName, layerName) ) {
@@ -44,7 +45,7 @@ bool CheckLayerAvailability( const char *layerName,
   return false;
 }
 
-void CreateSemaphore(VkDevice const& device, VkSemaphore* semaphore) {
+static void CreateSemaphore(VkDevice const& device, VkSemaphore* semaphore) {
   VkSemaphoreCreateInfo semaphoreCreateInfo = {};
   semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -53,7 +54,7 @@ void CreateSemaphore(VkDevice const& device, VkSemaphore* semaphore) {
   }
 }
 
-void CreateFence(VkDevice const& device, VkFence* fence, bool signaled) {
+static void CreateFence(VkDevice const& device, VkFence* fence, bool signaled) {
   VkFenceCreateInfo fenceCreateInfo = {};
   fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
@@ -67,7 +68,7 @@ void CreateFence(VkDevice const& device, VkFence* fence, bool signaled) {
   }
 }
 
-VkShaderModule CreateShaderModule(VkDevice const& device, const char* filename ) {
+static VkShaderModule CreateShaderModule(VkDevice const& device, const char* filename ) {
   const std::vector<char> code = GetBinaryFileContents( filename );
   if( code.size() == 0 ) {
     LsError();
@@ -104,7 +105,7 @@ static glm::tmat3x3<float> WindowToVulkanTransformation(HWND windowHandle) {
 }
 
 // Find a memory type in "memoryTypeBits" that includes all of "properties"
-int32_t FindMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
+static int32_t FindMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
 {
   for (int32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
   {
@@ -115,7 +116,7 @@ int32_t FindMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32
   return -1;
 }
 
-void CmdImageBarrier(VkCommandBuffer cmdBuffer,
+static void CmdImageBarrier(VkCommandBuffer cmdBuffer,
                      VkAccessFlags srcAccessMask,
                      VkAccessFlags  dstAccessMask,
                      VkImageLayout oldLayout,

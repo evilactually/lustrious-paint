@@ -5,6 +5,7 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 
 set(INCLUDE_FILES
+  Include/LsImage.h
   Include/LsRenderer.h
   Include/LsPushConstantTypes.h
   Include/LsVulkanCommandBuffers.h
@@ -15,7 +16,8 @@ set(INCLUDE_FILES
   Include/LsVulkanRendering.h)
 
 set(SOURCE_FILES
-  Source/LsRenderer.cpp)
+  Source/LsRenderer.cpp
+  Source/LsImage.cpp )
 
 source_group( "Include" FILES ${INCLUDE_FILES} )
 source_group( "Source" FILES ${SOURCE_FILES} )
@@ -47,4 +49,4 @@ target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
 
 target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)
 
-target_compile_definitions(LsRenderer PUBLIC -DGIF_RECORDING)
+#target_compile_definitions(LsRenderer PUBLIC -DGIF_RECORDING)
