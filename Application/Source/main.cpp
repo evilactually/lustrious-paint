@@ -78,7 +78,7 @@ public:
     LsLoadWintabLibrary();
     LsLoadWintabEntryPoints();
    
-    window->Create(hInstance, "Lustrious Paint", 100, 100, 1024, 640);
+    window->Create(hInstance, "Lustrious Paint", 100, 100, 640, 800);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
     // Open Wintab Context
@@ -111,9 +111,12 @@ public:
     while ( window->ProcessMessages() ) {
       window->WaitForMessages();
       renderer->BeginFrame();
+      
       pointGrid->Render();
+      renderer->DrawCanvas();
       brushRig->Render();
-      //uselessBox->Render();
+      
+      uselessBox->Render();
       //stuffingDemo->Render();
       renderer->EndFrame();
     };

@@ -94,7 +94,7 @@ std::vector<VkFramebuffer> CreateFramebuffers(VkDevice& device,
 VkPipelineLayout CreatePipelineLayout(VkDevice& device, size_t pushConstantsSize) {
   VkPushConstantRange pushConstantRange = {
     VK_SHADER_STAGE_VERTEX_BIT | 
-    VK_SHADER_STAGE_FRAGMENT_BIT,
+    VK_SHADER_STAGE_FRAGMENT_BIT, // This is too specific, only for graphics pipeline
     0,
     pushConstantsSize
   };
@@ -120,17 +120,21 @@ void CreatePrimitivePipelines(VkDevice const& device,
                               VkShaderModule const& lineFragmentShader,
                               VkShaderModule const& pointVertexShader,
                               VkShaderModule const& pointFragmentShader,
+                              VkShaderModule const& imageVertexShader,
+                              VkShaderModule const& imageFragmentShader,
                               VkPipelineLayout const& linePipelineLayout,
                               VkPipelineLayout const& pointPipelineLayout,
+                              VkPipelineLayout const& imagePipelineLayout,
                               VkRenderPass const& renderPass,
                               VkExtent2D const& viewPortExtent,
                               VkPipeline* linePipeline,
-                              VkPipeline* pointPipeline) {
+                              VkPipeline* pointPipeline,
+                              VkPipeline* imagePipeline) {
   std::vector<VkPipelineShaderStageCreateInfo> line_shader_stage_create_infos = {
     // Vertex shader
     {
       VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,      // VkStructureType                                sType
-	  nullptr,                                                  // const void*                                    pNext
+	    nullptr,                                                  // const void*                                    pNext
       0,                                                        // VkPipelineShaderStageCreateFlags               flags
       VK_SHADER_STAGE_VERTEX_BIT,                               // VkShaderStageFlagBits                          stage
       lineVertexShader,                                         // VkShaderModule                                 module
@@ -139,8 +143,8 @@ void CreatePrimitivePipelines(VkDevice const& device,
     },
     // Fragment shader
     {
-	  VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,      // VkStructureType                                sType
-	  nullptr,                                                  // const void*                                    pNext
+	  VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,        // VkStructureType                                sType
+	    nullptr,                                                  // const void*                                    pNext
       0,                                                        // VkPipelineShaderStageCreateFlags               flags
       VK_SHADER_STAGE_FRAGMENT_BIT,                             // VkShaderStageFlagBits                          stage
       lineFragmentShader,                                       // VkShaderModule                                 module
@@ -155,18 +159,41 @@ void CreatePrimitivePipelines(VkDevice const& device,
       VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,      // VkStructureType                                sType
       nullptr,                                                  // const void*                                    pNext
       0,                                                        // VkPipelineShaderStageCreateFlags               flags
-	  VK_SHADER_STAGE_VERTEX_BIT,                               // VkShaderStageFlagBits                          stage
+	  VK_SHADER_STAGE_VERTEX_BIT,                                 // VkShaderStageFlagBits                          stage
       pointVertexShader,                                        // VkShaderModule                                 module
       "main",                                                   // const char                                    *pName
       nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
     },
     // Fragment shader
     {
-	  VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,      // VkStructureType                                sType
-	  nullptr,                                                  // const void*                                    pNext
+	  VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,        // VkStructureType                                sType
+	  nullptr,                                                    // const void*                                    pNext
       0,                                                        // VkPipelineShaderStageCreateFlags               flags
-	  VK_SHADER_STAGE_FRAGMENT_BIT,                             // VkShaderStageFlagBits                          stage
+	  VK_SHADER_STAGE_FRAGMENT_BIT,                               // VkShaderStageFlagBits                          stage
       pointFragmentShader,                                      // VkShaderModule                                 module
+      "main",                                                   // const char                                    *pName
+      nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
+    }
+  };
+
+  std::vector<VkPipelineShaderStageCreateInfo> image_shader_stage_create_infos = {
+    // Vertex shader
+    {
+      VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,      // VkStructureType                                sType
+      nullptr,                                                  // const void*                                    pNext
+      0,                                                        // VkPipelineShaderStageCreateFlags               flags
+    VK_SHADER_STAGE_VERTEX_BIT,                                 // VkShaderStageFlagBits                          stage
+      imageVertexShader,                                        // VkShaderModule                                 module
+      "main",                                                   // const char                                    *pName
+      nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
+    },
+    // Fragment shader
+    {
+    VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,        // VkStructureType                                sType
+    nullptr,                                                    // const void*                                    pNext
+      0,                                                        // VkPipelineShaderStageCreateFlags               flags
+    VK_SHADER_STAGE_FRAGMENT_BIT,                               // VkShaderStageFlagBits                          stage
+      imageFragmentShader,                                      // VkShaderModule                                 module
       "main",                                                   // const char                                    *pName
       nullptr                                                   // const VkSpecializationInfo                    *pSpecializationInfo
     }
@@ -190,6 +217,12 @@ void CreatePrimitivePipelines(VkDevice const& device,
   point_input_assembly_state_create_info.flags = 0;
   point_input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
   point_input_assembly_state_create_info.primitiveRestartEnable = VK_FALSE;
+
+  VkPipelineInputAssemblyStateCreateInfo image_input_assembly_state_create_info = {};
+  image_input_assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+  image_input_assembly_state_create_info.flags = 0;
+  image_input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+  image_input_assembly_state_create_info.primitiveRestartEnable = VK_FALSE;
 
   VkViewport viewport = {
     0.0f,                                                         // float                                          x
@@ -246,12 +279,12 @@ void CreatePrimitivePipelines(VkDevice const& device,
     VK_BLEND_FACTOR_ZERO,                                       // VkBlendFactor                                  dstColorBlendFactor
     VK_BLEND_OP_ADD,                                            // VkBlendOp                                      colorBlendOp
     VK_BLEND_FACTOR_ONE,                                        // VkBlendFactor                                  srcAlphaBlendFactor
-	VK_BLEND_FACTOR_ZERO,                                       // VkBlendFactor                                  dstAlphaBlendFactor
-	VK_BLEND_OP_ADD,                                            // VkBlendOp                                      alphaBlendOp
+	  VK_BLEND_FACTOR_ZERO,                                       // VkBlendFactor                                  dstAlphaBlendFactor
+	  VK_BLEND_OP_ADD,                                            // VkBlendOp                                      alphaBlendOp
     VK_COLOR_COMPONENT_R_BIT |                                  // VkColorComponentFlags                          colorWriteMask
-	VK_COLOR_COMPONENT_G_BIT |
-	VK_COLOR_COMPONENT_B_BIT |
-	VK_COLOR_COMPONENT_A_BIT
+	  VK_COLOR_COMPONENT_G_BIT |
+	  VK_COLOR_COMPONENT_B_BIT |
+	  VK_COLOR_COMPONENT_A_BIT
   };
 
   VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
@@ -319,11 +352,48 @@ void CreatePrimitivePipelines(VkDevice const& device,
   point_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
   point_pipeline_create_info.basePipelineIndex = -1;
 
+
+  //VkPipelineRasterizationStateCreateInfo rasterization_state_create_info = {};
+  // rasterization_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+  // rasterization_state_create_info.depthClampEnable = VK_FALSE;
+  // rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
+  // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
+  // rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+  // rasterization_state_create_info.depthBiasEnable = VK_FALSE;
+  // rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
+  // rasterization_state_create_info.depthBiasClamp = 0.0f;
+  // rasterization_state_create_info.depthBiasSlopeFactor = 0.0f;
+  // rasterization_state_create_info.lineWidth = 1.0f;
+
+  VkGraphicsPipelineCreateInfo image_pipeline_create_info = {};
+  image_pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  image_pipeline_create_info.flags = 0;
+  image_pipeline_create_info.stageCount = static_cast<uint32_t>(image_shader_stage_create_infos.size());
+  image_pipeline_create_info.pStages = &image_shader_stage_create_infos[0];
+  image_pipeline_create_info.pVertexInputState = &vertex_input_state_create_info;
+  image_pipeline_create_info.pInputAssemblyState = &image_input_assembly_state_create_info;
+  image_pipeline_create_info.pTessellationState = nullptr;
+  image_pipeline_create_info.pViewportState = &viewport_state_create_info;
+  image_pipeline_create_info.pRasterizationState = &rasterization_state_create_info;
+  image_pipeline_create_info.pMultisampleState = &multisample_state_create_info;
+  image_pipeline_create_info.pDepthStencilState = nullptr;
+  image_pipeline_create_info.pColorBlendState = &color_blend_state_create_info;
+  image_pipeline_create_info.pDynamicState = nullptr;
+  image_pipeline_create_info.layout = imagePipelineLayout;
+  image_pipeline_create_info.renderPass = renderPass;
+  image_pipeline_create_info.subpass = 0;
+  image_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
+  image_pipeline_create_info.basePipelineIndex = -1;
+
   if( vkCreateGraphicsPipelines( device, VK_NULL_HANDLE, 1, &line_pipeline_create_info, nullptr, linePipeline ) != VK_SUCCESS ) {
     throw std::string("Could not create line pipeline!");
   }
 
   if(vkCreateGraphicsPipelines( device, VK_NULL_HANDLE, 1, &point_pipeline_create_info, nullptr, pointPipeline ) != VK_SUCCESS ) {
     throw std::string("Could not create point pipeline!");
+  }
+
+  if(vkCreateGraphicsPipelines( device, VK_NULL_HANDLE, 1, &image_pipeline_create_info, nullptr, imagePipeline ) != VK_SUCCESS ) {
+    throw std::string("Could not create image pipeline!");
   }
 }

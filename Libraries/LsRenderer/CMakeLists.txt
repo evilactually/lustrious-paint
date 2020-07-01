@@ -49,4 +49,4 @@ target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
 
 target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)
 
-#target_compile_definitions(LsRenderer PUBLIC -DGIF_RECORDING)
+target_compile_definitions(LsRenderer PUBLIC -DGIF_RECORDING)

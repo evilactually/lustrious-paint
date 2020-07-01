@@ -167,58 +167,59 @@ bool FindComputeQueueFamily(VkPhysicalDevice physicalDevice, uint32_t* computeQu
   return false;
 }
 
-bool TryCreateDevice(VkPhysicalDevice physicalDevice,
-                     VkSurfaceKHR presentationSurface,
-                     std::vector<const char*> const& extensions,
-                     VkDevice* device,
-                     uint32_t* graphicsQueueFamily,
-                     uint32_t* presentQueueFamily,
-                     uint32_t* computeQueueFamily) {
-  uint32_t selectedGraphicsQueueFamily;
-  uint32_t selectedPresentQueueFamily;
-  if ( CheckPhysicalDeviceExtensions(physicalDevice, extensions) &&
-       CheckPhysicalDeviceProperties(physicalDevice) &&
-       CheckPhysicalDeviceFeatures(physicalDevice) &&
-       FindQueueFamilies(physicalDevice, presentationSurface, &selectedGraphicsQueueFamily, &selectedPresentQueueFamily) &&
-       FindComputeQueueFamily(physicalDevice, computeQueueFamily) ) {
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+bool TryCreateDevice(
+ VkPhysicalDevice physicalDevice,
+ VkSurfaceKHR presentationSurface,
+ std::vector<const char*> const& extensions,
+ VkDevice* device,
+ uint32_t* graphicsQueueFamily,
+ uint32_t* presentQueueFamily,
+ uint32_t* computeQueueFamily) {
+ uint32_t selectedGraphicsQueueFamily;
+ uint32_t selectedPresentQueueFamily;
+ if ( CheckPhysicalDeviceExtensions(physicalDevice, extensions) &&
+   CheckPhysicalDeviceProperties(physicalDevice) &&
+   CheckPhysicalDeviceFeatures(physicalDevice) &&
+   FindQueueFamilies(physicalDevice, presentationSurface, &selectedGraphicsQueueFamily, &selectedPresentQueueFamily) &&
+   FindComputeQueueFamily(physicalDevice, computeQueueFamily) ) {
+  std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::vector<float> queuePriorities = { 1.0f }; // This is required, even for single queue
-	
+
     // Fill out common fields
-	VkDeviceQueueCreateInfo queueCreateInfo = {};
-	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.pQueuePriorities = queuePriorities.data();
-	queueCreateInfo.queueCount = 1;
-	queueCreateInfo.pNext = NULL;
-	
-	// Push graphics queue create request
-	queueCreateInfo.queueFamilyIndex = selectedGraphicsQueueFamily;
-	queueCreateInfos.push_back(queueCreateInfo);
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.pQueuePriorities = queuePriorities.data();
+    queueCreateInfo.queueCount  = 1;
+    queueCreateInfo.pNext = NULL;
+
+    // Push graphics queue create request
+    queueCreateInfo.queueFamilyIndex = selectedGraphicsQueueFamily;
+    queueCreateInfos.push_back(queueCreateInfo);
     
     // Create present queue if it is from separate queue family
     if ( selectedPresentQueueFamily != selectedGraphicsQueueFamily ) {
-	  // Push present queue create request
-   	  queueCreateInfo.queueFamilyIndex = selectedPresentQueueFamily;
+    // Push present queue create request
+      queueCreateInfo.queueFamilyIndex = selectedPresentQueueFamily;
       queueCreateInfos.push_back(queueCreateInfo);
     }
 
-  // Add compute family queue
-  queueCreateInfo.queueFamilyIndex = *computeQueueFamily;
-  queueCreateInfos.push_back(queueCreateInfo);
+    // Add compute family queue
+    queueCreateInfo.queueFamilyIndex = *computeQueueFamily;
+    queueCreateInfos.push_back(queueCreateInfo);
 
-	VkPhysicalDeviceFeatures deviceFeatures = {};
+    VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.wideLines = VK_TRUE;
 
-	VkDeviceCreateInfo deviceCreateInfo = {};
-	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
-	deviceCreateInfo.enabledLayerCount = 0;
-	deviceCreateInfo.ppEnabledLayerNames = nullptr;
-	deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-	deviceCreateInfo.ppEnabledExtensionNames = extensions.data();
-	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-	
+    VkDeviceCreateInfo deviceCreateInfo = {};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+    deviceCreateInfo.enabledLayerCount = 0;
+    deviceCreateInfo.ppEnabledLayerNames = nullptr;
+    deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    deviceCreateInfo.ppEnabledExtensionNames = extensions.data();
+    deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+
     if( vkCreateDevice( physicalDevice, &deviceCreateInfo, nullptr, device ) != VK_SUCCESS ) {
       throw std::string("Could not create Vulkan device!");
     }

@@ -31,6 +31,12 @@ void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     dragging = false;
     break;
     case WM_MOUSEMOVE:
+    
+    if (painting)
+    {
+      cursor = LsWin32MainWindow::Get()->GetMousePosition();
+      renderer->CanvasStroke(cursor.x, cursor.y, 2.0f);
+    }
     if ( dragging ) {
       cursor = LsWin32MainWindow::Get()->GetMousePosition();
       x = (float)(cursor.x - grabOffset.x);
@@ -39,6 +45,7 @@ void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     break;
     case WM_LBUTTONDOWN:
     cursor = LsWin32MainWindow::Get()->GetMousePosition();
+    painting = true;
     if ( HitTest(cursor) ) {
       dragging = true;
       grabOffset.x = cursor.x - x;
@@ -47,6 +54,7 @@ void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     break;
     case WM_LBUTTONUP:
     dragging = false;
+    painting = false;
     break;
   }
 }

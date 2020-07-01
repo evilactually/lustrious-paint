@@ -8,6 +8,7 @@ class LsUselessBox: public LsFWin32MessageHandler
   std::shared_ptr<LsRenderer> renderer;
   POINT grabOffset;
   bool dragging = false;
+  bool painting = false;
   float x = 0.0f;
   float y = 0.0f;
   float width = 64.0f;

@@ -35,20 +35,24 @@ public:
   void DrawLine(float x1, float y1, float x2, float y2);
   void DrawLine(glm::vec2 p1, glm::vec2 p2);
   void DrawPoint(float x, float y);
+  //void PaintIntoCanvas(float x, float y, float size);
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
   void SetPointSize(float size);
   void RefreshSwapChain();
   int GetSurfaceWidth();
   int GetSurfaceHeight();
+  void DrawCanvas();
   // SetTransformation(glm::max4x4& transformation)
   // CreateVertexBuffer (separate class)
   // SetVertexBuffer(&VertexBuffer)
   // DrawLines(void)
   // DrawPoints(void)
+  void CanvasStroke(float x, float y, float radius);
 private:
   // TODO: Decouple canvas code from rendering, it doesn't belong here, but it needs low level Vulkan access
   void InitializeCanvas(uint32_t width, uint32_t height);
+  
   void getComputeQueue();
   //void CanvasStroke();
   void BeginDrawing();
@@ -64,7 +68,8 @@ private:
   enum class PipelineBinding {
     eNone,
     eLine,
-    ePoint
+    ePoint,
+    eImage
   };
   
   HWND window;
@@ -138,12 +143,16 @@ private:
     VkShaderModule lineFragmentShader;
     VkShaderModule pointVertexShader;
     VkShaderModule pointFragmentShader;
+    VkShaderModule imageVertexShader;
+    VkShaderModule imageFragmentShader;
   } shaderModules;
 
   VkPipelineLayout linePipelineLayout;  // pipeline layout for line push constants
   VkPipelineLayout pointPipelineLayout; // pipeleine layout for point push constants
+  VkPipelineLayout imagePipelineLayout; // pipeleine layout for image push constants
   VkPipeline linePipeline;              // pipeline for drawing lines
   VkPipeline pointPipeline;             // pipeline for drawing points
+  VkPipeline imagePipeline;             // pipeline for drawing textured quads
 
   struct {
     float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -176,5 +185,11 @@ private:
     VkPipeline pipeline;
     uint32_t queueFamilyIndex;
     VkQueue queue;
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+    VkFence fence;
   } canvasState;
+
+  VkDescriptorPool descriptorPool;
+  VkDescriptorSet imageDescriptorSet; // make member?
 };
