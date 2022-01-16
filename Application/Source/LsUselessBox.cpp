@@ -13,10 +13,10 @@ LsUselessBox::~LsUselessBox() {
 
 void LsUselessBox::Render() {
   renderer->SetColor(1.0f, 1.0f, 1.0f);
-  renderer->SetLineWidth(1.0f);
+  renderer->SetLineWidth(2.0f);
   renderer->DrawLine(x, y, x + width, y);
   renderer->DrawLine(x, y, x, y + height);
-  renderer->DrawLine(x, y + width, x + width, y + height);
+  renderer->DrawLine(x, y + height, x + width, y + height);
   renderer->DrawLine(x + width, y, x + width, y + height);
 }
 

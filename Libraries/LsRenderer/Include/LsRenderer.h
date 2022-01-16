@@ -36,6 +36,7 @@ public:
   void DrawLine(glm::vec2 p1, glm::vec2 p2);
   void DrawPoint(float x, float y);
   //void PaintIntoCanvas(float x, float y, float size);
+  void SetColor(int r, int g, int b);
   void SetColor(float r, float g, float b);
   void SetLineWidth(float width);
   void SetPointSize(float size);
@@ -64,6 +65,7 @@ private:
   void BeginSavingCapturedFrame();
   bool CheckFrameSavingFinished();
 #endif
+  VkSampleCountFlagBits LsRenderer::GetMaxUsableSampleCount();
   
   enum class PipelineBinding {
     eNone,
@@ -188,8 +190,16 @@ private:
     VkCommandPool commandPool;
     VkCommandBuffer commandBuffer;
     VkFence fence;
+
+    // Multisampling 
+    VkImage colorImage;
+    VkDeviceMemory colorImageMemory;
+    VkImageView colorImageView;
   } canvasState;
 
   VkDescriptorPool descriptorPool;
   VkDescriptorSet imageDescriptorSet; // make member?
+
+  // Multisampling
+  VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 };

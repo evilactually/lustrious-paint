@@ -74,6 +74,21 @@ std::vector<const char*> requiredInstanceValidationLayers = {
 //  return &renderer;
 //}
 
+VkSampleCountFlagBits LsRenderer::GetMaxUsableSampleCount() {
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+    VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+    if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+    if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+    if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
+    if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
+    if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
+
+    return VK_SAMPLE_COUNT_1_BIT;
+}
+
 #ifdef GIF_RECORDING
 void LsRenderer::CreateCapturedFrameImage() {
   VkImageCreateInfo imageCreateInfo = {};
@@ -1132,6 +1147,10 @@ void LsRenderer::DrawPoint(float x, float y) {
 
 void DrawImage(glm::vec2 p1, glm::vec2 p2, LsImage image) {
   
+}
+
+void LsRenderer::SetColor(int r, int g, int b) {
+    SetColor(((float)r)/255.0f, ((float)g)/255.0f, ((float)b)/255.0f);
 }
 
 void LsRenderer::SetColor(float r, float g, float b) {

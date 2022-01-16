@@ -39,6 +39,7 @@ configure_file(
 find_package( FreeImage REQUIRED )
 find_package( VulkanSDK REQUIRED )
 
+
 add_executable( LustriousPaint WIN32 ${INCLUDE_FILES} ${SOURCE_FILES} ${RESOURCE_FILES} )
 
 target_include_directories( LustriousPaint PUBLIC Include

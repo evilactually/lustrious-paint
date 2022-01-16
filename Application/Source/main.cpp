@@ -15,6 +15,9 @@
 #include <LsConsole.h>
 #include <LsError.h>
 #include <LsImage.h>
+
+#define _USE_MATH_DEFINES
+#include <math.h>
 // #include <Test.h>
 
 #include <LsIsosphere.h>
@@ -59,6 +62,13 @@ class Application: LsFWin32MessageHandler {
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
   HCTX tabletContext;
+  POINT cursor;
+
+  float radar_x = 600.0f;
+  float radar_y = 210.0f;
+
+  float point_x, point_z;
+
 public:
   Application() {
     LsCloseConsole();
@@ -78,7 +88,7 @@ public:
     LsLoadWintabLibrary();
     LsLoadWintabEntryPoints();
    
-    window->Create(hInstance, "Lustrious Paint", 100, 100, 640, 800);
+    window->Create(hInstance, "Lustrious Paint", 100, 100, 800, 300);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
     // Open Wintab Context
@@ -94,7 +104,7 @@ public:
 	  brushRig = std::make_shared<LsBrushRig>(renderer);
 	  pointGrid = std::make_shared<LsPointGrid>(renderer);
 	  uselessBox = std::make_shared<LsUselessBox>(renderer);
-    //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
+      //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
 
@@ -106,18 +116,90 @@ public:
     // image = renderer->CreateImage(8000, 8000);
   }
 
+  void GetPosition(float* x, float* z) {
+      (*x) = (float)(cursor.x - radar_x);
+      (*z) = (float)(cursor.y - radar_y);
+  }
+
+  void DrawRect(float x, float y, float width, float height){
+    renderer->DrawLine(x, y, x + width, y);
+    renderer->DrawLine(x, y, x, y + height);
+    renderer->DrawLine(x, y + height, x + width, y + height);
+    renderer->DrawLine(x + width, y, x + width, y + height);
+  }
+
+  void DrawArc(float x, float y, float radius, float start, float length) {
+      #define ARC_STEPS_PER_RADIAN 10
+      const int steps = length * ARC_STEPS_PER_RADIAN;
+      const float radians_per_step = 1.0 / (float)ARC_STEPS_PER_RADIAN;
+
+      float current_angle = start;
+      float x1 = x + radius * cos(start);
+      float y1 = y - radius * sin(start);
+      float x2, y2;
+           
+      for (size_t i = 0; i < steps; i++)
+      {
+          current_angle += radians_per_step;
+          x2 = x + radius * cos(current_angle);
+          y2 = y - radius * sin(current_angle);
+
+          renderer->DrawLine(x1, y1, x2, y2);
+          swap(x1, x2);
+          swap(y1, y2);
+      }
+
+      x2 = x + radius * cos(start + length);
+      y2 = y - radius * sin(start + length);
+      renderer->DrawLine(x1, y1, x2, y2);
+  }
+
+  void DrawPolarGrid(float x, float y, float start_angle, float end_angle, float distance_start, float distance_step, int distance_grid_line_count) {
+      for (size_t i = 0; i < distance_grid_line_count; i++)
+      {
+          //DrawArc(x, y, start_angle, end_angle - start_angle, distance_start + distance_step*i);
+          DrawArc(x, y, distance_start + i*distance_step, start_angle, end_angle - start_angle);
+      }
+  }
+
+  void DrawCross(float x, float y, float size) {
+      renderer->DrawLine(x-size/2.0, y, x+size/2.0, y);
+      renderer->DrawLine(x, y - size / 2.0, x, y + size / 2.0);
+  }
+
   void Run() {
     window->Show();
     while ( window->ProcessMessages() ) {
       window->WaitForMessages();
       renderer->BeginFrame();
       
-      pointGrid->Render();
-      renderer->DrawCanvas();
-      brushRig->Render();
-      
-      uselessBox->Render();
+      //pointGrid->Render();
+      //renderer->DrawCanvas();
+      renderer->Clear(1.0f,1.0f,1.0f);
+      //brushRig->Render();
+
       //stuffingDemo->Render();
+      renderer->SetLineWidth(2.0f);
+      renderer->SetColor(0,0,0);
+      DrawRect(10,10,300,200);
+
+      renderer->SetLineWidth(2.0f);
+      DrawPolarGrid(radar_x, radar_y, 0.0f, M_PI, 10.0, 20.0f, 10);
+
+      renderer->SetColor(215, 38, 56);
+      DrawCross(cursor.x, cursor.y, 10.0f);
+
+      //DrawArc(400, 200, 40.0, 0.0f, M_PI-0.5f);
+      ////DrawArc(400, 200, 20.0, 0.0f, M_PI);
+      //DrawArc(400, 200, 30.0, 0.0f, M_PI);
+      ////DrawArc(400, 200, 40.0, 0.0f, M_PI);
+      //DrawArc(400, 200, 50.0, 0.0f, M_PI);
+      ////DrawArc(400, 200, 60.0, 0.0f, M_PI);
+      //DrawArc(400, 200, 70.0, 0.0f, M_PI);
+      ////DrawArc(400, 200, 80.0, 0.0f, M_PI);
+      //DrawArc(400, 200, 90.0, 0.0f, M_PI);
+
+      
       renderer->EndFrame();
     };
 
@@ -125,9 +207,16 @@ public:
   }
 
   void Application::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    
     switch (uMsg) {
       case WM_SIZE:
 	    renderer->RefreshSwapChain();
+      break;
+      case WM_MOUSEMOVE:
+        cursor = LsWin32MainWindow::Get()->GetMousePosition();
+        point_x = (float)(cursor.x - radar_x);
+        point_z = -(float)(cursor.y - radar_y);
+        std::cout << point_x << " " << point_z << std::endl;
       break;
       case WM_KEYDOWN:
 #ifdef GIF_RECORDING
@@ -157,5 +246,5 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     LsErrorMessage(m, "Error");
   }
 
-  system("pause");
+  //system("pause");
 }
