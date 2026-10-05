@@ -42,7 +42,7 @@ std::vector<char> GetBinaryFileContents( std::string const &filename ) {
 	  return result;
   }
   catch (std::ifstream::failure e) {
-	  throw std::string(strerror(errno));
+	  throw std::string(strerror(errno)) + ": " + filename;
 	  //throw std::string(e.what());
   }
 }

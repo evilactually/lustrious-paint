@@ -57,7 +57,6 @@ std::vector<const char*> requiredDeviceExtensions = {
 //-------------------------------------------------------------------------------
 std::vector<const char*> requiredInstanceValidationLayers = {
 #ifdef VULKAN_VALIDATION
-  "VK_LAYER_LUNARG_standard_validation",
   "VK_LAYER_KHRONOS_validation"
 #endif
 };

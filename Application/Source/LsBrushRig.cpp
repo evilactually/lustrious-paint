@@ -41,6 +41,7 @@ void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
       penStatus.orientation[0] = (pkt.pkOrientation.orAzimuth/10)*(kPI/180.0f);
       penStatus.orientation[1] = (pkt.pkOrientation.orAltitude/10)*(kPI/180.0f);
       penStatus.orientation[1] = std::abs(penStatus.orientation[1]); // eraser on wacom gives negative altitude
+      std::cout << penStatus.orientation[0] << " " << penStatus.orientation[1] << std::endl;
     }
     break;
   }
