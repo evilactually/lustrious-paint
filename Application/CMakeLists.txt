@@ -9,8 +9,10 @@ include( BuildInfo )
 set(INCLUDE_FILES
   "Include/LsBrushRig.h"
   "Include/LsPointGrid.h"
-  "Include/LsUselessBox.h"
+  "Include/LsCanvasPainter.h"
   "Include/LsStuffingDemo.h"
+  "Include/LsSceneEditor.h"
+  "Include/LsCanvasNavigator.h"
   "Include/Version.h.in")
 
 set(SOURCE_FILES
@@ -18,8 +20,10 @@ set(SOURCE_FILES
   "Source/Main.cpp"
   "Source/LsBrushRig.cpp"
   "Source/LsPointGrid.cpp"
-  "Source/LsUselessBox.cpp"
-  "Source/LsStuffingDemo.cpp")
+  "Source/LsCanvasPainter.cpp"
+  "Source/LsStuffingDemo.cpp"
+  "Source/LsSceneEditor.cpp"
+  "Source/LsCanvasNavigator.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"
@@ -59,6 +63,7 @@ target_link_libraries( LustriousPaint LsMath
                                       LsRenderer
                                       imgui
                                       LsStuffing
+                                      LsScene
                                       ${FREEIMAGE_LIBRARY_STATIC} )
 
 add_dependencies( LustriousPaint Shaders )
@@ -74,6 +79,11 @@ add_custom_command(TARGET LustriousPaint POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_BINARY_DIR}/Shaders/Binary"
         "$<TARGET_FILE_DIR:LustriousPaint>/Shaders")
+
+add_custom_command(TARGET LustriousPaint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Resources/Fonts"
+        "$<TARGET_FILE_DIR:LustriousPaint>/Fonts")
 
 set_target_properties( LustriousPaint PROPERTIES
   VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LustriousPaint>" )

@@ -1,0 +1,35 @@
+#pragma once
+
+#include <memory>
+#include <SDL3/SDL.h>
+#include <glm/glm.hpp>
+#include <LsFSdlEventHandler.h>
+#include <LsCanvasNavigator.h>
+
+class LsCanvasPainter: public LsFSdlEventHandler
+{
+  std::shared_ptr<LsRenderer> renderer;
+  std::shared_ptr<LsCanvasNavigator> navigator;
+  SDL_FPoint grabOffset;
+  bool dragging = false;
+  bool painting = false;
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 64.0f;
+  float height = 64.0f;
+  float brushRadius = 10.0f; // in pixels
+  // Stroke state in canvas pixels, dabs are spaced evenly along the path regardless of the input rate
+  glm::vec2 lastStrokeSample = glm::vec2(0.0f);
+  float distanceToNextDab = 0.0f;
+  float GetDabSpacing();
+  void BeginStroke(glm::vec2 canvasPoint);
+  void ContinueStroke(glm::vec2 canvasPoint);
+public:
+  LsCanvasPainter(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsCanvasNavigator> navigator);
+  ~LsCanvasPainter();
+  void Render();
+  bool HitTest(SDL_FPoint point);
+  float GetBrushRadius();
+  void SetBrushRadius(float radius);
+  void OnSdlEvent(const SDL_Event& event) override;
+};

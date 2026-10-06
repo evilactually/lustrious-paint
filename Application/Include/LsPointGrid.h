@@ -18,7 +18,7 @@ class LsPointGrid: public LsFSdlEventHandler
     float b;
   } backgroundColor = {0.1f, 0.1f, 0.1f};
 
-  float spacing = 32.0f;
+  float spacing = 32.0f; // in canvas pixels
 
   std::shared_ptr<LsRenderer> renderer;
 

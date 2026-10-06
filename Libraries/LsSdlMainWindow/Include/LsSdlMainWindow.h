@@ -7,7 +7,7 @@
 class LsSdlMainWindow
 {
 public:
-  void Create(std::string title, int x, int y, int width, int height);
+  void Create(std::string title, int x, int y, int width, int height); // unscaled, multiplied by display scale
   static LsSdlMainWindow* Get();
   SDL_Window* GetWindowHandle();
   void WaitForMessages();

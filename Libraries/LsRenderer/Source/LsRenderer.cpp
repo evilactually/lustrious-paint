@@ -17,6 +17,7 @@
 #include <LsVulkanRendering.h>
 #include <LsVulkanCommandBuffers.h>
 #include <LsRenderer.h>
+#include <LsUiTheme.h>
 #include <SDL3/SDL_vulkan.h>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -1045,14 +1046,17 @@ void LsRenderer::DrawCanvas() {
   //   1, &imageMemoryBarrier);
   // ********
 
-  // Define a quad
-  glm::vec3 vulkanPoint1 = windowToVulkanTransformation*glm::vec3(0.0f, 0.0f, 1.0f);
-  glm::vec3 vulkanPoint2 = windowToVulkanTransformation*glm::vec3(640.0f, 0.0f, 1.0f);
-  glm::vec3 vulkanPoint3 = windowToVulkanTransformation*glm::vec3(640.0f, 640.0f, 1.0f);
+  // Define a quad covering the canvas as placed by the view
+  glm::vec2 topLeft = canvasView.offset;
+  glm::vec2 bottomRight = canvasView.offset + GetCanvasSize()*canvasView.zoom;
 
-  glm::vec3 vulkanPoint4 = windowToVulkanTransformation*glm::vec3(0.0f, 0.0f, 1.0f);
-  glm::vec3 vulkanPoint5 = windowToVulkanTransformation*glm::vec3(640.0f, 640.0f, 1.0f);
-  glm::vec3 vulkanPoint6 = windowToVulkanTransformation*glm::vec3(0.0f, 640.0f, 1.0f);
+  glm::vec3 vulkanPoint1 = windowToVulkanTransformation*glm::vec3(topLeft.x, topLeft.y, 1.0f);
+  glm::vec3 vulkanPoint2 = windowToVulkanTransformation*glm::vec3(bottomRight.x, topLeft.y, 1.0f);
+  glm::vec3 vulkanPoint3 = windowToVulkanTransformation*glm::vec3(bottomRight.x, bottomRight.y, 1.0f);
+
+  glm::vec3 vulkanPoint4 = windowToVulkanTransformation*glm::vec3(topLeft.x, topLeft.y, 1.0f);
+  glm::vec3 vulkanPoint5 = windowToVulkanTransformation*glm::vec3(bottomRight.x, bottomRight.y, 1.0f);
+  glm::vec3 vulkanPoint6 = windowToVulkanTransformation*glm::vec3(topLeft.x, bottomRight.y, 1.0f);
 
   ImagePushConstants pushConstants;
   pushConstants.positions[0] = vulkanPoint1[0];
@@ -1080,6 +1084,15 @@ void LsRenderer::DrawCanvas() {
                       sizeof(ImagePushConstants),
                       &pushConstants );
   vkCmdDraw( commandBuffer, 12, 1, 0, 0 );
+}
+
+void LsRenderer::SetCanvasView(glm::vec2 offset, float zoom) {
+  canvasView.offset = offset;
+  canvasView.zoom = zoom;
+}
+
+glm::vec2 LsRenderer::GetCanvasSize() {
+  return glm::vec2(static_cast<float>(canvasState.width), static_cast<float>(canvasState.height));
 }
 
 void LsRenderer::DrawLine(float x1, float y1, float x2, float y2) {
@@ -1261,7 +1274,8 @@ void LsRenderer::InitializeCanvas(uint32_t width, uint32_t height) {
   samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
   samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
   samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  // Clamp to the edge texels, a border colour would bleed into the canvas edge through linear filtering
+  samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
   samplerCreateInfo.addressModeV = samplerCreateInfo.addressModeU;
   samplerCreateInfo.addressModeW = samplerCreateInfo.addressModeU;
   samplerCreateInfo.mipLodBias = 0.0f;
@@ -1411,6 +1425,15 @@ void LsRenderer::InitializeCanvas(uint32_t width, uint32_t height) {
 
 void LsRenderer::CanvasStroke(float x, float y, float radius)
 {
+  CanvasStroke(std::vector<glm::vec2>{ glm::vec2(x, y) }, radius);
+}
+
+void LsRenderer::CanvasStroke(const std::vector<glm::vec2>& dabs, float radius)
+{
+  if (dabs.empty()) {
+    return;
+  }
+
   // Flush the queue if we're rebuilding the command buffer after a pipeline change to ensure it's not currently in use
   vkQueueWaitIdle(canvasState.queue);
 
@@ -1422,19 +1445,37 @@ void LsRenderer::CanvasStroke(float x, float y, float radius)
   vkCmdBindPipeline(canvasState.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, canvasState.pipeline);
   vkCmdBindDescriptorSets(canvasState.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, canvasState.pipelineLayout, 0, 1, &canvasState.descriptorSet, 0, 0);
 
-  PaintPushConstants paintPushConstants;
-  paintPushConstants.position[0] = x;
-  paintPushConstants.position[1] = y;
-  paintPushConstants.radius = radius;
+  // Each dab reads and writes the canvas after the previous one, so they composite in order
+  VkMemoryBarrier dabBarrier {};
+  dabBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  dabBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  dabBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 
-  vkCmdPushConstants( canvasState.commandBuffer, 
-                      canvasState.pipelineLayout,
-                      VK_SHADER_STAGE_COMPUTE_BIT,
-                      0, // offset
-                      sizeof(PaintPushConstants),
-                      &paintPushConstants );
+  for (size_t i = 0; i < dabs.size(); i++) {
+    if (i > 0) {
+      vkCmdPipelineBarrier( canvasState.commandBuffer,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            0,
+                            1, &dabBarrier,
+                            0, nullptr,
+                            0, nullptr );
+    }
 
-  vkCmdDispatch(canvasState.commandBuffer, canvasState.width / 16, canvasState.height / 16, 1);
+    PaintPushConstants paintPushConstants;
+    paintPushConstants.position[0] = dabs[i].x;
+    paintPushConstants.position[1] = dabs[i].y;
+    paintPushConstants.radius = radius;
+
+    vkCmdPushConstants( canvasState.commandBuffer,
+                        canvasState.pipelineLayout,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        0, // offset
+                        sizeof(PaintPushConstants),
+                        &paintPushConstants );
+
+    vkCmdDispatch(canvasState.commandBuffer, canvasState.width / 16, canvasState.height / 16, 1);
+  }
 
   vkEndCommandBuffer(canvasState.commandBuffer);
 
@@ -1561,7 +1602,8 @@ void LsRenderer::InitializeUi() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsDark();
+  LsApplyBlenderTheme();
+  LsLoadUiFont("Fonts/DejaVuSans.ttf", 15.0f);
 
   // Scale the UI for high DPI displays
   float mainScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());

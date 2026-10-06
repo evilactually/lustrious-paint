@@ -10,12 +10,16 @@
 #include <LsVulkanLoader.h>
 #include <LsBrushRig.h>
 #include <LsPointGrid.h>
-#include <LsUselessBox.h>
+#include <LsCanvasPainter.h>
 #include <LsStuffingDemo.h>
+#include <LsScene.h>
+#include <LsSceneEditor.h>
+#include <LsCanvasNavigator.h>
 #include <LsConsole.h>
 #include <LsError.h>
 #include <LsImage.h>
 #include <imgui.h>
+#include <imgui_internal.h> // DockBuilder API
 // #include <Test.h>
 
 #include <LsIsosphere.h>
@@ -28,9 +32,17 @@ class Application: LsFSdlEventHandler {
   LsSdlMainWindow* window = nullptr;
   std::shared_ptr<LsBrushRig> brushRig;
   std::shared_ptr<LsPointGrid> pointGrid;
-  std::shared_ptr<LsUselessBox> uselessBox;
+  std::shared_ptr<LsCanvasNavigator> canvasNavigator;
+  std::shared_ptr<LsCanvasPainter> canvasPainter;
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
+  std::shared_ptr<LsScene> scene;
+  std::unique_ptr<LsSceneEditor> sceneEditor;
+  bool dockLayoutBuilt = false;
+
+  // Placeholder tools until the brush modes exist
+  enum class Tool { Brush, Smooth, Inflate };
+  Tool currentTool = Tool::Brush;
 public:
   Application() {
     LsCloseConsole();
@@ -39,7 +51,8 @@ public:
   ~Application() {
     // Vulkan objects must be released before the window and SDL itself
     stuffingDemo.reset();
-    uselessBox.reset();
+    canvasPainter.reset();
+    canvasNavigator.reset();
     pointGrid.reset();
     brushRig.reset();
     renderer.reset();
@@ -56,7 +69,7 @@ public:
     window = LsSdlMainWindow::Get();
 
     // Tablet input arrives as SDL pen events, no separate tablet context is needed
-    window->Create("Lustrious Paint", 100, 100, 640, 800);
+    window->Create("Lustrious Paint", 100, 100, 1280, 800);
     LsSetDialogParentWindow(window->GetWindowHandle());
 
     window->HideMouse();
@@ -73,10 +86,15 @@ public:
 	  // Initialize components
 	  brushRig = std::make_shared<LsBrushRig>(renderer);
 	  pointGrid = std::make_shared<LsPointGrid>(renderer);
-	  uselessBox = std::make_shared<LsUselessBox>(renderer);
+	  canvasNavigator = std::make_shared<LsCanvasNavigator>(renderer);
+	  canvasPainter = std::make_shared<LsCanvasPainter>(renderer, canvasNavigator);
     //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
+
+    scene = std::make_shared<LsScene>();
+    CreateStarterScene();
+    sceneEditor = std::make_unique<LsSceneEditor>(scene);
 
     LsImage image = renderer->CreateImage(640, 800);
     renderer->CreateImage(8000, 8000);
@@ -107,25 +125,127 @@ public:
 
       // The system cursor shows only over the UI, the brush rig is the cursor over the canvas
       bool overUi = renderer->IsUiCapturingMouse();
-      if (!overUi) {
+      // While space or ctrl is held the canvas is being navigated, show a system cursor for that instead
+      bool navigating = !overUi && canvasNavigator->IsActive();
+      if (navigating) {
+        canvasNavigator->UpdateCursor();
+      }
+      else if (!overUi) {
         window->HideMouse();
       }
 
       pointGrid->Render();
       renderer->DrawCanvas();
-      if (!overUi) {
+      if (!overUi && !navigating) {
         brushRig->Render();
       }
 
-      uselessBox->Render();
+      canvasPainter->Render();
       //stuffingDemo->Render();
 
+      DrawDockedPanels();
+      DrawToolbar();
+
       ImGui::ShowDemoWindow();
+
+      if (ImGui::Begin("Brush")) {
+        float brushRadius = canvasPainter->GetBrushRadius();
+        if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px")) {
+          canvasPainter->SetBrushRadius(brushRadius);
+        }
+      }
+      ImGui::End();
 
       renderer->EndFrame();
     }
 
 
+  }
+
+  // Ground, an object to paint from, and a light, so there is something to start from
+  void CreateStarterScene() {
+    scene->AddShape("Ground", LsShape::Plane(), eRoleConstruction);
+
+    LsNodeId sphere = scene->AddShape("Sphere", LsShape::Sphere(0.5f), eRoleConstruction | eRoleShadowCaster);
+    LsPlacement placement;
+    placement.translation = glm::vec3(0.0f, 0.5f, 0.0f);
+    scene->SetPlacement(sphere, placement);
+
+    LsNodeId light = scene->AddShape("Key Light", LsShape::Sphere(0.25f), eRoleLightEmitter);
+    LsSceneNodeProperties properties = scene->Find(light)->GetProperties();
+    properties.placement.translation = glm::vec3(2.0f, 3.0f, 2.0f);
+    properties.emissionIntensity = 10.0f;
+    scene->SetProperties(light, properties);
+  }
+
+  // Vertical tool strip floating over the canvas, buttons only, no window background
+  void DrawToolbar() {
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground |
+                             ImGuiWindowFlags_NoDecoration |
+                             ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoDocking |
+                             ImGuiWindowFlags_NoSavedSettings;
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 12.0f, viewport->WorkPos.y + 12.0f), ImGuiCond_FirstUseEver);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::Begin("##Toolbar", nullptr, flags);
+
+    struct { const char* label; Tool tool; } buttons[] = {
+      { "Brush", Tool::Brush },
+      { "Smooth", Tool::Smooth },
+      { "Inflate", Tool::Inflate },
+    };
+
+    const ImVec2 buttonSize(ImGui::GetFontSize()*5.0f, 0.0f);
+    // for (const auto& button : buttons) {
+    //   // The selected tool is drawn in the accent colour
+    //   bool selected = currentTool == button.tool;
+    //   if (selected) {
+    //     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    //     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive));
+    //   }
+    //   if (ImGui::Button(button.label, buttonSize)) {
+    //     currentTool = button.tool;
+    //   }
+    //   if (selected) {
+    //     ImGui::PopStyleColor(2);
+    //   }
+    // }
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+  }
+
+  // Fills the window with a dock space whose centre lets input through to the canvas,
+  // and keeps the Properties panel docked to its right side
+  void DrawDockedPanels() {
+    ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
+
+    // Rebuild the layout on every launch, so a layout saved in imgui.ini can't move the panel
+    if (!dockLayoutBuilt) {
+      ImGui::DockBuilderRemoveNode(dockspaceId);
+      ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
+      ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
+
+      ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
+      ImGuiID propertiesId;
+      ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
+      ImGui::DockBuilderGetNode(sceneId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+      ImGui::DockBuilderGetNode(propertiesId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+      ImGui::DockBuilderDockWindow("Scene", sceneId);
+      ImGui::DockBuilderDockWindow("Properties", propertiesId);
+      ImGui::DockBuilderFinish(dockspaceId);
+      dockLayoutBuilt = true;
+    }
+
+    sceneEditor->DrawOutliner();
+
+    if (ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse)) {
+      sceneEditor->DrawProperties();
+    }
+    ImGui::End();
   }
 
   void OnSdlEvent(const SDL_Event& event) override {

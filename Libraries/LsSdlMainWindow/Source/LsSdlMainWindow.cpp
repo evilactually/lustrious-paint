@@ -11,6 +11,25 @@ void LsSdlMainWindow::Create(std::string title, int x, int y, int width, int hei
     throw std::string("Could not initialize SDL: ") + SDL_GetError();
   }
 
+  // On Windows SDL sizes windows in pixels, scale the requested size by the display scale
+  // so the window doesn't come out tiny on high DPI displays, but keep it on screen
+  SDL_DisplayID display = SDL_GetPrimaryDisplay();
+  float scale = SDL_GetDisplayContentScale(display);
+  if ( scale > 0.0f ) {
+    x = static_cast<int>(x*scale);
+    y = static_cast<int>(y*scale);
+    width = static_cast<int>(width*scale);
+    height = static_cast<int>(height*scale);
+  }
+
+  SDL_Rect usable;
+  if ( SDL_GetDisplayUsableBounds(display, &usable) ) {
+    width = SDL_min(width, usable.w);
+    height = SDL_min(height, usable.h);
+    x = SDL_clamp(x, usable.x, usable.x + usable.w - width);
+    y = SDL_clamp(y, usable.y, usable.y + usable.h - height);
+  }
+
   windowHandle = SDL_CreateWindow(title.c_str(),
                                   width,
                                   height,

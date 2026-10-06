@@ -45,12 +45,19 @@ public:
   int GetSurfaceWidth();
   int GetSurfaceHeight();
   void DrawCanvas();
+  // Places the canvas in the window: window pixel = canvas pixel*zoom + offset
+  void SetCanvasView(glm::vec2 offset, float zoom);
+  glm::vec2 GetCanvasOffset() { return canvasView.offset; }
+  float GetCanvasZoom() { return canvasView.zoom; }
+  glm::vec2 GetCanvasSize(); // in canvas pixels
   // SetTransformation(glm::max4x4& transformation)
   // CreateVertexBuffer (separate class)
   // SetVertexBuffer(&VertexBuffer)
   // DrawLines(void)
   // DrawPoints(void)
   void CanvasStroke(float x, float y, float radius);
+  // Paints a dab at each position (canvas pixels) in order, with a single submission
+  void CanvasStroke(const std::vector<glm::vec2>& dabs, float radius);
   // Dear ImGui: a UI frame is started by BeginFrame and drawn on top of everything by EndFrame,
   // so ImGui:: calls can be made anywhere in between
   bool ProcessUiEvent(const SDL_Event& event); // returns true when the UI captures the event
@@ -203,6 +210,11 @@ private:
     VkCommandBuffer commandBuffer;
     VkFence fence;
   } canvasState;
+
+  struct {
+    glm::vec2 offset = glm::vec2(0.0f);
+    float zoom = 1.0f;
+  } canvasView;
 
   VkDescriptorPool descriptorPool;
   VkDescriptorSet imageDescriptorSet; // make member?

@@ -35,17 +35,27 @@ void LsPointGrid::Render() {
 
   renderer->Clear(backgroundColor.r, backgroundColor.g, backgroundColor.b);
 
-  const int horizontal_cell_count = static_cast<int>(ceil(((float)windowExtent.width)/spacing));
-  const int vertical_cell_count = static_cast<int>(ceil(((float)windowExtent.height)/spacing));
+  // The grid is attached to the canvas, so it pans and zooms along with it
+  const glm::vec2 offset = renderer->GetCanvasOffset();
+  const float zoom = renderer->GetCanvasZoom();
+
+  // Zoomed out, skip every other point until they're far enough apart on screen
+  const float minScreenSpacing = 16.0f;
+  float screenSpacing = spacing*zoom;
+  while( screenSpacing < minScreenSpacing ) {
+    screenSpacing *= 2.0f;
+  }
+
+  // Grid lines that come before the window's top left corner
+  const float firstX = offset.x - ceil(offset.x/screenSpacing)*screenSpacing;
+  const float firstY = offset.y - ceil(offset.y/screenSpacing)*screenSpacing;
 
   renderer->SetPointSize(2.0f);
   renderer->SetColor(pointColor.r, pointColor.g, pointColor.b);
 
-  for( int y = 0; y < vertical_cell_count; ++y ) {
-    float y_offset = y*spacing;
-    for( int x = 0; x < horizontal_cell_count; ++x ) {
-      float x_offset = x*spacing;
-      renderer->DrawPoint(x_offset - 1.0f, y_offset - 1.0f);
+  for( float y = firstY; y < windowExtent.height + 1.0f; y += screenSpacing ) {
+    for( float x = firstX; x < windowExtent.width + 1.0f; x += screenSpacing ) {
+      renderer->DrawPoint(x - 1.0f, y - 1.0f);
     }
   }
 }

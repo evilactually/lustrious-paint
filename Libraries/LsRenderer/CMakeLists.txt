@@ -7,6 +7,7 @@ set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 set(INCLUDE_FILES
   Include/LsImage.h
   Include/LsRenderer.h
+  Include/LsUiTheme.h
   Include/LsPushConstantTypes.h
   Include/LsVulkanCommandBuffers.h
   Include/LsVulkanCommon.h
@@ -17,7 +18,8 @@ set(INCLUDE_FILES
 
 set(SOURCE_FILES
   Source/LsRenderer.cpp
-  Source/LsImage.cpp )
+  Source/LsImage.cpp
+  Source/LsUiTheme.cpp )
 
 source_group( "Include" FILES ${INCLUDE_FILES} )
 source_group( "Source" FILES ${SOURCE_FILES} )
