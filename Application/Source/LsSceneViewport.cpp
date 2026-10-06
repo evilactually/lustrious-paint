@@ -201,9 +201,17 @@ void LsSceneViewport::FrameSelection() {
   if (lookThrough && !lockCameraToView) {
     SetLookThrough(false, false);
   }
-  float radius = std::max(glm::length(max - min)*0.5f, 0.25f);
   target = (min + max)*0.5f;
-  distance = glm::clamp(radius/std::sin(glm::radians(fov)*0.5f)*1.1f, kMinDistance, kMaxDistance);
+  float radius = glm::length(max - min)*0.5f;
+  // A point has no size to fit, cameras show their frustum and anything else
+  // (such as a plane) keeps the zoom
+  if (radius < 1.0e-4f) {
+    const LsSceneNode* node = scene->Find(selected);
+    radius = node->GetProperties().type == LsNodeType::Camera ? kCameraDisplayDepth*2.0f : 0.0f;
+  }
+  if (radius > 0.0f) {
+    distance = glm::clamp(radius/std::sin(glm::radians(fov)*0.5f)*1.1f, kMinDistance, kMaxDistance);
+  }
   if (lookThrough) {
     SetWorldMatrix(scene->GetActiveCamera(), GetOrbitCamera(1.0f).GetCameraToWorld());
   }
@@ -213,7 +221,8 @@ void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
   if (lookThrough && !lockCameraToView) {
     SetLookThrough(false, false);
   }
-  const float yaws[3] = { 90.0f, yaw, 0.0f };
+  // Top and bottom views have X to the right, like the front view
+  const float yaws[3] = { 90.0f, 0.0f, 0.0f };
   const float pitches[3] = { 0.0f, kMaxPitch, 0.0f };
   yaw = negative ? yaws[axis] + (axis == 1 ? 0.0f : 180.0f) : yaws[axis];
   pitch = negative ? -pitches[axis] : pitches[axis];
@@ -350,7 +359,8 @@ bool LsSceneViewport::Navigate(bool viewHovered, glm::vec2 viewSize) {
       if (move != glm::vec3(0.0f)) {
         // Long pauses between frames would make a jump
         float dt = std::min(io.DeltaTime, 0.05f);
-        float speed = std::max(distance, 0.5f)*1.5f*flySpeedScale*(io.KeyShift ? 4.0f : 1.0f);
+        // Crossing the orbit distance takes a second, so speed suits the scale being worked at
+        float speed = std::max(distance, 0.5f)*flySpeedScale*(io.KeyShift ? 4.0f : 1.0f);
         target += glm::normalize(move)*speed*dt;
         moved = true;
       }
