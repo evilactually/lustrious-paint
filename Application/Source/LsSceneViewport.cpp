@@ -222,6 +222,66 @@ void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
   }
 }
 
+bool LsSceneViewport::UpdatePlacing(bool viewHovered, glm::vec2 mouse) {
+  if (!scene->Find(placing)) {
+    placing = kLsInvalidNode;
+    return false;
+  }
+
+  bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false) || (viewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right));
+  if (cancel) {
+    scene->Remove(placing);
+    editor->SetSelected(kLsInvalidNode);
+    placing = kLsInvalidNode;
+    return true;
+  }
+  if (!viewHovered || !ImGui::IsMousePosValid()) {
+    return false;
+  }
+
+  // Everything but the object itself, it shouldn't land on its own surface
+  std::vector<LsScenePrimitive> others;
+  for (const LsScenePrimitive& primitive : primitives) {
+    if (!scene->IsAncestor(placing, primitive.nodeId)) {
+      others.push_back(primitive);
+    }
+  }
+  LsRay ray = projection.GetRay(mouse);
+  LsSceneHit hit;
+  glm::vec3 point, normal(0.0f, 1.0f, 0.0f);
+  if (LsRaycastPrimitives(others, ray, kLsAllRoles, kMaxDistance, hit)) {
+    point = hit.position;
+    normal = hit.normal;
+  }
+  else if (ray.direction.y < -1.0e-3f && ray.origin.y > 0.0f) {
+    // Nothing there, the ground plane through the origin stands in
+    point = ray.At(-ray.origin.y/ray.direction.y);
+  }
+  else {
+    point = ray.At(distance);
+  }
+
+  // Resting on the surface rather than sunk halfway into it
+  glm::mat4 world = scene->GetObjectToWorld(placing).GetMatrix();
+  glm::vec3 origin(world[3]);
+  glm::vec3 min, max;
+  float offset = 0.0f;
+  if (scene->GetWorldBounds(placing, min, max)) {
+    for (int corner = 0; corner < 8; corner++) {
+      glm::vec3 p((corner & 1) ? max.x : min.x, (corner & 2) ? max.y : min.y, (corner & 4) ? max.z : min.z);
+      offset = std::max(offset, glm::dot(origin - p, normal));
+    }
+  }
+  world[3] = glm::vec4(point + normal*offset, 1.0f);
+  SetWorldMatrix(placing, world);
+
+  if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    placing = kLsInvalidNode;
+    return true;
+  }
+  return false;
+}
+
 bool LsSceneViewport::Navigate(bool viewHovered, glm::vec2 viewSize) {
   ImGuiIO& io = ImGui::GetIO();
 
@@ -575,7 +635,10 @@ bool LsSceneViewport::DrawAxisWidget(ImDrawList* drawList, glm::vec2 corner, boo
 
 void LsSceneViewport::DrawStatus(ImDrawList* drawList) const {
   char text[160];
-  if (navigation == Navigation::Fly) {
+  if (placing != kLsInvalidNode) {
+    snprintf(text, sizeof(text), "Click to put it down, Esc or right click cancels");
+  }
+  else if (navigation == Navigation::Fly) {
     snprintf(text, sizeof(text), "W A S D to fly, Q E down and up, shift faster, wheel sets speed (x%.2f)", flySpeedScale);
   }
   else if (gizmo.IsActive()) {
@@ -599,6 +662,7 @@ void LsSceneViewport::DrawAddMenu() {
   if (ImGui::MenuItem("Group")) {
     added = scene->AddGroup("Group");
     scene->SetPlacement(added, placement);
+    placing = added;
   }
   if (ImGui::MenuItem("Camera")) {
     added = scene->AddCamera("Camera");
@@ -611,8 +675,8 @@ void LsSceneViewport::DrawAddMenu() {
     LsShapeType type = static_cast<LsShapeType>(i);
     if (ImGui::MenuItem(LsShapeTypeName(type))) {
       added = scene->AddShape(LsShapeTypeName(type), LsShape::Default(type), eRoleConstruction);
-      // Planes always pass through the origin of their parent's frame unless moved
       scene->SetPlacement(added, placement);
+      placing = added;
     }
   }
   if (added != kLsInvalidNode) {
@@ -754,13 +818,16 @@ void LsSceneViewport::Draw() {
   if (lookThrough && navigation == Navigation::None) {
     SyncOrbitToCamera();
   }
-  Navigate(viewHovered, size);
+  // Placing goes by last frame's camera, which is what the user saw when clicking
+  bool placingClick = placing != kLsInvalidNode && navigation == Navigation::None && UpdatePlacing(viewHovered, mouse);
+  Navigate(viewHovered && !placingClick, size);
   HandleShortcuts(viewHovered);
 
   glm::vec2 frameNdc;
   projection.camera = GetViewCamera(size.x/size.y, frameNdc);
 
-  bool mouseFree = viewHovered && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid();
+  bool mouseFree = viewHovered && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid() &&
+                   placing == kLsInvalidNode && !placingClick;
   hovered = mouseFree && !gizmo.IsHovered() && !gizmo.IsActive() ? Pick(mouse) : kLsInvalidNode;
 
   // Render at the display's pixel density rather than in UI points
@@ -778,7 +845,7 @@ void LsSceneViewport::Draw() {
 
   LsNodeId selected = editor->GetSelected();
   bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
-  if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection) {
+  if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection && placing == kLsInvalidNode) {
     glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
     if (gizmo.Manipulate(drawList, projection, gizmoMode, gizmoLocal, mouseFree, world)) {
       SetWorldMatrix(selected, world);

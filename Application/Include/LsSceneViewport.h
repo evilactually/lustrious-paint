@@ -24,7 +24,8 @@ struct ImDrawList;
 //
 // Navigation follows the common DCC layout: alt+left drag orbits, middle drag
 // pans, alt+right drag and the wheel zoom, right drag looks around with WASD/QE
-// flying, F frames the selection.
+// flying, F frames the selection. Objects added from the view follow the mouse
+// over the surfaces until clicked down.
 //-------------------------------------------------------------------------------
 class LsSceneViewport
 {
@@ -66,6 +67,8 @@ class LsSceneViewport
   LsNodeId drawnSelection = kLsInvalidNode;
   LsNodeId drawnHover = kLsInvalidNode;
   LsNodeId hovered = kLsInvalidNode;
+  // Just added, follows the mouse over surfaces until a click puts it down
+  LsNodeId placing = kLsInvalidNode;
 
   LsViewportProjection projection;
 
@@ -96,6 +99,9 @@ class LsSceneViewport
   bool DrawAxisWidget(ImDrawList* drawList, glm::vec2 corner, bool viewHovered);
   void DrawStatus(ImDrawList* drawList) const;
 
+  // Moves the node being placed onto the surface under the mouse, returns true
+  // when a click ended placing and should not do anything else
+  bool UpdatePlacing(bool viewHovered, glm::vec2 mouse);
   // Places a node so it ends up at world, whatever its parents are
   void SetWorldMatrix(LsNodeId id, const glm::mat4& world);
   void FrameSelection();
