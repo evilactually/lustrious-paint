@@ -1,23 +1,25 @@
 #pragma once
 
 #include <memory>
-#include <windows.h>
-#include <LsFWin32MessageHandler.h>
+#include <SDL3/SDL.h>
+#include <LsFSdlEventHandler.h>
 #include <LsMath.h>
 #include <LsRenderer.h>
 
-class LsBrushRig: public LsFWin32MessageHandler
+class LsBrushRig: public LsFSdlEventHandler
 {
   std::shared_ptr<LsRenderer> renderer;
   struct {
     float position[2];
-    float orientation[2] = { kPI, kPI/2.0f };
+    float orientation[2] = { kPI, kPI/2.0f }; // azimuth, altitude
     float pressure;
-  } penStatus;
- 
+    float tilt[2];                            // SDL tilt angles in degrees, -90 to 90
+  } penStatus = {};
+
+  void UpdateOrientationFromTilt();
 public:
   LsBrushRig(std::shared_ptr<LsRenderer> renderer);
   ~LsBrushRig();
-  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+  void OnSdlEvent(const SDL_Event& event) override;
   void Render();
 };

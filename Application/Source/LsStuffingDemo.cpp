@@ -1,6 +1,5 @@
 #define GLM_SWIZZLE
 #include <LsStuffingDemo.h>
-#include <LsWin32MainWindow.h>
 #include <glm/glm.hpp>
 #include <glm/glm.hpp>
 #include <iostream>
@@ -232,19 +231,19 @@ void LsStuffingDemo::Render()
   }
 }
 
-void LsStuffingDemo::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam)
+void LsStuffingDemo::OnSdlEvent(const SDL_Event& event)
 {
-  int32_t posx = LOWORD(lParam);
-  int32_t posy = HIWORD(lParam);
-  float dx = posx_previous - (float)posx;
-  float dy = posy_previous - (float)posy;
-  switch (uMsg) {
-  case WM_MOUSEMOVE:
-    if (wParam & MK_LBUTTON)
+  switch (event.type) {
+  case SDL_EVENT_MOUSE_MOTION: {
+    float posx = event.motion.x;
+    float posy = event.motion.y;
+    float dx = posx_previous - posx;
+    float dy = posy_previous - posy;
+    if (event.motion.state & SDL_BUTTON_LMASK)
     {
       rotation += glm::vec3(0.0f, dx*0.01f, dy*0.01f);
     }
-    else if (wParam & MK_MBUTTON) {
+    else if (event.motion.state & SDL_BUTTON_MMASK) {
       // shift along the plane
       // 
       glm::mat4x4 m = glm::tmat4x4<float>(1.0f);
@@ -258,15 +257,15 @@ void LsStuffingDemo::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam)
       pan += (0.01f*dy)*y_pan;
       //pan += glm::vec3(dx*0.01f, dy*0.01f, 0.0f);
     }
-    posx_previous = (float)posx;
-    posy_previous = (float)posy;
-    break;
-  case WM_MOUSEWHEEL: {
-    short wheelDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-    offset += glm::vec3(0.0f, 0.0f, -wheelDelta / 100.0f);
+    posx_previous = posx;
+    posy_previous = posy;
     }
     break;
-  case WM_KEYDOWN:
+  case SDL_EVENT_MOUSE_WHEEL:
+    // One notch used to be WHEEL_DELTA (120) units scaled by 1/100
+    offset += glm::vec3(0.0f, 0.0f, -event.wheel.y * 1.2f);
+    break;
+  case SDL_EVENT_KEY_DOWN:
     domain.x2 += 0.1;// = LsDomain(0.0f, 0.0f, 0.0f, 4.1f, 6.9f, 4.1f);
     domain.x1 += 0.1;
     lattice = std::make_shared<LsBCCLattice>(domain, STEP);

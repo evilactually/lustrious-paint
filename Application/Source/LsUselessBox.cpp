@@ -1,9 +1,7 @@
-#include <windows.h>
 #include <iostream>
 #include <glm/glm.hpp>
 #include <LsRenderer.h>
 #include <LsUselessBox.h>
-#include <LsWin32MainWindow.h>
 
 LsUselessBox::LsUselessBox(std::shared_ptr<LsRenderer> renderer) :renderer(renderer) {}
 
@@ -20,31 +18,33 @@ void LsUselessBox::Render() {
   renderer->DrawLine(x + width, y, x + width, y + height);
 }
 
-bool LsUselessBox::HitTest(POINT point) {
+bool LsUselessBox::HitTest(SDL_FPoint point) {
   return point.x >= x && point.x <= (x + width) && point.y >= y && point.y <= (y + height);
 }
 
-void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  POINT cursor;
-  switch (uMsg) {
-    case WM_MOUSELEAVE:
+void LsUselessBox::OnSdlEvent(const SDL_Event& event) {
+  // Pen input also arrives here as mouse events (SDL_HINT_PEN_MOUSE_EVENTS)
+  SDL_FPoint cursor;
+  switch (event.type) {
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
     dragging = false;
     break;
-    case WM_MOUSEMOVE:
-    
+    case SDL_EVENT_MOUSE_MOTION:
+    cursor = { event.motion.x, event.motion.y };
     if (painting)
     {
-      cursor = LsWin32MainWindow::Get()->GetMousePosition();
-      renderer->CanvasStroke(cursor.x, cursor.y, 2.0f);
+      renderer->CanvasStroke(cursor.x, cursor.y, 10.0f);
     }
     if ( dragging ) {
-      cursor = LsWin32MainWindow::Get()->GetMousePosition();
-      x = (float)(cursor.x - grabOffset.x);
-      y = (float)(cursor.y - grabOffset.y);
+      x = cursor.x - grabOffset.x;
+      y = cursor.y - grabOffset.y;
     }
     break;
-    case WM_LBUTTONDOWN:
-    cursor = LsWin32MainWindow::Get()->GetMousePosition();
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    if (event.button.button != SDL_BUTTON_LEFT) {
+      break;
+    }
+    cursor = { event.button.x, event.button.y };
     painting = true;
     if ( HitTest(cursor) ) {
       dragging = true;
@@ -52,7 +52,10 @@ void LsUselessBox::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
       grabOffset.y = cursor.y - y;
     }
     break;
-    case WM_LBUTTONUP:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    if (event.button.button != SDL_BUTTON_LEFT) {
+      break;
+    }
     dragging = false;
     painting = false;
     break;

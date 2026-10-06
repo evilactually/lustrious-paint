@@ -31,7 +31,6 @@ add_library( LsRenderer STATIC ${INCLUDE_FILES} ${SOURCE_FILES} )
 target_include_directories( LsRenderer PUBLIC Include
                                               "${CMAKE_SOURCE_DIR}/Include"
                                               "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
-                                              "${LIBRARY_SOURCE_DIR}/LsWin32MainWindow/Include"
                                               "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                               ${VULKAN_INCLUDE_DIR}
                                               ${FREEIMAGE_INCLUDE_DIR} )
@@ -45,7 +44,8 @@ target_include_directories( LsRenderer PUBLIC Include
 #                      "${LIBRARY_SOURCE_DIR}/LsUtility/Include" )
 
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
-                                  LsVulkanLoader )
+                                  LsVulkanLoader
+                                  SDL3::SDL3 )
 
 target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)
 

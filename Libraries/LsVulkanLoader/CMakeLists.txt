@@ -21,4 +21,4 @@ add_library( LsVulkanLoader STATIC ${INCLUDE_FILES} ${SOURCE_FILES} )
 include_directories( Include )
 include_directories( ${VULKAN_INCLUDE_DIR} )
 
-target_link_libraries( LsVulkanLoader ${VULKAN_LIBRARY} )
+target_link_libraries( LsVulkanLoader ${VULKAN_LIBRARY} SDL3::SDL3 )

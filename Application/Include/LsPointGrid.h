@@ -2,9 +2,9 @@
 
 #include <memory>
 #include <LsRenderer.h>
-#include <LsFWin32MessageHandler.h>
+#include <LsFSdlEventHandler.h>
 
-class LsPointGrid: public LsFWin32MessageHandler
+class LsPointGrid: public LsFSdlEventHandler
 {
   struct {
     float r;
@@ -29,5 +29,5 @@ public:
   void SetBackgroundColor(float r, float g, float b);
   void SetSpacing(float spacing);
   void Render();
-  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+  void OnSdlEvent(const SDL_Event& event) override;
 };

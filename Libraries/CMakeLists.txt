@@ -1,7 +1,6 @@
 add_subdirectory( LsMath )
 add_subdirectory( LsUtility )
 add_subdirectory( LsVulkanLoader )
-add_subdirectory( LsWintabLoader )
 add_subdirectory( LsRenderer )
 add_subdirectory( LsStuffing )
-add_subdirectory( LsWin32MainWindow )
+add_subdirectory( LsSdlMainWindow )

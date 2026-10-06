@@ -1,1 +1,1 @@
-Directory containing source code of shaders either in GLSL or SPIR-V assembly.
+Directory containing source code of shaders written in Slang (compiled to SPIR-V with slangc).

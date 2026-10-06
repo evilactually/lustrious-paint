@@ -2,7 +2,7 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-#include <windows.h>
+#include <SDL3/SDL.h>
 #include <string>
 #include <vector>
 
@@ -10,7 +10,7 @@
 //-- Functions ------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-void LsSetDialogParentWindow(HWND handle);
+void LsSetDialogParentWindow(SDL_Window* handle);
 
 bool LsIsDialogShowing();
 

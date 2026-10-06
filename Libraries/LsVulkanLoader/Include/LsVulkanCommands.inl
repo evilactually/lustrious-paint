@@ -184,7 +184,7 @@ VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
 #endif
 
-#ifdef VK_USE_KHR_WIN32_SURFACE
+#if defined(VK_USE_KHR_WIN32_SURFACE) && defined(VK_USE_PLATFORM_WIN32_KHR)
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceWin32PresentationSupportKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkCreateWin32SurfaceKHR )
 #endif
@@ -220,7 +220,7 @@ VK_DEVICE_LEVEL_FUNCTION( vkCmdDrawIndirectCountAMD )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdDrawIndexedIndirectCountAMD )
 #endif
 
-#ifdef VK_USE_NV_EXTERNAL_MEMORY_WIN32
+#if defined(VK_USE_NV_EXTERNAL_MEMORY_WIN32) && defined(VK_USE_PLATFORM_WIN32_KHR)
 VK_DEVICE_LEVEL_FUNCTION( vkGetMemoryWin32HandleNV )
 #endif
 

@@ -1,26 +1,28 @@
 #pragma once
 
-#include <windows.h>
-#pragma once
-
 #include <vector>
 #include <memory>
 #include <vulkan_dynamic.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <LsFWin32MessageHandler.h>
+#include <SDL3/SDL.h>
 #include <LsImage.h>
 #include <chrono>
 #include <string>
 #include <cstdint> // uint_32
+#ifdef GIF_RECORDING
+#include <windows.h> // frame capture writes frames out on a Win32 thread
+#endif
 
 typedef void (*LsFrameCaptureCallback)();
 
 class LsRenderer {
+#ifdef GIF_RECORDING
   friend DWORD WINAPI WriteFrameThread(LPVOID lpParam);
+#endif
   friend class LsImage;
 public:
-  LsRenderer(HINSTANCE hInstance, HWND window);
+  LsRenderer(SDL_Window* window);
   ~LsRenderer();
   //static LsRenderer* Get();
 #ifdef GIF_RECORDING
@@ -72,7 +74,7 @@ private:
     eImage
   };
   
-  HWND window;
+  SDL_Window* window;
   VkInstance instance;             // Vulkan instance
   VkPhysicalDevice physicalDevice; // Chosen physical device
   VkDevice device;                 // Logical device created from physicalDevice
@@ -104,6 +106,7 @@ private:
     uint32_t acquiredImageIndex;
   } swapChainInfo = {};
 
+#ifdef GIF_RECORDING
   struct {
     VkFence captureCompleteFence;          // used to wait by host for copy to complete
     VkSemaphore captureFinishedSemaphore;  // used to block presentation while copying
@@ -124,6 +127,7 @@ private:
     std::chrono::high_resolution_clock::time_point startTime;
     std::string filename;
   } captureInfo;                           // time when capture was started(used to estimate framerate)
+#endif
 
   bool canRender = false;
 

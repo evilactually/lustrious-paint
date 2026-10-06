@@ -1,47 +1,64 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <cmath>
 #include <LsBrushRig.h>
-#include <LsWin32MainWindow.h>
 #include <LsRenderer.h>
-#include <DWINTAB.h>
-#define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
-#define PACKETMODE 0
-#include <wintab/PKTDEF.h>
 #include <LsMath.h>
 #include <LsGlmHelpers.h>
-#include <LsWindowsUtils.h>
 
 #define PRESSURE_SENSITIVITY 20.0f
 
 LsBrushRig::LsBrushRig(std::shared_ptr<LsRenderer> renderer) :renderer(renderer) {}
 
 LsBrushRig::~LsBrushRig() {
-  
+
 }
 
-void LsBrushRig::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  PACKET pkt;
-  POINT cursor;
-  switch (uMsg) {
-    case WM_MOUSEMOVE:
-    cursor = LsWin32MainWindow::Get()->GetMousePosition();
-    penStatus.position[0] = cursor.x;
-    penStatus.position[1] = cursor.y;
-    //std::cout << cursor.x << " " << cursor.y << std::endl;
+// SDL reports pen tilt as two angles (x tilt positive to the right, y tilt positive towards
+// the user), while the rig is built around Wintab style azimuth (clockwise from screen up)
+// and altitude (angle above the tablet surface, kPI/2 when the pen is upright).
+void LsBrushRig::UpdateOrientationFromTilt() {
+  const float tx = std::tan(penStatus.tilt[0]*(kPI/180.0f));
+  const float ty = std::tan(penStatus.tilt[1]*(kPI/180.0f));
+
+  float azimuth = std::atan2(tx, -ty);
+  if (azimuth < 0.0f) {
+    azimuth += 2.0f*kPI;
+  }
+
+  penStatus.orientation[0] = azimuth;
+  penStatus.orientation[1] = std::atan2(1.0f, std::sqrt(tx*tx + ty*ty));
+}
+
+void LsBrushRig::OnSdlEvent(const SDL_Event& event) {
+  switch (event.type) {
+    case SDL_EVENT_MOUSE_MOTION:
+    penStatus.position[0] = event.motion.x;
+    penStatus.position[1] = event.motion.y;
     break;
-    case WT_PACKET:
-    if (WTPacket((HCTX)lParam, wParam, &pkt)) 
-    {
-      //std::cout << "packet" << std::endl;
-      AXIS pressureNormal;
-      WTInfoA(WTI_DEVICES|0, DVC_NPRESSURE, &pressureNormal);
-      penStatus.pressure = static_cast<float>(pkt.pkNormalPressure)/static_cast<float>(pressureNormal.axMax);
-      penStatus.pressure *= PRESSURE_SENSITIVITY;
-      penStatus.orientation[0] = (pkt.pkOrientation.orAzimuth/10)*(kPI/180.0f);
-      penStatus.orientation[1] = (pkt.pkOrientation.orAltitude/10)*(kPI/180.0f);
-      penStatus.orientation[1] = std::abs(penStatus.orientation[1]); // eraser on wacom gives negative altitude
-      std::cout << penStatus.orientation[0] << " " << penStatus.orientation[1] << std::endl;
+    case SDL_EVENT_PEN_MOTION:
+    penStatus.position[0] = event.pmotion.x;
+    penStatus.position[1] = event.pmotion.y;
+    break;
+    case SDL_EVENT_PEN_UP:
+    penStatus.pressure = 0.0f;
+    break;
+    case SDL_EVENT_PEN_AXIS:
+    switch (event.paxis.axis) {
+      case SDL_PEN_AXIS_PRESSURE:
+      penStatus.pressure = event.paxis.value*PRESSURE_SENSITIVITY; // SDL normalizes pressure to 0..1
+      break;
+      case SDL_PEN_AXIS_XTILT:
+      penStatus.tilt[0] = event.paxis.value;
+      UpdateOrientationFromTilt();
+      break;
+      case SDL_PEN_AXIS_YTILT:
+      penStatus.tilt[1] = event.paxis.value;
+      UpdateOrientationFromTilt();
+      break;
+      default:
+      break;
     }
     break;
   }

@@ -45,11 +45,9 @@ target_include_directories( LustriousPaint PUBLIC Include
                                                   "${CMAKE_SOURCE_DIR}/Include"
                                                   "${CMAKE_CURRENT_BINARY_DIR}/Include/"
                                                   "${LIBRARY_SOURCE_DIR}/LsRenderer/Include"
-                                                  "${LIBRARY_SOURCE_DIR}/LsWin32MainWindow/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsMath/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
-                                                  "${LIBRARY_SOURCE_DIR}/LsWintabLoader/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanSystem/Include"
                                                   ${VULKAN_INCLUDE_DIR}
                                                   ${FREEIMAGE_INCLUDE_DIR} ) # TODO: Don't need FreeImage here
@@ -57,8 +55,7 @@ target_include_directories( LustriousPaint PUBLIC Include
 target_link_libraries( LustriousPaint LsMath
                                       LsUtility
                                       LsVulkanLoader
-                                      LsWintabLoader
-                                      LsWin32MainWindow
+                                      LsSdlMainWindow
                                       LsRenderer
                                       LsStuffing
                                       ${FREEIMAGE_LIBRARY_STATIC} )
@@ -68,6 +65,7 @@ add_dependencies( LustriousPaint Shaders )
 add_custom_command(TARGET LustriousPaint POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
     "${FREEIMAGE_LIBRARY_SHARED}"
+    "$<TARGET_FILE:SDL3::SDL3>"
     "$<TARGET_FILE_DIR:LustriousPaint>/")
 
 add_custom_command(TARGET LustriousPaint POST_BUILD

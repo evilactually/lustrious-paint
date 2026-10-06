@@ -10,43 +10,44 @@
 //-------------------------------------------------------------------------------
 #include <stdexcept>
 #include <iostream>
-#include <windows.h>
 #include <vector>
+#include <cstring>
 #include "vulkan_dynamic.hpp"
+#include <SDL3/SDL_vulkan.h>
 
 //-------------------------------------------------------------------------------
 //-- Globals --------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-HMODULE LsVulkanLibrary;
+bool LsVulkanLibraryLoaded = false;
 
 //-------------------------------------------------------------------------------
 //-- Functions ------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
+// SDL owns the Vulkan library, so the loader stays in sync with the one SDL uses for surfaces
 void LsLoadVulkanLibrary() {
-    LsVulkanLibrary = LoadLibrary("vulkan-1.dll");
-    if (LsVulkanLibrary == nullptr) {
-        std::cout << "Could not load Vulkan library!" << std::endl;
+    if (!SDL_Vulkan_LoadLibrary(nullptr)) {
+        std::cout << "Could not load Vulkan library: " << SDL_GetError() << std::endl;
         throw 1;
     }
+    LsVulkanLibraryLoaded = true;
 }
 
 void LsUnloadVulkanLibrary() {
-    if ( LsVulkanLibrary ) {
-        FreeLibrary( LsVulkanLibrary );
+    if ( LsVulkanLibraryLoaded ) {
+        SDL_Vulkan_UnloadLibrary();
+        LsVulkanLibraryLoaded = false;
     }
 }
 
 void LsLoadExportedEntryPoints() {
-    #define VK_EXPORTED_FUNCTION( fun )                                                  \
-        if(!(fun = (PFN_##fun)GetProcAddress( LsVulkanLibrary, #fun ))) {                \
-            std::cout << "Could not load exported function: ##fun!" << std::endl;        \
-            throw 1;                                                                     \
-        }
-    #define VK_USE_CORE
-    #include "LsVulkanCommands.inl"
-    #undef VK_USE_CORE
+    // vkGetInstanceProcAddr is the only exported function, everything else is loaded through it
+    vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)SDL_Vulkan_GetVkGetInstanceProcAddr();
+    if (!vkGetInstanceProcAddr) {
+        std::cout << "Could not load exported function: vkGetInstanceProcAddr! " << SDL_GetError() << std::endl;
+        throw 1;
+    }
 }
 
 void LsLoadGlobalLevelEntryPoints() {
@@ -88,8 +89,6 @@ void LsLoadInstanceLevelEntryPoints(VkInstance instance, std::vector<const char*
             KHR_DISPLAY = true;
         } else if (strcmp(extensions[i], VK_KHR_SURFACE_EXTENSION_NAME) == 0) {
             KHR_SURFACE = true;
-        } else if (strcmp(extensions[i], VK_KHR_WIN32_SURFACE_EXTENSION_NAME) == 0) {
-            KHR_WIN32_SURFACE = true;
         } else if (strcmp(extensions[i], VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
             EXT_DEBUG_REPORT = true;
         } else if (strcmp(extensions[i], VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME) == 0) {
@@ -174,8 +173,6 @@ void LsLoadDeviceLevelEntryPoints(VkDevice device, std::vector<const char*> exte
             KHR_DISPLAY = true;
         } else if (strcmp(extensions[i], VK_KHR_SURFACE_EXTENSION_NAME) == 0) {
             KHR_SURFACE = true;
-        } else if (strcmp(extensions[i], VK_KHR_WIN32_SURFACE_EXTENSION_NAME) == 0) {
-            KHR_WIN32_SURFACE = true;
         } else if (strcmp(extensions[i], VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
             EXT_DEBUG_REPORT = true;
         } else if (strcmp(extensions[i], VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME) == 0) {

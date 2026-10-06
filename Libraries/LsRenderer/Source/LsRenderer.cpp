@@ -17,6 +17,7 @@
 #include <LsVulkanRendering.h>
 #include <LsVulkanCommandBuffers.h>
 #include <LsRenderer.h>
+#include <SDL3/SDL_vulkan.h>
 
 #ifdef GIF_RECORDING
 #include <FreeImage.h>
@@ -31,13 +32,20 @@ using namespace lslib;
 //-------------------------------------------------------------------------------
 // List of instance-level extension that will be enabled when creating an instance
 //-------------------------------------------------------------------------------
-std::vector<const char*> requiredInstanceExtensions = {
-  VK_KHR_SURFACE_EXTENSION_NAME,
-  VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+static std::vector<const char*> GetRequiredInstanceExtensions() {
+  // SDL knows which surface extensions the current video driver needs
+  Uint32 sdlExtensionCount = 0;
+  const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
+  if ( !sdlExtensions ) {
+    throw std::string("Could not query Vulkan instance extensions: ") + SDL_GetError();
+  }
+
+  std::vector<const char*> extensions(sdlExtensions, sdlExtensions + sdlExtensionCount);
 #ifdef VULKAN_VALIDATION
-  VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+  extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 #endif
-};
+  return extensions;
+}
 
 //-------------------------------------------------------------------------------
 // @ requiredDeviceExtensions
@@ -382,7 +390,7 @@ void LsRenderer::BeginSavingCapturedFrame() {
 }
 #endif
 
-LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
+LsRenderer::LsRenderer(SDL_Window* window):window(window) {
   //LsRenderer* renderer = LsRenderer::Get();
   
 #ifdef GIF_RECORDING
@@ -394,6 +402,7 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
   LsLoadExportedEntryPoints();
   LsLoadGlobalLevelEntryPoints();
 
+  std::vector<const char*> requiredInstanceExtensions = GetRequiredInstanceExtensions();
   CreateInstance(requiredInstanceExtensions, requiredInstanceValidationLayers, &instance);
  
   LsLoadInstanceLevelEntryPoints(instance, requiredInstanceExtensions);
@@ -402,7 +411,7 @@ LsRenderer::LsRenderer(HINSTANCE hInstance, HWND window):window(window) {
   CreateDebugReportCallback(instance, &debugReportCallback);
 #endif
   
-  CreatePresentationSurface(instance, hInstance, window, &swapChainInfo.presentationSurface);
+  CreatePresentationSurface(instance, window, &swapChainInfo.presentationSurface);
 
   CreateDevice(instance, 
                swapChainInfo.presentationSurface,
@@ -654,7 +663,7 @@ void LsRenderer::RefreshSwapChain() {
                              &pointPipeline,
                              &imagePipeline);
 
-  windowToVulkanTransformation = WindowToVulkanTransformation(window);
+  windowToVulkanTransformation = WindowToVulkanTransformation(swapChainInfo.extent);
 
     canRender = true;
   } else {
@@ -1532,12 +1541,3 @@ void LsRenderer::EndDrawing() {
 
   drawingContext.drawing = false;
 }
-
-//void LsRenderer::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-//  switch (uMsg) {
-//    case WM_SIZE:
-//    RefreshSwapChain();
-//    windowToVulkanTransformation = WindowToVulkanTransformation(window);
-//    break;
-//  }
-//}

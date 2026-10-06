@@ -4,16 +4,12 @@
 #include <string>
 #include <vector>
 #include <vulkan_dynamic.hpp>
+#include <SDL3/SDL_vulkan.h>
 #include <LsOptional.h>
 
-void CreatePresentationSurface(VkInstance instance, HINSTANCE hInstance, HWND windowHandle, VkSurfaceKHR* presentationSurface) {
-  VkWin32SurfaceCreateInfoKHR surface_create_info = {};
-  surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  surface_create_info.hinstance = hInstance;
-  surface_create_info.hwnd = windowHandle;
-
-  if( vkCreateWin32SurfaceKHR( instance, &surface_create_info, nullptr, presentationSurface ) != VK_SUCCESS ) {
-    throw std::string("Could not create presentation surface!");
+void CreatePresentationSurface(VkInstance instance, SDL_Window* window, VkSurfaceKHR* presentationSurface) {
+  if( !SDL_Vulkan_CreateSurface( window, instance, nullptr, presentationSurface ) ) {
+    throw std::string("Could not create presentation surface: ") + SDL_GetError();
   }
 }
 
@@ -37,15 +33,15 @@ VkSurfaceFormatKHR GetSwapChainFormat( std::vector<VkSurfaceFormatKHR> &surface_
   return surface_formats[0];
 }
 
-LsOptional<VkExtent2D> GetSwapChainExtent( VkSurfaceCapabilitiesKHR &surface_capabilities, HWND windowHandle ) {
+LsOptional<VkExtent2D> GetSwapChainExtent( VkSurfaceCapabilitiesKHR &surface_capabilities, SDL_Window* window ) {
   // Special value of surface extent is width == height == -1
   // If this is so we define the size by ourselves but it must fit within defined confines
   if( surface_capabilities.currentExtent.width == -1) {
     // Try setting extent to the size of window client area
-    RECT window_rect = {}; 
-    GetClientRect(windowHandle, &window_rect);
-    VkExtent2D swap_chain_extent = { static_cast<uint32_t>(window_rect.right - window_rect.left),
-    static_cast<uint32_t>(window_rect.bottom - window_rect.top) };
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSizeInPixels(window, &width, &height);
+    VkExtent2D swap_chain_extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
 
     if( swap_chain_extent.width < surface_capabilities.minImageExtent.width ) {
       swap_chain_extent.width = surface_capabilities.minImageExtent.width;
@@ -63,7 +59,7 @@ LsOptional<VkExtent2D> GetSwapChainExtent( VkSurfaceCapabilitiesKHR &surface_cap
   }
 
   if (surface_capabilities.currentExtent.width == 0 || surface_capabilities.currentExtent.height == 0 ) {
-    LsOptional<VkExtent2D>::None();
+    return LsOptional<VkExtent2D>::None();
   }
   
   // Most of the cases we define size of the swap_chain images equal to current window's size
@@ -152,7 +148,7 @@ uint32_t GetSwapChainNumImages( VkSurfaceCapabilitiesKHR &surface_capabilities, 
 bool CreateSwapChain(VkPhysicalDevice& physicalDevice,
                      VkDevice& device,
                      VkSurfaceKHR& presentationSurface,
-                     HWND windowHandle,
+                     SDL_Window* window,
                      VkSwapchainKHR* swapChain,
                      VkFormat* swapChainFormat,
                      VkExtent2D* swapChainExtent) {
@@ -186,7 +182,7 @@ bool CreateSwapChain(VkPhysicalDevice& physicalDevice,
   }
 
   VkSurfaceFormatKHR             desired_format = GetSwapChainFormat( surface_formats );
-  LsOptional<VkExtent2D>         desired_extent = GetSwapChainExtent( surface_capabilities, windowHandle );
+  LsOptional<VkExtent2D>         desired_extent = GetSwapChainExtent( surface_capabilities, window );
   LsOptional<VkImageUsageFlags>  desired_usage = GetSwapChainUsageFlags( surface_capabilities );
   VkSurfaceTransformFlagBitsKHR  desired_transform = GetSwapChainTransform( surface_capabilities );
   LsOptional<VkPresentModeKHR>   desired_present_mode = GetSwapChainPresentMode( present_modes );

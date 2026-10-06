@@ -3,7 +3,7 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-#include <windows.h>
+#include <SDL3/SDL.h>
 #include <string>
 
 //-------------------------------------------------------------------------------
@@ -11,13 +11,13 @@
 //-------------------------------------------------------------------------------
 
 bool dialogShowing;
-HWND windowHandle;
+SDL_Window* windowHandle;
 
 //-------------------------------------------------------------------------------
 //-- Functions ------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
-void LsSetDialogParentWindow(HWND handle) {
+void LsSetDialogParentWindow(SDL_Window* handle) {
   windowHandle = handle;
 }
 
@@ -27,10 +27,7 @@ bool LsIsDialogShowing() {
 
 void LsAbort(std::string& msg) {
   dialogShowing = true;
-  MessageBox(windowHandle,
-             msg.c_str(),
-             "Error",
-             MB_OK | MB_ICONERROR);
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", msg.c_str(), windowHandle);
   throw 1;
 }
 
@@ -48,16 +45,16 @@ void LsError() {
 
 void LsExitFatal(std::string message, std::string caption) 
 {
-  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, caption.c_str(), message.c_str(), nullptr);
   throw 1;
 }
 
 void LsErrorMessage(std::string message, std::string caption) 
 {
-  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, caption.c_str(), message.c_str(), nullptr);
 }
 
 void LsMessageBox(std::string message, std::string caption) 
 {
-  MessageBox( NULL, message.c_str(), caption.c_str(), MB_OK );
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, caption.c_str(), message.c_str(), nullptr);
 }

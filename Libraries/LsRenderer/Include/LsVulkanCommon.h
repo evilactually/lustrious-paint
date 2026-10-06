@@ -1,7 +1,7 @@
 #pragma once
 
-#include <windows.h>
 #include <iostream>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
@@ -87,12 +87,9 @@ static VkShaderModule CreateShaderModule(VkDevice const& device, const char* fil
   return shader_module;
 }
 
-static glm::tmat3x3<float> WindowToVulkanTransformation(HWND windowHandle) {
-  RECT clientRect;
-  ::GetClientRect(windowHandle, &clientRect);
-
-  float width = (float)(clientRect.right - clientRect.left);
-  float height = (float)(clientRect.bottom - clientRect.top);
+static glm::tmat3x3<float> WindowToVulkanTransformation(VkExtent2D surfaceExtent) {
+  float width = (float)surfaceExtent.width;
+  float height = (float)surfaceExtent.height;
   float pixel_width = 2.0f/width;
   float pixel_height = 2.0f/height;
  

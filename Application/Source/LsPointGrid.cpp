@@ -1,8 +1,7 @@
-#include <windows.h>
+#include <cmath>
 #include <LsRenderer.h>
 #include <LsPointGrid.h>
-#include <LsWindowsUtils.h>
-#include <LsWin32MainWindow.h>
+#include <LsSdlMainWindow.h>
 
 LsPointGrid::LsPointGrid(std::shared_ptr<LsRenderer> renderer):renderer(renderer) {}
 
@@ -32,7 +31,7 @@ void LsPointGrid::Render() {
     int height;
   } windowExtent;
 
-  LsWin32MainWindow::Get()->GetClientArea(NULL, NULL, &windowExtent.width, &windowExtent.height);
+  LsSdlMainWindow::Get()->GetClientArea(NULL, NULL, &windowExtent.width, &windowExtent.height);
 
   renderer->Clear(backgroundColor.r, backgroundColor.g, backgroundColor.b);
 
@@ -51,4 +50,4 @@ void LsPointGrid::Render() {
   }
 }
 
-void LsPointGrid::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) { }
+void LsPointGrid::OnSdlEvent(const SDL_Event& event) { }

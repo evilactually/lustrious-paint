@@ -1,13 +1,13 @@
-#include <windows.h>
 #include <string>
 #include <iostream>
 #include <memory>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 #include <destructor.h>
-#include <LsWin32MainWindow.h>
+#include <LsSdlMainWindow.h>
+#include <LsFSdlEventHandler.h>
 #include <LsRenderer.h>
 #include <LsVulkanLoader.h>
-#include <DWINTAB.h>
-#include <LsWintabLoader.h>
 #include <LsBrushRig.h>
 #include <LsPointGrid.h>
 #include <LsUselessBox.h>
@@ -21,73 +21,47 @@
 #include <LsTetrahedronMesh.h>
 #include <LsIsosurfaceStuffer.h>
 
-#define PACKETDATA (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION | PK_CURSOR)
-#define PACKETMODE 0
-#include "wintab/PKTDEF.h"
-
 using namespace lslib;
 
-HCTX OpenWintabContext(HINSTANCE hInstance, HWND hWindow)
-{
-  AXIS            dvcX, dvcY;         // The maximum tablet size
-  LOGCONTEXT      lcMine = {};        // The context of the tablet
-  WTInfoA(WTI_DEFSYSCTX, 0, &lcMine); // get system logical context
-  // Modify the digitizing region
-  wsprintf(lcMine.lcName, "Lustrious Paint Digitizing %x", hInstance);
-  lcMine.lcOptions |= CXO_MESSAGES;   // recieve WM_PACKET
-  lcMine.lcOptions |= CXO_SYSTEM;     // receive WM_MOUSEMOVE
-  lcMine.lcPktData = PACKETDATA;
-  lcMine.lcPktMode = PACKETMODE;
-  lcMine.lcMoveMask = PACKETDATA;
-  lcMine.lcBtnUpMask = lcMine.lcBtnDnMask;
-  // Set the entire tablet as active
-  WTInfoA(WTI_DEVICES,DVC_X, &dvcX);
-  WTInfoA(WTI_DEVICES,DVC_Y, &dvcY);
-  lcMine.lcInOrgX = 0;
-  lcMine.lcInOrgY = 0;
-  lcMine.lcInExtX = dvcX.axMax;
-  lcMine.lcInExtY = dvcY.axMax;
-  return WTOpenA(hWindow, &lcMine, TRUE);
-}
-
-class Application: LsFWin32MessageHandler {
-  HINSTANCE hInstance;
-  LsWin32MainWindow* window;
+class Application: LsFSdlEventHandler {
+  LsSdlMainWindow* window = nullptr;
   std::shared_ptr<LsBrushRig> brushRig;
   std::shared_ptr<LsPointGrid> pointGrid;
   std::shared_ptr<LsUselessBox> uselessBox;
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
-  HCTX tabletContext;
 public:
   Application() {
     LsCloseConsole();
-    LsUnloadWintabLibrary();
   }
 
-  ~Application() {}
+  ~Application() {
+    // Vulkan objects must be released before the window and SDL itself
+    stuffingDemo.reset();
+    uselessBox.reset();
+    pointGrid.reset();
+    brushRig.reset();
+    renderer.reset();
+    if (window) {
+      window->Destroy();
+    }
+  }
 
-  void Initialize(HINSTANCE hInstance) {
+  void Initialize() {
     // Attach console
     LsOpenConsole();
 
     // Get a pointer to main window singleton
-    window = LsWin32MainWindow::Get();
+    window = LsSdlMainWindow::Get();
 
-    // Load Wintab
-    LsLoadWintabLibrary();
-    LsLoadWintabEntryPoints();
-   
-    window->Create(hInstance, "Lustrious Paint", 100, 100, 640, 800);
+    // Tablet input arrives as SDL pen events, no separate tablet context is needed
+    window->Create("Lustrious Paint", 100, 100, 640, 800);
     LsSetDialogParentWindow(window->GetWindowHandle());
-
-    // Open Wintab Context
-    OpenWintabContext(hInstance, window->GetWindowHandle());
 
     window->HideMouse();
 
     // Initialize the rendering system
-    renderer = std::make_shared<LsRenderer>(hInstance, window->GetWindowHandle());
+    renderer = std::make_shared<LsRenderer>(window->GetWindowHandle());
 	  renderer->RefreshSwapChain();
 
 	  // Initialize components
@@ -111,11 +85,11 @@ public:
     while ( window->ProcessMessages() ) {
       window->WaitForMessages();
       renderer->BeginFrame();
-      
+
       pointGrid->Render();
       renderer->DrawCanvas();
       brushRig->Render();
-      
+
       uselessBox->Render();
       //stuffingDemo->Render();
       renderer->EndFrame();
@@ -124,18 +98,20 @@ public:
 
   }
 
-  void Application::OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
-      case WM_SIZE:
-	    renderer->RefreshSwapChain();
+  void OnSdlEvent(const SDL_Event& event) override {
+    switch (event.type) {
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        if (renderer) {
+          renderer->RefreshSwapChain();
+        }
       break;
-      case WM_KEYDOWN:
+      case SDL_EVENT_KEY_DOWN:
 #ifdef GIF_RECORDING
-        if (wParam == VK_F12) {
+        if (event.key.key == SDLK_F12) {
           renderer->StartGIFRecording("C:\\Users\\Public\\Downloads\\out.gif");
           std::cout << "PRESSED" << std::endl;
         }
-        else if (wParam == VK_F11) {
+        else if (event.key.key == SDLK_F11) {
           renderer->StopGIFRecording();
         }
 #endif
@@ -144,18 +120,19 @@ public:
   }
 };
 
-int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+int main(int argc, char* argv[]) {
   //LsIsosphere sphere({0.0f, 0.0f, 0.0f}, 1.0f);
   //LsTetrahedronMesh mesh;
   //LsIsosurfaceStuffer stuffer;
   //stuffer.Stuff(mesh, sphere);
   try {
     Application application;
-    application.Initialize(hInstance);// test();
+    application.Initialize();// test();
     application.Run();
   } catch (std::string m) {
     LsErrorMessage(m, "Error");
   }
 
   system("pause");
+  return 0;
 }

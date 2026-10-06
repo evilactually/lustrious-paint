@@ -1,12 +1,13 @@
 #pragma once
 
 #include <memory>
-#include <windows.h>
+#include <SDL3/SDL.h>
+#include <LsFSdlEventHandler.h>
 
-class LsUselessBox: public LsFWin32MessageHandler
+class LsUselessBox: public LsFSdlEventHandler
 {
   std::shared_ptr<LsRenderer> renderer;
-  POINT grabOffset;
+  SDL_FPoint grabOffset;
   bool dragging = false;
   bool painting = false;
   float x = 0.0f;
@@ -17,6 +18,6 @@ public:
   LsUselessBox(std::shared_ptr<LsRenderer> renderer);
   ~LsUselessBox();
   void Render();
-  bool HitTest(POINT point);
-  void OnWin32Message(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+  bool HitTest(SDL_FPoint point);
+  void OnSdlEvent(const SDL_Event& event) override;
 };
