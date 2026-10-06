@@ -5,6 +5,7 @@
 #include <memory>
 #include <assert.h>
 #include <array>
+#include <cstdio>
 #include <vulkan_dynamic.hpp>
 
 #include <destructor.h>
@@ -845,6 +846,10 @@ void LsRenderer::EndFrame() {
     EndDrawing();
   }
 
+  if( !screenshot.path.empty() ) {
+    RecordScreenshotCopy();
+  }
+
   if( vkEndCommandBuffer( commandBuffer ) != VK_SUCCESS ) {
     throw std::string("Could not record command buffers!");
   }
@@ -909,6 +914,10 @@ void LsRenderer::EndFrame() {
   present_info.pResults = nullptr;
   
   VkResult result = vkQueuePresentKHR(presentQueue.handle, &present_info );
+
+  if( screenshot.recorded ) {
+    WriteScreenshot();
+  }
 
   switch( result ) {
     case VK_SUCCESS:
@@ -1726,6 +1735,115 @@ bool LsRenderer::ProcessUiEvent(const SDL_Event& event) {
     // Releases always pass through, so a stroke or key held outside the UI can't get stuck
     return false;
   }
+}
+
+void LsRenderer::SaveScreenshot(const std::string& path) {
+  screenshot.path = path;
+}
+
+void LsRenderer::RecordScreenshotCopy() {
+  VkExtent2D extent = swapChainInfo.extent;
+  VkBufferCreateInfo bufferInfo = {};
+  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  bufferInfo.size = VkDeviceSize(extent.width)*extent.height*4;
+  bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  if( vkCreateBuffer(device, &bufferInfo, nullptr, &screenshot.buffer) != VK_SUCCESS ) {
+    screenshot.path.clear();
+    return;
+  }
+  VkMemoryRequirements requirements;
+  vkGetBufferMemoryRequirements(device, screenshot.buffer, &requirements);
+  VkPhysicalDeviceMemoryProperties memoryProperties;
+  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+  VkMemoryAllocateInfo allocateInfo = {};
+  allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocateInfo.allocationSize = requirements.size;
+  allocateInfo.memoryTypeIndex = FindMemoryType(memoryProperties, requirements.memoryTypeBits,
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  vkAllocateMemory(device, &allocateInfo, nullptr, &screenshot.memory);
+  vkBindBufferMemory(device, screenshot.buffer, screenshot.memory, 0);
+
+  VkImage image = swapChainInfo.images[swapChainInfo.acquiredImageIndex];
+  VkImageMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.image = image;
+  barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+  VkBufferImageCopy region = {};
+  region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+  region.imageExtent = { extent.width, extent.height, 1 };
+  vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, screenshot.buffer, 1, &region);
+
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.dstAccessMask = 0;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+  barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                       0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+  screenshot.extent = extent;
+  screenshot.recorded = true;
+}
+
+void LsRenderer::WriteScreenshot() {
+  vkWaitForFences(device, 1, &submitCompleteFence, VK_TRUE, UINT64_MAX);
+
+  uint32_t width = screenshot.extent.width;
+  uint32_t height = screenshot.extent.height;
+  uint8_t* pixels = nullptr;
+  vkMapMemory(device, screenshot.memory, 0, VK_WHOLE_SIZE, 0, reinterpret_cast<void**>(&pixels));
+
+  // BMP stores BGRA, a negative height makes the rows run top down like the image
+  bool rgba = swapChainInfo.format == VK_FORMAT_R8G8B8A8_UNORM || swapChainInfo.format == VK_FORMAT_R8G8B8A8_SRGB;
+  FILE* file = fopen(screenshot.path.c_str(), "wb");
+  if( file ) {
+    uint32_t imageSize = width*height*4;
+    uint8_t header[54] = { 'B', 'M' };
+    auto put32 = [&](int offset, uint32_t value) {
+      for( int i = 0; i < 4; i++ ) {
+        header[offset + i] = uint8_t(value >> (8*i));
+      }
+    };
+    put32(2, 54 + imageSize);
+    put32(10, 54);
+    put32(14, 40);
+    put32(18, width);
+    put32(22, uint32_t(-int32_t(height)));
+    header[26] = 1;
+    header[28] = 32;
+    put32(34, imageSize);
+    fwrite(header, 1, sizeof(header), file);
+    std::vector<uint8_t> row(width*4);
+    for( uint32_t y = 0; y < height; y++ ) {
+      const uint8_t* source = pixels + size_t(y)*width*4;
+      for( uint32_t x = 0; x < width; x++ ) {
+        row[x*4 + 0] = source[x*4 + (rgba ? 2 : 0)];
+        row[x*4 + 1] = source[x*4 + 1];
+        row[x*4 + 2] = source[x*4 + (rgba ? 0 : 2)];
+        row[x*4 + 3] = 255;
+      }
+      fwrite(row.data(), 1, row.size(), file);
+    }
+    fclose(file);
+    std::cout << "Saved screenshot " << screenshot.path << std::endl;
+  }
+
+  vkUnmapMemory(device, screenshot.memory);
+  vkDestroyBuffer(device, screenshot.buffer, nullptr);
+  vkFreeMemory(device, screenshot.memory, nullptr);
+  screenshot.buffer = VK_NULL_HANDLE;
+  screenshot.memory = VK_NULL_HANDLE;
+  screenshot.path.clear();
+  screenshot.recorded = false;
 }
 
 bool LsRenderer::IsUiCapturingMouse() {

@@ -76,7 +76,9 @@ LsOptional<VkImageUsageFlags> GetSwapChainUsageFlags( VkSurfaceCapabilitiesKHR &
 #endif
 
   if( surface_capabilities.supportedUsageFlags & additionalImageUsageFlags ) {
-    return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | additionalImageUsageFlags;
+    // Lets LsRenderer::SaveScreenshot copy frames out, where supported
+    VkImageUsageFlags optional = surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    return VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | additionalImageUsageFlags | optional;
   }
   std::cout << "Image usage flags are not supported by the swap chain." << std::endl;
   return LsOptional<VkImageUsageFlags>::None();

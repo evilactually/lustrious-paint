@@ -146,6 +146,12 @@ public:
       DrawDockedPanels();
       DrawToolbar();
 
+      if (ImGui::IsKeyPressed(ImGuiKey_F9, false)) {
+        char path[64];
+        snprintf(path, sizeof(path), "Screenshot %llu.bmp", static_cast<unsigned long long>(SDL_GetTicks()));
+        renderer->SaveScreenshot(path);
+      }
+
       ImGui::ShowDemoWindow();
 
       if (ImGui::Begin("Brush")) {

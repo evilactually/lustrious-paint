@@ -63,7 +63,13 @@ public:
   // so ImGui:: calls can be made anywhere in between
   bool ProcessUiEvent(const SDL_Event& event); // returns true when the UI captures the event
   bool IsUiCapturingMouse();
+  // Writes the frame being recorded to a 32-bit BMP file once it has been rendered,
+  // call between BeginFrame and EndFrame
+  void SaveScreenshot(const std::string& path);
 private:
+  void RecordScreenshotCopy();
+  void WriteScreenshot();
+
   // TODO: Decouple canvas code from rendering, it doesn't belong here, but it needs low level Vulkan access
   void InitializeCanvas(uint32_t width, uint32_t height);
   
@@ -148,6 +154,14 @@ private:
 
   bool canRender = false;
   bool uiInitialized = false;
+
+  struct {
+    std::string path; // pending when not empty
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkExtent2D extent = {};
+    bool recorded = false;
+  } screenshot;
 
   struct {
     VkSemaphore imageAvailable;     // signals when swap chain image is acquired
