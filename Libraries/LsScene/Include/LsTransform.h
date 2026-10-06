@@ -59,4 +59,9 @@ struct LsPlacement
   // rotated, non-uniformly scaled parents can produce), then the closest
   // rotation and per-axis scale are returned.
   static LsPlacement FromMatrix(const glm::mat4& m);
+  // Same, but of the equivalent Euler angles picks those nearest to the hint's,
+  // and keeps the hint's values where they still fit, so editing one part of a
+  // placement interactively doesn't make the others jump or pick up rounding noise.
+  // The hint is usually the placement from before the edit.
+  static LsPlacement FromMatrix(const glm::mat4& m, const LsPlacement& hint);
 };

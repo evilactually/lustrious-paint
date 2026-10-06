@@ -1,6 +1,7 @@
 #include <LsScene.h>
 
 #include <algorithm>
+#include <cfloat>
 
 LsScene::LsScene() {
   LsSceneNodeProperties properties;
@@ -35,10 +36,22 @@ LsNodeId LsScene::AddGroup(const std::string& name, LsNodeId parent) {
 LsNodeId LsScene::AddShape(const std::string& name, const LsShape& shape, LsSceneRoles roles, LsNodeId parent) {
   LsSceneNodeProperties properties;
   properties.name = name;
-  properties.hasShape = true;
+  properties.type = LsNodeType::Shape;
   properties.shape = shape;
   properties.roles = roles;
   return AddNode(properties, Find(parent) ? parent : root);
+}
+
+LsNodeId LsScene::AddCamera(const std::string& name, const LsCameraLens& lens, LsNodeId parent) {
+  LsSceneNodeProperties properties;
+  properties.name = name;
+  properties.type = LsNodeType::Camera;
+  properties.lens = lens;
+  LsNodeId id = AddNode(properties, Find(parent) ? parent : root);
+  if (GetActiveCamera() == id) {
+    activeCamera = id;
+  }
+  return id;
 }
 
 LsNodeId LsScene::Duplicate(LsNodeId id) {
@@ -151,6 +164,135 @@ LsTransform LsScene::GetObjectToWorld(LsNodeId id) const {
   return objectToWorld;
 }
 
+bool LsScene::GetWorldBounds(LsNodeId id, glm::vec3& min, glm::vec3& max) const {
+  if (!Find(id)) {
+    return false;
+  }
+  bool found = false;
+  auto add = [&](glm::vec3 p) {
+    min = found ? glm::min(min, p) : p;
+    max = found ? glm::max(max, p) : p;
+    found = true;
+  };
+
+  struct Pending { LsNodeId id; LsTransform objectToWorld; };
+  std::vector<Pending> pending = { { id, GetObjectToWorld(id) } };
+  while (!pending.empty()) {
+    Pending current = pending.back();
+    pending.pop_back();
+    const LsSceneNode& node = nodes.at(current.id);
+    const LsSceneNodeProperties& properties = node.properties;
+
+    glm::vec3 objectMin, objectMax;
+    if (properties.type == LsNodeType::Shape && properties.shape.GetBounds(objectMin, objectMax)) {
+      for (int corner = 0; corner < 8; corner++) {
+        glm::vec3 p((corner & 1) ? objectMax.x : objectMin.x,
+                    (corner & 2) ? objectMax.y : objectMin.y,
+                    (corner & 4) ? objectMax.z : objectMin.z);
+        add(current.objectToWorld.ApplyToPoint(p));
+      }
+    }
+    else if (properties.type != LsNodeType::Group) {
+      add(current.objectToWorld.ApplyToPoint(glm::vec3(0.0f)));
+    }
+
+    for (LsNodeId child : node.children) {
+      pending.push_back({ child, current.objectToWorld*nodes.at(child).properties.placement.ToTransform() });
+    }
+  }
+  return found;
+}
+
+LsNodeId LsScene::GetActiveCamera() const {
+  const LsSceneNode* active = Find(activeCamera);
+  if (active && active->properties.type == LsNodeType::Camera) {
+    return activeCamera;
+  }
+  std::vector<LsNodeId> pending = { root };
+  while (!pending.empty()) {
+    const LsSceneNode& node = nodes.at(pending.back());
+    pending.pop_back();
+    if (node.properties.type == LsNodeType::Camera) {
+      return node.id;
+    }
+    pending.insert(pending.end(), node.children.rbegin(), node.children.rend());
+  }
+  return kLsInvalidNode;
+}
+
+void LsScene::SetActiveCamera(LsNodeId id) {
+  const LsSceneNode* node = Find(id);
+  if (node && node->properties.type == LsNodeType::Camera && activeCamera != id) {
+    activeCamera = id;
+    revision++;
+  }
+}
+
+LsCamera LsScene::GetCamera(LsNodeId id, float aspect) const {
+  const LsSceneNode* node = Find(id);
+  float fov = node ? node->properties.lens.verticalFov : LsCameraLens().verticalFov;
+  return LsCamera(GetObjectToWorld(id).GetMatrix(), fov, aspect);
+}
+
+bool LsScene::Raycast(const LsRay& ray, LsSceneHit& hit, LsSceneRoles roleMask, float maxDistance) const {
+  return LsRaycastPrimitives(Flatten(), ray, roleMask, maxDistance, hit);
+}
+
+static float PrimitiveDistance(const LsScenePrimitive& primitive, glm::vec3 p) {
+  glm::vec4 h(p, 1.0f);
+  glm::vec3 objectP(glm::dot(primitive.worldToObject[0], h),
+                    glm::dot(primitive.worldToObject[1], h),
+                    glm::dot(primitive.worldToObject[2], h));
+  LsShape shape = { static_cast<LsShapeType>(primitive.shapeType), primitive.shapeParams };
+  return shape.Distance(objectP)*primitive.distanceScale;
+}
+
+bool LsRaycastPrimitives(const std::vector<LsScenePrimitive>& primitives, const LsRay& ray,
+                         LsSceneRoles roleMask, float maxDistance, LsSceneHit& hit) {
+  std::vector<const LsScenePrimitive*> candidates;
+  for (const LsScenePrimitive& primitive : primitives) {
+    if ((primitive.roles & roleMask) && PrimitiveDistance(primitive, ray.origin) > 0.0f) {
+      candidates.push_back(&primitive);
+    }
+  }
+
+  const int kMaxSteps = 512;
+  float t = 0.0f;
+  for (int step = 0; step < kMaxSteps && t < maxDistance; step++) {
+    glm::vec3 p = ray.At(t);
+    float distance = FLT_MAX;
+    const LsScenePrimitive* closest = nullptr;
+    for (const LsScenePrimitive* primitive : candidates) {
+      float d = PrimitiveDistance(*primitive, p);
+      if (d < distance) {
+        distance = d;
+        closest = primitive;
+      }
+    }
+    if (!closest) {
+      return false;
+    }
+
+    // Tolerance grows with distance, far away a pixel covers more
+    float epsilon = 1.0e-4f*std::max(1.0f, t);
+    if (distance < epsilon) {
+      // Central differences of the hit primitive alone, the union would blur normals where shapes touch
+      float h = epsilon;
+      glm::vec3 gradient(PrimitiveDistance(*closest, p + glm::vec3(h, 0.0f, 0.0f)) - PrimitiveDistance(*closest, p - glm::vec3(h, 0.0f, 0.0f)),
+                         PrimitiveDistance(*closest, p + glm::vec3(0.0f, h, 0.0f)) - PrimitiveDistance(*closest, p - glm::vec3(0.0f, h, 0.0f)),
+                         PrimitiveDistance(*closest, p + glm::vec3(0.0f, 0.0f, h)) - PrimitiveDistance(*closest, p - glm::vec3(0.0f, 0.0f, h)));
+      float length = glm::length(gradient);
+      hit.node = closest->nodeId;
+      hit.distance = t;
+      hit.position = p;
+      hit.normal = length > 0.0f ? gradient/length : -ray.direction;
+      return true;
+    }
+    t += distance;
+  }
+  return false;
+}
+
 std::vector<LsScenePrimitive> LsScene::Flatten() const {
   std::vector<LsScenePrimitive> primitives;
   FlattenNode(root, LsTransform(), primitives);
@@ -165,7 +307,7 @@ void LsScene::FlattenNode(LsNodeId id, const LsTransform& parentToWorld, std::ve
   }
 
   LsTransform objectToWorld = parentToWorld*properties.placement.ToTransform();
-  if (properties.hasShape) {
+  if (properties.type == LsNodeType::Shape) {
     LsScenePrimitive primitive = {};
     glm::mat4 worldToObject = glm::transpose(objectToWorld.GetInverseMatrix());
     for (int row = 0; row < 3; row++) {

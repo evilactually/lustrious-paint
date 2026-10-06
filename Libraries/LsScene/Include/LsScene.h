@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include <glm/glm.hpp>
+#include <LsCamera.h>
 #include <LsShape.h>
 #include <LsTransform.h>
 
@@ -21,6 +22,21 @@ enum LsSceneRole : uint32_t
   eRoleParticipatingMedia = 1u << 3, // Attenuates light passing through the volume
 };
 using LsSceneRoles = uint32_t;
+const LsSceneRoles kLsAllRoles = ~0u;
+
+enum class LsNodeType : uint32_t
+{
+  Group,  // Only places its children
+  Shape,  // Signed distance primitive with roles
+  Camera, // Viewpoint the canvas is painted from
+};
+
+// Lens of a camera node. The aspect ratio is not part of it, that comes from
+// the canvas the camera paints.
+struct LsCameraLens
+{
+  float verticalFov = 40.0f; // in degrees
+};
 
 //-------------------------------------------------------------------------------
 // @ LsSceneNodeProperties
@@ -34,10 +50,12 @@ struct LsSceneNodeProperties
   LsPlacement placement;
   // A hidden node hides its whole subtree
   bool visible = true;
-  // Groups have no shape, they only place their children
-  bool hasShape = false;
+  LsNodeType type = LsNodeType::Group;
+  // Used by shapes only
   LsShape shape;
   LsSceneRoles roles = 0;
+  // Used by cameras only
+  LsCameraLens lens;
   // Emitted radiance is colour times intensity
   glm::vec3 emissionColor = glm::vec3(1.0f);
   float emissionIntensity = 1.0f;
@@ -83,6 +101,20 @@ struct LsScenePrimitive
 };
 static_assert(sizeof(LsScenePrimitive) == 112, "LsScenePrimitive must match ScenePrimitive in scene.slang");
 
+struct LsSceneHit
+{
+  LsNodeId node = kLsInvalidNode;
+  float distance = 0.0f; // along the ray
+  glm::vec3 position = glm::vec3(0.0f);
+  glm::vec3 normal = glm::vec3(0.0f, 1.0f, 0.0f);
+};
+
+// Sphere traces the union of primitives having any role in roleMask. Primitives
+// containing the ray origin are skipped, so a ray from inside a room still hits
+// its walls and a camera below the ground still sees what is above it.
+bool LsRaycastPrimitives(const std::vector<LsScenePrimitive>& primitives, const LsRay& ray,
+                         LsSceneRoles roleMask, float maxDistance, LsSceneHit& hit);
+
 //-------------------------------------------------------------------------------
 // @ LsScene
 //-------------------------------------------------------------------------------
@@ -98,6 +130,7 @@ class LsScene
   std::unordered_map<LsNodeId, LsSceneNode> nodes;
   LsNodeId root = kLsInvalidNode;
   LsNodeId nextId = 1;
+  LsNodeId activeCamera = kLsInvalidNode;
   uint64_t revision = 0;
 
   LsNodeId AddNode(const LsSceneNodeProperties& properties, LsNodeId parent);
@@ -114,6 +147,8 @@ public:
   // Parent defaults to the root
   LsNodeId AddGroup(const std::string& name, LsNodeId parent = kLsInvalidNode);
   LsNodeId AddShape(const std::string& name, const LsShape& shape, LsSceneRoles roles, LsNodeId parent = kLsInvalidNode);
+  // The first camera added becomes the active one
+  LsNodeId AddCamera(const std::string& name, const LsCameraLens& lens = LsCameraLens(), LsNodeId parent = kLsInvalidNode);
   // Copies the node and its subtree next to the original, returns the copy
   LsNodeId Duplicate(LsNodeId id);
   // Removes the node and its subtree, the root can't be removed
@@ -132,6 +167,20 @@ public:
 
   LsTransform GetObjectToWorld(LsNodeId id) const;
 
+  // World space box around the node's subtree. Unbounded shapes such as planes
+  // only add their origin, cameras add their position. False for empty groups.
+  bool GetWorldBounds(LsNodeId id, glm::vec3& min, glm::vec3& max) const;
+
+  // The camera the canvas is painted from. When the active camera is removed
+  // the first remaining camera in depth-first order takes over.
+  LsNodeId GetActiveCamera() const;
+  void SetActiveCamera(LsNodeId id);
+  // View through a camera node, aspect is width over height of the canvas
+  LsCamera GetCamera(LsNodeId id, float aspect) const;
+
   // All visible shapes in depth-first order
   std::vector<LsScenePrimitive> Flatten() const;
+
+  // Flattens and traces the scene, see LsRaycastPrimitives
+  bool Raycast(const LsRay& ray, LsSceneHit& hit, LsSceneRoles roleMask = kLsAllRoles, float maxDistance = 1000.0f) const;
 };

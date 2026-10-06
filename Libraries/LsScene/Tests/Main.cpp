@@ -177,3 +177,164 @@ TEST_CASE( "flatten" ) {
                    glm::dot(primitive.worldToObject[2], world));
   REQUIRE(Near(object, {0.0f, 0.5f, 1.0f}));
 }
+
+TEST_CASE( "camera rays and projection" ) {
+  LsCamera camera = LsCamera::LookAt({0.0f, 0.0f, 5.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 90.0f, 2.0f);
+  REQUIRE(Near(camera.GetForward(), {0.0f, 0.0f, -1.0f}));
+  REQUIRE(Near(camera.GetRight(), {1.0f, 0.0f, 0.0f}));
+  REQUIRE(camera.GetVerticalFov() == Approx(90.0f));
+
+  // 90 degrees vertically means the top edge of the image is at 45 degrees
+  LsRay top = camera.GenerateRay({0.0f, 1.0f});
+  REQUIRE(Near(top.direction, glm::normalize(glm::vec3(0.0f, 1.0f, -1.0f))));
+  // The aspect widens the horizontal field of view
+  LsRay right = camera.GenerateRay({1.0f, 0.0f});
+  REQUIRE(Near(right.direction, glm::normalize(glm::vec3(2.0f, 0.0f, -1.0f))));
+
+  glm::vec2 ndc;
+  REQUIRE(camera.Project(camera.GenerateRay({0.3f, -0.6f}).At(7.0f), ndc));
+  REQUIRE(Near(glm::vec3(ndc, 0.0f), {0.3f, -0.6f, 0.0f}));
+  REQUIRE_FALSE(camera.Project({0.0f, 0.0f, 6.0f}, ndc));
+  REQUIRE(camera.GetDepth({1.0f, 1.0f, 2.0f}) == Approx(3.0f));
+  REQUIRE(Near(camera.GetImagePlanePoint({1.0f, 1.0f}, 1.0f), {2.0f, 1.0f, 4.0f}));
+
+  // Looking straight down still gives a valid frame
+  LsCamera down = LsCamera::LookAt({0.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 40.0f, 1.0f);
+  REQUIRE(Near(down.GetForward(), {0.0f, -1.0f, 0.0f}));
+  REQUIRE(std::abs(glm::dot(down.GetRight(), down.GetUp())) < 1.0e-5f);
+
+  // The frame survives a round trip through a matrix, scale is dropped
+  LsCamera copy(camera.GetCameraToWorld()*glm::mat4(glm::mat3(3.0f)), 90.0f, 2.0f);
+  REQUIRE(Near(copy.GetForward(), camera.GetForward()));
+  REQUIRE(Near(copy.GetUp(), camera.GetUp()));
+  REQUIRE(Near(copy.GetPosition(), camera.GetPosition()));
+}
+
+TEST_CASE( "camera nodes" ) {
+  LsScene scene;
+  REQUIRE(scene.GetActiveCamera() == kLsInvalidNode);
+  LsNodeId first = scene.AddCamera("First");
+  LsNodeId second = scene.AddCamera("Second");
+  REQUIRE(scene.GetActiveCamera() == first);
+  scene.SetActiveCamera(second);
+  REQUIRE(scene.GetActiveCamera() == second);
+  // Only cameras can be active
+  LsNodeId shape = scene.AddShape("Shape", LsShape::Sphere(1.0f), eRoleConstruction);
+  scene.SetActiveCamera(shape);
+  REQUIRE(scene.GetActiveCamera() == second);
+  scene.Remove(second);
+  REQUIRE(scene.GetActiveCamera() == first);
+
+  // Cameras are not primitives
+  REQUIRE(scene.Flatten().size() == 1);
+
+  // A camera node with no rotation looks down -Z
+  LsPlacement placement;
+  placement.translation = {1.0f, 2.0f, 3.0f};
+  placement.rotation = {0.0f, 90.0f, 0.0f};
+  scene.SetPlacement(first, placement);
+  LsCamera camera = scene.GetCamera(first, 1.5f);
+  REQUIRE(Near(camera.GetPosition(), {1.0f, 2.0f, 3.0f}));
+  REQUIRE(Near(camera.GetForward(), {-1.0f, 0.0f, 0.0f}));
+  REQUIRE(camera.GetAspect() == Approx(1.5f));
+  REQUIRE(camera.GetVerticalFov() == Approx(LsCameraLens().verticalFov));
+}
+
+TEST_CASE( "raycast" ) {
+  LsScene scene;
+  LsNodeId ground = scene.AddShape("Ground", LsShape::Plane(), eRoleConstruction);
+  LsNodeId sphere = scene.AddShape("Sphere", LsShape::Sphere(1.0f), eRoleShadowCaster);
+  LsPlacement placement;
+  placement.translation = {0.0f, 1.0f, 0.0f};
+  placement.scale = {2.0f, 1.0f, 1.0f};
+  scene.SetPlacement(sphere, placement);
+
+  LsRay ray;
+  ray.origin = {-10.0f, 1.0f, 0.0f};
+  ray.direction = {1.0f, 0.0f, 0.0f};
+  LsSceneHit hit;
+  REQUIRE(scene.Raycast(ray, hit));
+  REQUIRE(hit.node == sphere);
+  REQUIRE(hit.distance == Approx(8.0f).epsilon(1.0e-3));
+  REQUIRE(Near(hit.normal, {-1.0f, 0.0f, 0.0f}, 1.0e-2f));
+
+  // Roles filter what can be hit
+  REQUIRE_FALSE(scene.Raycast(ray, hit, eRoleConstruction));
+
+  ray.origin = {5.0f, 3.0f, 0.0f};
+  ray.direction = glm::normalize(glm::vec3(0.0f, -1.0f, -1.0f));
+  REQUIRE(scene.Raycast(ray, hit));
+  REQUIRE(hit.node == ground);
+  REQUIRE(Near(hit.position, {5.0f, 0.0f, -3.0f}, 1.0e-2f));
+  REQUIRE(Near(hit.normal, {0.0f, 1.0f, 0.0f}, 1.0e-3f));
+
+  // From inside the sphere the sphere itself is ignored
+  ray.origin = {0.0f, 1.0f, 0.0f};
+  ray.direction = {0.0f, -1.0f, 0.0f};
+  REQUIRE(scene.Raycast(ray, hit));
+  REQUIRE(hit.node == ground);
+
+  // Missing everything
+  ray.origin = {0.0f, 5.0f, 0.0f};
+  ray.direction = {0.0f, 1.0f, 0.0f};
+  REQUIRE_FALSE(scene.Raycast(ray, hit));
+}
+
+TEST_CASE( "world bounds" ) {
+  LsScene scene;
+  LsNodeId group = scene.AddGroup("Group");
+  glm::vec3 min, max;
+  REQUIRE_FALSE(scene.GetWorldBounds(group, min, max));
+
+  LsPlacement placement;
+  placement.translation = {10.0f, 0.0f, 0.0f};
+  scene.SetPlacement(group, placement);
+  LsNodeId box = scene.AddShape("Box", LsShape::Box({1.0f, 2.0f, 3.0f}), eRoleConstruction, group);
+  placement.translation = {0.0f, 5.0f, 0.0f};
+  placement.rotation = {0.0f, 90.0f, 0.0f};
+  scene.SetPlacement(box, placement);
+  REQUIRE(scene.GetWorldBounds(group, min, max));
+  // Rotated a quarter turn about Y, so X and Z extents swap
+  REQUIRE(Near(min, {7.0f, 3.0f, -1.0f}));
+  REQUIRE(Near(max, {13.0f, 7.0f, 1.0f}));
+
+  // Planes and cameras only contribute their origin
+  LsNodeId camera = scene.AddCamera("Camera", LsCameraLens(), group);
+  placement = LsPlacement();
+  placement.translation = {0.0f, 0.0f, 20.0f};
+  scene.SetPlacement(camera, placement);
+  scene.AddShape("Plane", LsShape::Plane(), eRoleConstruction, group);
+  REQUIRE(scene.GetWorldBounds(group, min, max));
+  REQUIRE(Near(min, {7.0f, 0.0f, -1.0f}));
+  REQUIRE(Near(max, {13.0f, 7.0f, 20.0f}));
+}
+
+TEST_CASE( "placement from matrix with a hint" ) {
+  LsPlacement hint;
+  hint.translation = {1.0f, 2.0f, 3.0f};
+  hint.rotation = {170.0f, 10.0f, -170.0f};
+  hint.scale = {2.0f, 1.0f, 0.5f};
+
+  // Moving keeps rotation and scale bit for bit
+  LsPlacement moved = hint;
+  moved.translation = {4.0f, 5.0f, 6.0f};
+  LsPlacement decomposed = LsPlacement::FromMatrix(moved.ToTransform().GetMatrix(), hint);
+  REQUIRE(decomposed.rotation == hint.rotation);
+  REQUIRE(decomposed.scale == hint.scale);
+  REQUIRE(Near(decomposed.translation, moved.translation));
+
+  // The plain decomposition finds the other Euler solution, the hint keeps the original
+  LsPlacement rotated = hint;
+  rotated.rotation.y += 5.0f;
+  glm::mat4 m = rotated.ToTransform().GetMatrix();
+  decomposed = LsPlacement::FromMatrix(m, hint);
+  REQUIRE(Near(decomposed.rotation, rotated.rotation, 1.0e-2f));
+  REQUIRE(Near(decomposed.ToTransform().GetMatrix(), m));
+
+  // Whole turns are kept
+  hint.rotation = {0.0f, 0.0f, 350.0f};
+  rotated = hint;
+  rotated.rotation.z = 365.0f;
+  decomposed = LsPlacement::FromMatrix(rotated.ToTransform().GetMatrix(), hint);
+  REQUIRE(decomposed.rotation.z == Approx(365.0f).epsilon(1.0e-4));
+}

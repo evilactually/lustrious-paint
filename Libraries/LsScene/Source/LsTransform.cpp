@@ -109,5 +109,61 @@ LsPlacement LsPlacement::FromMatrix(const glm::mat4& m) {
     z = 0.0f;
   }
   placement.rotation = glm::degrees(glm::vec3(x, y, z));
+  // Rounding leaves tiny or negative zero angles that show up as -0.0 when edited
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(placement.rotation[i]) < 1.0e-4f) {
+      placement.rotation[i] = 0.0f;
+    }
+  }
+  return placement;
+}
+
+// The same angle, plus whatever whole turns bring it closest to the hint
+static float NearestTurn(float degrees, float hint) {
+  return degrees + 360.0f*std::round((hint - degrees)/360.0f);
+}
+
+static bool NearlyEqual(const glm::mat4& a, const glm::mat4& b) {
+  float scale = 1.0f;
+  for (int i = 0; i < 4; i++) {
+    scale = std::max(scale, glm::length(glm::vec3(b[i])));
+  }
+  for (int i = 0; i < 4; i++) {
+    if (glm::length(a[i] - b[i]) > 1.0e-5f*scale) {
+      return false;
+    }
+  }
+  return true;
+}
+
+LsPlacement LsPlacement::FromMatrix(const glm::mat4& m, const LsPlacement& hint) {
+  LsPlacement placement = FromMatrix(m);
+
+  // Only moved, keep rotation and scale exactly as they were
+  LsPlacement moved = hint;
+  moved.translation = placement.translation;
+  if (NearlyEqual(moved.ToTransform().GetMatrix(), m)) {
+    return moved;
+  }
+
+  // Rz*Ry*Rx has a second solution (x + 180, 180 - y, z + 180), and each angle can
+  // gain whole turns, pick the combination closest to the hint
+  glm::vec3 a = placement.rotation;
+  glm::vec3 b(a.x + 180.0f, 180.0f - a.y, a.z + 180.0f);
+  for (int i = 0; i < 3; i++) {
+    a[i] = NearestTurn(a[i], hint.rotation[i]);
+    b[i] = NearestTurn(b[i], hint.rotation[i]);
+  }
+  placement.rotation = glm::length(a - hint.rotation) <= glm::length(b - hint.rotation) ? a : b;
+
+  // Rounding noise in what didn't change
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(placement.rotation[i] - hint.rotation[i]) < 1.0e-3f) {
+      placement.rotation[i] = hint.rotation[i];
+    }
+    if (std::abs(placement.scale[i] - hint.scale[i]) < 1.0e-6f) {
+      placement.scale[i] = hint.scale[i];
+    }
+  }
   return placement;
 }
