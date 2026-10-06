@@ -69,7 +69,8 @@ float distanceTo(float3 p, uint roleMask, uint skip, out uint closest)
 }
 
 // Closest approach of the ray to the selection, in pixels, so the outline keeps
-// its width at any distance
+// its width at any distance. The selection counts whatever its roles are, so a
+// selected medium gets an outline from the surface pass too.
 Hit trace(float3 origin, float3 direction, uint roleMask, out float selectionPixels)
 {
   Hit hit;
@@ -85,29 +86,36 @@ Hit trace(float3 origin, float3 direction, uint roleMask, out float selectionPix
     uint closest = ~0u;
     for (uint i = 0; i < view.primitiveCount; i++) {
       uint roles = primitives[i].roles;
-      if ((roles & roleMask) == 0) {
+      bool traced = (roles & roleMask) != 0;
+      bool selected = (roles & PRIMITIVE_SELECTED) != 0;
+      if (!traced && !selected) {
         continue;
       }
       float d = primitiveDistance(primitives[i], p);
-      if (d < distance) {
+      if (traced && d < distance) {
         distance = d;
         closest = i;
       }
-      if ((roles & PRIMITIVE_SELECTED) != 0) {
+      if (selected) {
         selectedDistance = min(selectedDistance, d);
       }
     }
-    if (closest == ~0u) {
-      break;
-    }
     float footprint = max(t, 1.0e-3)*view.pixelAngle;
     selectionPixels = min(selectionPixels, selectedDistance/footprint);
-    if (distance < 0.25*footprint) {
+    if (closest != ~0u && distance < 0.25*footprint) {
       hit.t = t;
       hit.index = closest;
       break;
     }
-    t += distance;
+    // Stepping no further than the selection is away keeps its closest approach from being skipped
+    float step = distance;
+    if (selectedDistance > 0.0) {
+      step = min(step, max(selectedDistance, 0.5*footprint));
+    }
+    if (step >= 1.0e29) {
+      break; // nothing left to trace
+    }
+    t += step;
   }
   return hit;
 }
@@ -321,11 +329,17 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
       t += stepSize;
     }
     float opacity = 1.0 - exp(-medium.medium.a*thickness);
-    color = lerp(color, medium.medium.rgb*0.5, opacity*0.8);
+    float3 fog = medium.medium.rgb*0.5;
+    if ((medium.roles & PRIMITIVE_SELECTED) != 0) {
+      fog = lerp(fog, float3(1.0, 0.55, 0.15), 0.3);
+    }
+    color = lerp(color, fog, opacity*0.8);
   }
 
-  // Outline around the visible part of the selection
-  if (selectionPixels < 2.0 && (hit.index == ~0u || (primitives[hit.index].roles & PRIMITIVE_SELECTED) == 0)) {
+  // Outline around the visible part of the selection, from rays that came close
+  // but went past it (rays through a selected medium went inside instead)
+  if (selectionPixels > 0.0 && selectionPixels < 2.0 &&
+      (hit.index == ~0u || (primitives[hit.index].roles & PRIMITIVE_SELECTED) == 0)) {
     color = lerp(color, float3(1.0, 0.55, 0.15), 1.0 - smoothstep(1.0, 2.0, selectionPixels));
   }
 
