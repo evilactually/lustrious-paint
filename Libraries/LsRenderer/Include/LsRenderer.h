@@ -21,6 +21,7 @@ class LsRenderer {
   friend DWORD WINAPI WriteFrameThread(LPVOID lpParam);
 #endif
   friend class LsImage;
+  friend class LsSceneView;
 public:
   LsRenderer(SDL_Window* window);
   ~LsRenderer();

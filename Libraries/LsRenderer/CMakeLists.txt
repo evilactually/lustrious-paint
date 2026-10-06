@@ -7,6 +7,7 @@ set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 set(INCLUDE_FILES
   Include/LsImage.h
   Include/LsRenderer.h
+  Include/LsSceneView.h
   Include/LsUiTheme.h
   Include/LsPushConstantTypes.h
   Include/LsVulkanCommandBuffers.h
@@ -19,6 +20,7 @@ set(INCLUDE_FILES
 set(SOURCE_FILES
   Source/LsRenderer.cpp
   Source/LsImage.cpp
+  Source/LsSceneView.cpp
   Source/LsUiTheme.cpp )
 
 source_group( "Include" FILES ${INCLUDE_FILES} )
@@ -48,6 +50,7 @@ target_include_directories( LsRenderer PUBLIC Include
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
                                   imgui
                                   LsVulkanLoader
+                                  LsScene
                                   SDL3::SDL3 )
 
 target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)

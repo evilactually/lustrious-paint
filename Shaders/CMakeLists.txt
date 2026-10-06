@@ -25,7 +25,8 @@ function(add_slang_entry_point MODULE ENTRY STAGE SUFFIX)
             -target spirv -profile spirv_1_0 -warnings-disable 50011
             -entry ${ENTRY} -stage ${STAGE}
             -o ${SHADER_BINARY_FILE}
-    DEPENDS ${SHADER_SOURCE_FILE})
+    # Modules import each other, so any change rebuilds every entry point
+    DEPENDS ${SHADER_SOURCE_FILES})
   set(SHADER_BINARY_FILES ${SHADER_BINARY_FILES} ${SHADER_BINARY_FILE} PARENT_SCOPE)
 endfunction()
 
@@ -36,6 +37,7 @@ add_slang_entry_point(point fragmentMain fragment frag)
 add_slang_entry_point(image vertexMain   vertex   vert)
 add_slang_entry_point(image fragmentMain fragment frag)
 add_slang_entry_point(paint computeMain  compute  comp)
+add_slang_entry_point(viewport computeMain compute comp)
 
 add_custom_target(
   Shaders
