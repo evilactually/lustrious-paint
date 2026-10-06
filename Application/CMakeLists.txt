@@ -57,6 +57,7 @@ target_link_libraries( LustriousPaint LsMath
                                       LsVulkanLoader
                                       LsSdlMainWindow
                                       LsRenderer
+                                      imgui
                                       LsStuffing
                                       ${FREEIMAGE_LIBRARY_STATIC} )
 

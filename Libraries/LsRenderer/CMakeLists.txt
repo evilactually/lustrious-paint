@@ -44,6 +44,7 @@ target_include_directories( LsRenderer PUBLIC Include
 #                      "${LIBRARY_SOURCE_DIR}/LsUtility/Include" )
 
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
+                                  imgui
                                   LsVulkanLoader
                                   SDL3::SDL3 )
 

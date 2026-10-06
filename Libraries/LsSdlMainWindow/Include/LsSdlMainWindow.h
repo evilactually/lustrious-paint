@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 #include <SDL3/SDL.h>
 
 class LsSdlMainWindow
@@ -21,10 +22,14 @@ public:
   void HideMouse();
   void GetClientArea(int* x, int* y, int* width, int* height); // in pixels
   SDL_FPoint GetMousePosition();                               // in pixels, relative to client area
+  // The filter sees every event before it is converted to pixels and broadcast,
+  // returning true consumes the event so LsFSdlEventHandlers never receive it
+  void SetEventFilter(std::function<bool(const SDL_Event&)> filter);
 protected:
   static LsSdlMainWindow window;
   SDL_Window* windowHandle = nullptr;
   bool mouseVisible = true;
+  std::function<bool(const SDL_Event&)> eventFilter;
   LsSdlMainWindow();
   ~LsSdlMainWindow();
   bool HandleEvent(SDL_Event& event);

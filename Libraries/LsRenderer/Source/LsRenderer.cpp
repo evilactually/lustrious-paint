@@ -18,6 +18,9 @@
 #include <LsVulkanCommandBuffers.h>
 #include <LsRenderer.h>
 #include <SDL3/SDL_vulkan.h>
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
 
 #ifdef GIF_RECORDING
 #include <FreeImage.h>
@@ -571,6 +574,8 @@ LsRenderer::LsRenderer(SDL_Window* window):window(window) {
                              &imagePipeline);
     
     canRender = true;
+
+    InitializeUi();
   }
 
 //  InitializeCanvas(640, 800); // needs to be divisible by 16(work group size)
@@ -686,6 +691,8 @@ LsRenderer::~LsRenderer() {
 
   if ( device ) {
     vkDeviceWaitIdle(device);
+
+    ShutdownUi();
   
     if ( linePipeline )
     {
@@ -760,6 +767,8 @@ LsRenderer::~LsRenderer() {
 }
 
 void LsRenderer::BeginFrame() {
+  BeginUiFrame();
+
   if( vkWaitForFences( device, 1, &submitCompleteFence, VK_FALSE, 1000000000 ) != VK_SUCCESS ) {
     throw std::string("Waiting for fence takes too long!");
   }
@@ -829,6 +838,8 @@ void LsRenderer::EndFrame() {
 #ifdef GIF_RECORDING
   BOOL captureInitiated = false;
 #endif
+  RenderUi();
+
   if( drawingContext.drawing ) {
     EndDrawing();
   }
@@ -1540,4 +1551,141 @@ void LsRenderer::EndDrawing() {
                         &barrier_from_present_to_draw );
 
   drawingContext.drawing = false;
+}
+
+void LsRenderer::InitializeUi() {
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+
+  ImGuiIO& io = ImGui::GetIO();
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+  ImGui::StyleColorsDark();
+
+  // Scale the UI for high DPI displays
+  float mainScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+  if ( mainScale > 0.0f ) {
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(mainScale);
+    style.FontScaleDpi = mainScale;
+  }
+
+  ImGui_ImplSDL3_InitForVulkan(window);
+
+  // The backend is built without Vulkan prototypes, so hand it the same loader the renderer uses.
+  // The instance does not request an API version, which makes it Vulkan 1.0.
+  bool functionsLoaded = ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_0,
+    [](const char* functionName, void* userData) {
+      return vkGetInstanceProcAddr(*static_cast<VkInstance*>(userData), functionName);
+    },
+    &instance);
+  if ( !functionsLoaded ) {
+    throw std::string("Could not load Vulkan functions for Dear ImGui!");
+  }
+
+  uint32_t imageCount = static_cast<uint32_t>(swapChainInfo.images.size());
+
+  ImGui_ImplVulkan_InitInfo initInfo = {};
+  initInfo.ApiVersion = VK_API_VERSION_1_0;
+  initInfo.Instance = instance;
+  initInfo.PhysicalDevice = physicalDevice;
+  initInfo.Device = device;
+  initInfo.QueueFamily = graphicsQueue.familyIndex;
+  initInfo.Queue = graphicsQueue.handle;
+  initInfo.DescriptorPoolSize = 64; // backend owns its pool, sized with room for textures shown in the UI
+  initInfo.MinImageCount = 2;
+  initInfo.ImageCount = imageCount < 2 ? 2 : imageCount;
+  // UI is drawn inside the same render pass as lines and points; recreated render passes
+  // in RefreshSwapChain keep the same format, so they stay compatible with this pipeline
+  initInfo.PipelineInfoMain.RenderPass = renderPass;
+  initInfo.PipelineInfoMain.Subpass = 0;
+  initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+  if ( !ImGui_ImplVulkan_Init(&initInfo) ) {
+    throw std::string("Could not initialize Dear ImGui Vulkan backend!");
+  }
+
+  uiInitialized = true;
+}
+
+void LsRenderer::ShutdownUi() {
+  if ( !uiInitialized ) {
+    return;
+  }
+
+  ImGui_ImplVulkan_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
+  ImGui::DestroyContext();
+  uiInitialized = false;
+}
+
+void LsRenderer::BeginUiFrame() {
+  if ( !uiInitialized ) {
+    return;
+  }
+
+  // Let ImGui set the system cursor only while it is over the UI,
+  // elsewhere the application decides whether the cursor is visible
+  ImGuiIO& io = ImGui::GetIO();
+  if ( io.WantCaptureMouse ) {
+    io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+  } else {
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+  }
+
+  ImGui_ImplVulkan_NewFrame();
+  ImGui_ImplSDL3_NewFrame();
+  ImGui::NewFrame();
+}
+
+void LsRenderer::RenderUi() {
+  if ( !uiInitialized ) {
+    return;
+  }
+
+  ImGui::Render();
+  ImDrawData* drawData = ImGui::GetDrawData();
+  if ( drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f ) {
+    return;
+  }
+
+  if ( !drawingContext.drawing ) {
+    BeginDrawing();
+  }
+
+  ImGui_ImplVulkan_RenderDrawData(drawData, commandBuffer);
+
+  // ImGui bound its own pipeline
+  drawingContext.pipelineBinding = PipelineBinding::eNone;
+}
+
+bool LsRenderer::ProcessUiEvent(const SDL_Event& event) {
+  if ( !uiInitialized ) {
+    return false;
+  }
+
+  ImGui_ImplSDL3_ProcessEvent(&event);
+
+  ImGuiIO& io = ImGui::GetIO();
+  switch ( event.type ) {
+    case SDL_EVENT_MOUSE_MOTION:
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_PEN_MOTION:
+    case SDL_EVENT_PEN_DOWN:
+    case SDL_EVENT_PEN_BUTTON_DOWN:
+    case SDL_EVENT_PEN_AXIS:
+    return io.WantCaptureMouse;
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_TEXT_INPUT:
+    return io.WantCaptureKeyboard;
+    default:
+    // Releases always pass through, so a stroke or key held outside the UI can't get stuck
+    return false;
+  }
+}
+
+bool LsRenderer::IsUiCapturingMouse() {
+  return uiInitialized && ImGui::GetIO().WantCaptureMouse;
 }

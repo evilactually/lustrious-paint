@@ -15,6 +15,7 @@
 #include <LsConsole.h>
 #include <LsError.h>
 #include <LsImage.h>
+#include <imgui.h>
 // #include <Test.h>
 
 #include <LsIsosphere.h>
@@ -64,6 +65,11 @@ public:
     renderer = std::make_shared<LsRenderer>(window->GetWindowHandle());
 	  renderer->RefreshSwapChain();
 
+    // The UI sees events first, anything it captures doesn't reach the painting components
+    window->SetEventFilter([this](const SDL_Event& event) {
+      return renderer->ProcessUiEvent(event);
+    });
+
 	  // Initialize components
 	  brushRig = std::make_shared<LsBrushRig>(renderer);
 	  pointGrid = std::make_shared<LsPointGrid>(renderer);
@@ -82,18 +88,42 @@ public:
 
   void Run() {
     window->Show();
-    while ( window->ProcessMessages() ) {
-      window->WaitForMessages();
+
+    // Dear ImGui needs a few frames after input to settle (new windows stay hidden on their
+    // first frame while they are measured), so keep drawing briefly before blocking for events
+    const int settleFrames = 3;
+    int idleFrames = 0;
+    while ( true ) {
+      if ( idleFrames >= settleFrames ) {
+        window->WaitForMessages();
+      }
+      SDL_PumpEvents();
+      idleFrames = SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST) ? 0 : idleFrames + 1;
+      if ( !window->ProcessMessages() ) {
+        break;
+      }
+
       renderer->BeginFrame();
+
+      // The system cursor shows only over the UI, the brush rig is the cursor over the canvas
+      bool overUi = renderer->IsUiCapturingMouse();
+      if (!overUi) {
+        window->HideMouse();
+      }
 
       pointGrid->Render();
       renderer->DrawCanvas();
-      brushRig->Render();
+      if (!overUi) {
+        brushRig->Render();
+      }
 
       uselessBox->Render();
       //stuffingDemo->Render();
+
+      ImGui::ShowDemoWindow();
+
       renderer->EndFrame();
-    };
+    }
 
 
   }

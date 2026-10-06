@@ -51,10 +51,19 @@ public:
   // DrawLines(void)
   // DrawPoints(void)
   void CanvasStroke(float x, float y, float radius);
+  // Dear ImGui: a UI frame is started by BeginFrame and drawn on top of everything by EndFrame,
+  // so ImGui:: calls can be made anywhere in between
+  bool ProcessUiEvent(const SDL_Event& event); // returns true when the UI captures the event
+  bool IsUiCapturingMouse();
 private:
   // TODO: Decouple canvas code from rendering, it doesn't belong here, but it needs low level Vulkan access
   void InitializeCanvas(uint32_t width, uint32_t height);
   
+  void InitializeUi();
+  void ShutdownUi();
+  void BeginUiFrame();
+  void RenderUi();
+
   void getComputeQueue();
   //void CanvasStroke();
   void BeginDrawing();
@@ -130,6 +139,7 @@ private:
 #endif
 
   bool canRender = false;
+  bool uiInitialized = false;
 
   struct {
     VkSemaphore imageAvailable;     // signals when swap chain image is acquired

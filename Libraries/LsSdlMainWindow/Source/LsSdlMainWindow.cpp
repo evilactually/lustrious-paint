@@ -118,6 +118,10 @@ SDL_FPoint LsSdlMainWindow::GetMousePosition() {
   return cursor;
 }
 
+void LsSdlMainWindow::SetEventFilter(std::function<bool(const SDL_Event&)> filter) {
+  eventFilter = filter;
+}
+
 LsSdlMainWindow LsSdlMainWindow::window;
 
 LsSdlMainWindow::LsSdlMainWindow() {
@@ -174,9 +178,12 @@ void LsSdlMainWindow::ConvertEventToPixels(SDL_Event& event) {
 }
 
 bool LsSdlMainWindow::HandleEvent(SDL_Event& event) {
-  ConvertEventToPixels(event);
+  bool consumed = eventFilter && eventFilter(event);
 
-  LsFSdlEventHandler::BroadcastSdlEvent(event);
+  if ( !consumed ) {
+    ConvertEventToPixels(event);
+    LsFSdlEventHandler::BroadcastSdlEvent(event);
+  }
 
   switch( event.type ) {
     case SDL_EVENT_QUIT:
