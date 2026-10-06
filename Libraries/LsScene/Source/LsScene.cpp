@@ -234,6 +234,14 @@ LsCamera LsScene::GetCamera(LsNodeId id, float aspect) const {
   return LsCamera(GetObjectToWorld(id).GetMatrix(), fov, aspect);
 }
 
+void LsScene::Restore(const LsScene& snapshot) {
+  uint64_t nextRevision = std::max(revision, snapshot.revision) + 1;
+  LsNodeId unusedId = std::max(nextId, snapshot.nextId);
+  *this = snapshot;
+  revision = nextRevision;
+  nextId = unusedId;
+}
+
 bool LsScene::Raycast(const LsRay& ray, LsSceneHit& hit, LsSceneRoles roleMask, float maxDistance) const {
   return LsRaycastPrimitives(Flatten(), ray, roleMask, maxDistance, hit);
 }

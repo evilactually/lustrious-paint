@@ -408,8 +408,10 @@ void LsSceneViewport::HandleShortcuts(bool viewHovered) {
     }
   }
 
+  // Only with focus, the outliner has the same keys and hovering here mustn't double them
   LsNodeId selected = editor->GetSelected();
-  if (scene->Find(selected) && selected != scene->GetRoot()) {
+  bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+  if (windowFocused && scene->Find(selected) && selected != scene->GetRoot()) {
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
       scene->Remove(selected);
       editor->SetSelected(kLsInvalidNode);

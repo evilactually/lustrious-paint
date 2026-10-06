@@ -181,6 +181,10 @@ public:
   // All visible shapes in depth-first order
   std::vector<LsScenePrimitive> Flatten() const;
 
+  // Takes over the snapshot's nodes, for undo. The revision and the ids handed
+  // out keep increasing, so it reads as a change and ids are never reused.
+  void Restore(const LsScene& snapshot);
+
   // Flattens and traces the scene, see LsRaycastPrimitives
   bool Raycast(const LsRay& ray, LsSceneHit& hit, LsSceneRoles roleMask = kLsAllRoles, float maxDistance = 1000.0f) const;
 };

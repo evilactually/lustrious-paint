@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
 #include <catch.hpp>
 #include <LsScene.h>
+#include <LsSceneHistory.h>
 
 static bool Near(glm::vec3 a, glm::vec3 b, float epsilon = 1.0e-4f) {
   return glm::length(a - b) < epsilon;
@@ -337,4 +338,61 @@ TEST_CASE( "placement from matrix with a hint" ) {
   rotated.rotation.z = 365.0f;
   decomposed = LsPlacement::FromMatrix(rotated.ToTransform().GetMatrix(), hint);
   REQUIRE(decomposed.rotation.z == Approx(365.0f).epsilon(1.0e-4));
+}
+
+TEST_CASE( "restore keeps revisions and ids increasing" ) {
+  LsScene scene;
+  LsScene snapshot = scene;
+  LsNodeId added = scene.AddShape("Added", LsShape::Sphere(1.0f), eRoleConstruction);
+  uint64_t revision = scene.GetRevision();
+  scene.Restore(snapshot);
+  REQUIRE(scene.Find(added) == nullptr);
+  REQUIRE(scene.GetRevision() > revision);
+  // The undone node's id isn't handed out again
+  REQUIRE(scene.AddGroup("Group") != added);
+}
+
+TEST_CASE( "history" ) {
+  auto scene = std::make_shared<LsScene>();
+  LsSceneHistory history(scene);
+  REQUIRE_FALSE(history.CanUndo());
+
+  LsNodeId sphere = scene->AddShape("Sphere", LsShape::Sphere(1.0f), eRoleConstruction);
+  history.Update(false);
+
+  // A drag changes the scene on many frames but is one step
+  LsPlacement placement;
+  for (int frame = 1; frame <= 10; frame++) {
+    placement.translation.x = float(frame);
+    scene->SetPlacement(sphere, placement);
+    history.Update(true);
+  }
+  history.Update(false);
+  REQUIRE(history.CanUndo());
+
+  history.Undo();
+  REQUIRE(scene->Find(sphere)->GetProperties().placement.translation.x == 0.0f);
+  history.Undo();
+  REQUIRE(scene->Find(sphere) == nullptr);
+  REQUIRE_FALSE(history.CanUndo());
+  // Restoring isn't mistaken for a new change
+  history.Update(false);
+  REQUIRE(history.CanRedo());
+
+  history.Redo();
+  history.Redo();
+  REQUIRE(scene->Find(sphere)->GetProperties().placement.translation.x == 10.0f);
+  REQUIRE_FALSE(history.CanRedo());
+
+  // Undo finishes a change still in progress before reverting it
+  placement.translation.x = 20.0f;
+  scene->SetPlacement(sphere, placement);
+  history.Undo();
+  REQUIRE(scene->Find(sphere)->GetProperties().placement.translation.x == 10.0f);
+
+  // A new change drops what was undone
+  history.Undo();
+  scene->AddGroup("Group");
+  history.Update(false);
+  REQUIRE_FALSE(history.CanRedo());
 }

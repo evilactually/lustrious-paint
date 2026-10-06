@@ -7,6 +7,7 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 set( INCLUDE_FILES
   Include/LsCamera.h
   Include/LsScene.h
+  Include/LsSceneHistory.h
   Include/LsShape.h
   Include/LsTransform.h
 )
@@ -14,6 +15,7 @@ set( INCLUDE_FILES
 set( SOURCE_FILES
   Source/LsCamera.cpp
   Source/LsScene.cpp
+  Source/LsSceneHistory.cpp
   Source/LsShape.cpp
   Source/LsTransform.cpp
 )

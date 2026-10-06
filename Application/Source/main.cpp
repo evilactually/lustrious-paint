@@ -13,6 +13,7 @@
 #include <LsCanvasPainter.h>
 #include <LsStuffingDemo.h>
 #include <LsScene.h>
+#include <LsSceneHistory.h>
 #include <LsSceneEditor.h>
 #include <LsSceneViewport.h>
 #include <LsCanvasNavigator.h>
@@ -38,6 +39,7 @@ class Application: LsFSdlEventHandler {
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
   std::shared_ptr<LsScene> scene;
+  std::unique_ptr<LsSceneHistory> history;
   std::unique_ptr<LsSceneEditor> sceneEditor;
   std::unique_ptr<LsSceneViewport> sceneViewport;
   bool dockLayoutBuilt = false;
@@ -97,6 +99,8 @@ public:
 
     scene = std::make_shared<LsScene>();
     CreateStarterScene();
+    // Undo starts from the starter scene, not from nothing
+    history = std::make_unique<LsSceneHistory>(scene);
     sceneEditor = std::make_unique<LsSceneEditor>(scene);
     sceneViewport = std::make_unique<LsSceneViewport>(renderer, scene, sceneEditor.get());
 
@@ -130,6 +134,7 @@ public:
       }
 
       renderer->BeginFrame();
+      HandleUndoShortcuts();
 
       // The system cursor shows only over the UI, the brush rig is the cursor over the canvas
       bool overUi = renderer->IsUiCapturingMouse();
@@ -160,6 +165,9 @@ public:
         renderer->SaveScreenshot(path);
       }
 
+      // Whatever the UI changed this frame becomes an undo step once the edit is over
+      history->Update(ImGui::IsAnyItemActive() || sceneViewport->IsEditing());
+
       ImGui::ShowDemoWindow();
 
       if (ImGui::Begin("Brush")) {
@@ -174,6 +182,19 @@ public:
     }
 
 
+  }
+
+  // Text fields have their own undo while they are being typed in
+  void HandleUndoShortcuts() {
+    if (ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive() || sceneViewport->IsEditing()) {
+      return;
+    }
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z)) {
+      history->Undo();
+    }
+    else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) {
+      history->Redo();
+    }
   }
 
   // Ground, an object to paint from, and a light, so there is something to start from

@@ -116,4 +116,7 @@ public:
   void Draw();
   // Frames must keep coming even without input, such as while flying with keys held
   bool IsAnimating() const { return navigation == Navigation::Fly; }
+  // An edit made through the view is still going on, such as a drag or placing
+  // something, the scene changes are not finished yet
+  bool IsEditing() const { return placing != kLsInvalidNode || gizmo.IsActive() || navigation != Navigation::None; }
 };
