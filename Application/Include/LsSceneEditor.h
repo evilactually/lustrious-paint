@@ -32,6 +32,8 @@ class LsSceneEditor
 public:
   explicit LsSceneEditor(std::shared_ptr<LsScene> scene);
   LsNodeId GetSelected() const { return selected; }
+  // Selection made elsewhere, such as by clicking in the 3D view
+  void SetSelected(LsNodeId id) { selected = id; }
   // Draws the "Scene" window
   void DrawOutliner();
   // Draws into the current window

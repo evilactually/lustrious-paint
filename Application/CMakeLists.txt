@@ -13,6 +13,9 @@ set(INCLUDE_FILES
   "Include/LsStuffingDemo.h"
   "Include/LsSceneEditor.h"
   "Include/LsCanvasNavigator.h"
+  "Include/LsSceneViewport.h"
+  "Include/LsTransformGizmo.h"
+  "Include/LsViewportProjection.h"
   "Include/Version.h.in")
 
 set(SOURCE_FILES
@@ -23,7 +26,9 @@ set(SOURCE_FILES
   "Source/LsCanvasPainter.cpp"
   "Source/LsStuffingDemo.cpp"
   "Source/LsSceneEditor.cpp"
-  "Source/LsCanvasNavigator.cpp")
+  "Source/LsCanvasNavigator.cpp"
+  "Source/LsSceneViewport.cpp"
+  "Source/LsTransformGizmo.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"

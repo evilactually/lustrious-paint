@@ -14,7 +14,7 @@ LsNodeId LsSceneEditor::GetInsertParent() const {
   if (!node) {
     return scene->GetRoot();
   }
-  return node->GetProperties().hasShape ? node->GetParent() : selected;
+  return node->GetProperties().type == LsNodeType::Group ? selected : node->GetParent();
 }
 
 void LsSceneEditor::DrawOutliner() {
@@ -80,6 +80,9 @@ void LsSceneEditor::DrawAddPopup() {
   LsNodeId added = kLsInvalidNode;
   if (ImGui::MenuItem("Group")) {
     added = scene->AddGroup("Group", GetInsertParent());
+  }
+  if (ImGui::MenuItem("Camera")) {
+    added = scene->AddCamera("Camera", LsCameraLens(), GetInsertParent());
   }
   ImGui::Separator();
   for (uint32_t i = 0; i < static_cast<uint32_t>(LsShapeType::Count); i++) {
@@ -160,6 +163,12 @@ void LsSceneEditor::DrawNode(LsNodeId id) {
     ImGui::EndDragDropTarget();
   }
 
+  // After the drag and drop calls, they act on the last item
+  if (id == scene->GetActiveCamera()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(canvas)");
+  }
+
   if (open) {
     for (LsNodeId child : node->GetChildren()) {
       DrawNode(child);
@@ -213,7 +222,20 @@ void LsSceneEditor::DrawProperties() {
   changed |= ImGui::DragFloat3("Rotation", &placement.rotation.x, 0.5f, 0.0f, 0.0f, "%.1f");
   changed |= ImGui::DragFloat3("Scale", &placement.scale.x, 0.01f, 0.0f, 0.0f, "%.3f");
 
-  if (properties.hasShape) {
+  if (properties.type == LsNodeType::Camera) {
+    ImGui::SeparatorText("Camera");
+    changed |= ImGui::DragFloat("Field of view", &properties.lens.verticalFov, 0.1f, 1.0f, 170.0f, "%.1f°", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SetItemTooltip("Vertical, the canvas aspect ratio sets the horizontal one");
+    bool active = scene->GetActiveCamera() == selected;
+    ImGui::BeginDisabled(active);
+    if (ImGui::Checkbox("Paints the canvas", &active)) {
+      scene->SetActiveCamera(selected);
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("The canvas is painted from one camera, check another camera to switch");
+  }
+
+  if (properties.type == LsNodeType::Shape) {
     ImGui::SeparatorText("Shape");
     LsShape& shape = properties.shape;
     if (ImGui::BeginCombo("Type", LsShapeTypeName(shape.type))) {

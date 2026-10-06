@@ -14,6 +14,7 @@
 #include <LsStuffingDemo.h>
 #include <LsScene.h>
 #include <LsSceneEditor.h>
+#include <LsSceneViewport.h>
 #include <LsCanvasNavigator.h>
 #include <LsConsole.h>
 #include <LsError.h>
@@ -38,6 +39,7 @@ class Application: LsFSdlEventHandler {
   std::shared_ptr<LsRenderer> renderer;
   std::shared_ptr<LsScene> scene;
   std::unique_ptr<LsSceneEditor> sceneEditor;
+  std::unique_ptr<LsSceneViewport> sceneViewport;
   bool dockLayoutBuilt = false;
 
   // Placeholder tools until the brush modes exist
@@ -50,6 +52,7 @@ public:
 
   ~Application() {
     // Vulkan objects must be released before the window and SDL itself
+    sceneViewport.reset();
     stuffingDemo.reset();
     canvasPainter.reset();
     canvasNavigator.reset();
@@ -95,6 +98,7 @@ public:
     scene = std::make_shared<LsScene>();
     CreateStarterScene();
     sceneEditor = std::make_unique<LsSceneEditor>(scene);
+    sceneViewport = std::make_unique<LsSceneViewport>(renderer, scene, sceneEditor.get());
 
     LsImage image = renderer->CreateImage(640, 800);
     renderer->CreateImage(8000, 8000);
@@ -117,6 +121,10 @@ public:
       }
       SDL_PumpEvents();
       idleFrames = SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST) ? 0 : idleFrames + 1;
+      // Flying keeps moving while keys are held, even without new events
+      if ( sceneViewport->IsAnimating() ) {
+        idleFrames = 0;
+      }
       if ( !window->ProcessMessages() ) {
         break;
       }
@@ -180,8 +188,14 @@ public:
     LsNodeId light = scene->AddShape("Key Light", LsShape::Sphere(0.25f), eRoleLightEmitter);
     LsSceneNodeProperties properties = scene->Find(light)->GetProperties();
     properties.placement.translation = glm::vec3(2.0f, 3.0f, 2.0f);
-    properties.emissionIntensity = 10.0f;
+    // Lights the sphere to about mid grey at the default exposure
+    properties.emissionIntensity = 150.0f;
     scene->SetProperties(light, properties);
+
+    // Looking at the sphere from the front, slightly above
+    LsNodeId camera = scene->AddCamera("Canvas Camera");
+    LsCamera view = LsCamera::LookAt(glm::vec3(0.0f, 1.2f, 4.0f), glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 40.0f, 1.0f);
+    scene->SetPlacement(camera, LsPlacement::FromMatrix(view.GetCameraToWorld()));
   }
 
   // Vertical tool strip floating over the canvas, buttons only, no window background
@@ -235,18 +249,23 @@ public:
       ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
       ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
 
-      ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
+      ImGuiID centerId;
+      ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, &centerId);
+      // The 3D view shares the rest with the canvas, which shows through the central node
+      ImGuiID viewId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, 0.5f, nullptr, nullptr);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
       ImGui::DockBuilderGetNode(sceneId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderGetNode(propertiesId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
+      ImGui::DockBuilderDockWindow("3D View", viewId);
       ImGui::DockBuilderFinish(dockspaceId);
       dockLayoutBuilt = true;
     }
 
     sceneEditor->DrawOutliner();
+    sceneViewport->Draw();
 
     if (ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse)) {
       sceneEditor->DrawProperties();
