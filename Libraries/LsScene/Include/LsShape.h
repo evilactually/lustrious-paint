@@ -11,7 +11,7 @@ enum class LsShapeType : uint32_t
   Capsule,  // params.x = half height of the segment along Y, params.y = radius
   Cylinder, // params.x = half height along Y, params.y = radius
   Torus,    // params.x = major radius in the XZ plane, params.y = minor radius
-  Plane,    // Y = 0 plane facing +Y, no params
+  Plane,    // Square in the Y = 0 plane facing +Y, params.x = half size along X and Z
   Count
 };
 
@@ -34,13 +34,14 @@ struct LsShape
   static LsShape Capsule(float halfHeight, float radius);
   static LsShape Cylinder(float halfHeight, float radius);
   static LsShape Torus(float majorRadius, float minorRadius);
-  static LsShape Plane();
+  static LsShape Plane(float halfSize);
   // Unit-sized shape of the given type
   static LsShape Default(LsShapeType type);
 
-  // Signed distance in object space, negative inside
+  // Signed distance in object space, negative inside. A plane has no inside, it
+  // is a two-sided square and its distance is never negative.
   float Distance(glm::vec3 p) const;
 
-  // Object space bounding box, returns false for unbounded shapes
+  // Object space bounding box
   bool GetBounds(glm::vec3& min, glm::vec3& max) const;
 };

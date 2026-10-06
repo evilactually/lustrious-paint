@@ -283,6 +283,12 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
     ScenePrimitive primitive = primitives[hit.index];
     float3 p = origin + direction*hit.t;
     float3 n = primitiveNormal(primitive, p, max(hit.t, 1.0)*1.0e-3);
+    // A plane's distance folds at its surface, differences across it cancel out.
+    // Its normal is the transformed +Y, facing the viewer since it is two-sided.
+    if (primitive.shapeType == SHAPE_PLANE) {
+      n = normalize(primitive.worldToObject[1].xyz);
+      n = dot(n, direction) > 0.0 ? -n : n;
+    }
     if ((primitive.roles & ROLE_LIGHT_EMITTER) != 0) {
       // Emitters show their colour, scaled into range so bright ones don't clip to white
       float3 emission = primitive.emission.rgb;

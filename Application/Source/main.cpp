@@ -199,7 +199,7 @@ public:
 
   // Ground, an object to paint from, and a light, so there is something to start from
   void CreateStarterScene() {
-    scene->AddShape("Ground", LsShape::Plane(), eRoleConstruction);
+    scene->AddShape("Ground", LsShape::Plane(10.0f), eRoleConstruction);
 
     LsNodeId sphere = scene->AddShape("Sphere", LsShape::Sphere(0.5f), eRoleConstruction | eRoleShadowCaster);
     LsPlacement placement;

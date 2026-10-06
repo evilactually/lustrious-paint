@@ -71,12 +71,16 @@ TEST_CASE( "shape distances" ) {
   REQUIRE(LsShape::Capsule(1.0f, 0.5f).Distance({0.0f, 2.0f, 0.0f}) == Approx(0.5f));
   REQUIRE(LsShape::Cylinder(1.0f, 0.5f).Distance({1.0f, 0.0f, 0.0f}) == Approx(0.5f));
   REQUIRE(LsShape::Torus(1.0f, 0.25f).Distance({1.0f, 0.0f, 0.0f}) == Approx(-0.25f));
-  REQUIRE(LsShape::Plane().Distance({5.0f, 2.0f, 5.0f}) == Approx(2.0f));
+  REQUIRE(LsShape::Plane(1.0f).Distance({0.5f, 2.0f, 0.5f}) == Approx(2.0f));
+  // Two-sided, and beyond the edge it is the distance to the edge
+  REQUIRE(LsShape::Plane(1.0f).Distance({0.5f, -2.0f, 0.5f}) == Approx(2.0f));
+  REQUIRE(LsShape::Plane(1.0f).Distance({4.0f, 4.0f, 0.0f}) == Approx(5.0f));
 
   glm::vec3 min, max;
   REQUIRE(LsShape::Capsule(1.0f, 0.5f).GetBounds(min, max));
   REQUIRE(Near(max, {0.5f, 1.5f, 0.5f}));
-  REQUIRE_FALSE(LsShape::Plane().GetBounds(min, max));
+  REQUIRE(LsShape::Plane(2.0f).GetBounds(min, max));
+  REQUIRE(Near(max, {2.0f, 0.0f, 2.0f}));
 }
 
 TEST_CASE( "scene hierarchy" ) {
@@ -243,7 +247,7 @@ TEST_CASE( "camera nodes" ) {
 
 TEST_CASE( "raycast" ) {
   LsScene scene;
-  LsNodeId ground = scene.AddShape("Ground", LsShape::Plane(), eRoleConstruction);
+  LsNodeId ground = scene.AddShape("Ground", LsShape::Plane(10.0f), eRoleConstruction);
   LsNodeId sphere = scene.AddShape("Sphere", LsShape::Sphere(1.0f), eRoleShadowCaster);
   LsPlacement placement;
   placement.translation = {0.0f, 1.0f, 0.0f};
@@ -268,6 +272,16 @@ TEST_CASE( "raycast" ) {
   REQUIRE(hit.node == ground);
   REQUIRE(Near(hit.position, {5.0f, 0.0f, -3.0f}, 1.0e-2f));
   REQUIRE(Near(hit.normal, {0.0f, 1.0f, 0.0f}, 1.0e-3f));
+
+  // The plane is two-sided and ends at its edges
+  ray.origin = {5.0f, -3.0f, 0.0f};
+  ray.direction = glm::normalize(glm::vec3(0.0f, 1.0f, -1.0f));
+  REQUIRE(scene.Raycast(ray, hit));
+  REQUIRE(hit.node == ground);
+  REQUIRE(Near(hit.normal, {0.0f, -1.0f, 0.0f}, 1.0e-3f));
+  ray.origin = {20.0f, 3.0f, 0.0f};
+  ray.direction = {0.0f, -1.0f, 0.0f};
+  REQUIRE_FALSE(scene.Raycast(ray, hit));
 
   // From inside the sphere the sphere itself is ignored
   ray.origin = {0.0f, 1.0f, 0.0f};
@@ -299,12 +313,12 @@ TEST_CASE( "world bounds" ) {
   REQUIRE(Near(min, {7.0f, 3.0f, -1.0f}));
   REQUIRE(Near(max, {13.0f, 7.0f, 1.0f}));
 
-  // Planes and cameras only contribute their origin
+  // Cameras contribute their position, planes their square
   LsNodeId camera = scene.AddCamera("Camera", LsCameraLens(), group);
   placement = LsPlacement();
   placement.translation = {0.0f, 0.0f, 20.0f};
   scene.SetPlacement(camera, placement);
-  scene.AddShape("Plane", LsShape::Plane(), eRoleConstruction, group);
+  scene.AddShape("Plane", LsShape::Plane(1.0f), eRoleConstruction, group);
   REQUIRE(scene.GetWorldBounds(group, min, max));
   REQUIRE(Near(min, {7.0f, 0.0f, -1.0f}));
   REQUIRE(Near(max, {13.0f, 7.0f, 20.0f}));

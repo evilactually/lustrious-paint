@@ -192,7 +192,7 @@ bool LsScene::GetWorldBounds(LsNodeId id, glm::vec3& min, glm::vec3& max) const 
         add(current.objectToWorld.ApplyToPoint(p));
       }
     }
-    else if (properties.type != LsNodeType::Group) {
+    else if (properties.type == LsNodeType::Camera) {
       add(current.objectToWorld.ApplyToPoint(glm::vec3(0.0f)));
     }
 
@@ -290,10 +290,16 @@ bool LsRaycastPrimitives(const std::vector<LsScenePrimitive>& primitives, const 
                          PrimitiveDistance(*closest, p + glm::vec3(0.0f, h, 0.0f)) - PrimitiveDistance(*closest, p - glm::vec3(0.0f, h, 0.0f)),
                          PrimitiveDistance(*closest, p + glm::vec3(0.0f, 0.0f, h)) - PrimitiveDistance(*closest, p - glm::vec3(0.0f, 0.0f, h)));
       float length = glm::length(gradient);
+      hit.normal = length > 0.0f ? gradient/length : -ray.direction;
+      // The distance to a plane folds at its surface, so differences across it cancel.
+      // Its normal is the transformed +Y instead, facing the side the ray came from.
+      if (closest->shapeType == static_cast<uint32_t>(LsShapeType::Plane)) {
+        glm::vec3 normal = glm::normalize(glm::vec3(closest->worldToObject[1]));
+        hit.normal = glm::dot(normal, ray.direction) > 0.0f ? -normal : normal;
+      }
       hit.node = closest->nodeId;
       hit.distance = t;
       hit.position = p;
-      hit.normal = length > 0.0f ? gradient/length : -ray.direction;
       return true;
     }
     t += distance;

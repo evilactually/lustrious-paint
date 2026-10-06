@@ -51,8 +51,11 @@ float shapeDistance(uint shapeType, float4 params, float3 p)
       float2 q = float2(length(p.xz) - params.x, p.y);
       return length(q) - params.y;
     }
-    case SHAPE_PLANE:
-      return p.y;
+    case SHAPE_PLANE: {
+      // Two-sided square, see LsShape::Distance
+      float2 outside = max(abs(p.xz) - params.x, 0.0);
+      return length(float3(outside.x, p.y, outside.y));
+    }
     default:
       return 0.0;
   }

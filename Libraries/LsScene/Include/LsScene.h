@@ -167,8 +167,8 @@ public:
 
   LsTransform GetObjectToWorld(LsNodeId id) const;
 
-  // World space box around the node's subtree. Unbounded shapes such as planes
-  // only add their origin, cameras add their position. False for empty groups.
+  // World space box around the node's subtree, cameras add their position.
+  // False for empty groups.
   bool GetWorldBounds(LsNodeId id, glm::vec3& min, glm::vec3& max) const;
 
   // The camera the canvas is painted from. When the active camera is removed

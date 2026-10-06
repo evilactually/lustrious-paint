@@ -268,7 +268,8 @@ void LsSceneEditor::DrawProperties() {
         changed |= ImGui::DragFloat("Minor radius", &shape.params.y, 0.01f, 0.0f, FLT_MAX, "%.3f");
         break;
       case LsShapeType::Plane:
-        ImGui::TextDisabled("Infinite plane through the origin, facing +Y");
+        changed |= ImGui::DragFloat("Half size", &shape.params.x, 0.01f, 0.0f, FLT_MAX, "%.3f");
+        ImGui::SetItemTooltip("Square through the origin facing +Y, two-sided");
         break;
       default:
         break;

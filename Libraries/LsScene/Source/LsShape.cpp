@@ -37,8 +37,8 @@ LsShape LsShape::Torus(float majorRadius, float minorRadius) {
   return { LsShapeType::Torus, glm::vec4(majorRadius, minorRadius, 0.0f, 0.0f) };
 }
 
-LsShape LsShape::Plane() {
-  return { LsShapeType::Plane, glm::vec4(0.0f) };
+LsShape LsShape::Plane(float halfSize) {
+  return { LsShapeType::Plane, glm::vec4(halfSize, 0.0f, 0.0f, 0.0f) };
 }
 
 LsShape LsShape::Default(LsShapeType type) {
@@ -47,7 +47,7 @@ LsShape LsShape::Default(LsShapeType type) {
     case LsShapeType::Capsule:  return Capsule(0.5f, 0.25f);
     case LsShapeType::Cylinder: return Cylinder(0.5f, 0.5f);
     case LsShapeType::Torus:    return Torus(0.5f, 0.15f);
-    case LsShapeType::Plane:    return Plane();
+    case LsShapeType::Plane:    return Plane(1.0f);
     default:                    return Sphere(0.5f);
   }
 }
@@ -72,8 +72,11 @@ float LsShape::Distance(glm::vec3 p) const {
       glm::vec2 q(glm::length(glm::vec2(p.x, p.z)) - params.x, p.y);
       return glm::length(q) - params.y;
     }
-    case LsShapeType::Plane:
-      return p.y;
+    case LsShapeType::Plane: {
+      // Distance to the nearest point of the square, its edges included
+      glm::vec2 outside = glm::max(glm::abs(glm::vec2(p.x, p.z)) - params.x, 0.0f);
+      return glm::length(glm::vec3(outside.x, p.y, outside.y));
+    }
     default:
       return 0.0f;
   }
@@ -87,6 +90,7 @@ bool LsShape::GetBounds(glm::vec3& min, glm::vec3& max) const {
     case LsShapeType::Capsule:  extent = glm::vec3(params.y, params.x + params.y, params.y); break;
     case LsShapeType::Cylinder: extent = glm::vec3(params.y, params.x, params.y); break;
     case LsShapeType::Torus:    extent = glm::vec3(params.x + params.y, params.y, params.x + params.y); break;
+    case LsShapeType::Plane:    extent = glm::vec3(params.x, 0.0f, params.x); break;
     default:                    return false;
   }
   min = -extent;
