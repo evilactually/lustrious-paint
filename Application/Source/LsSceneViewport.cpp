@@ -1,7 +1,6 @@
 #include <LsSceneViewport.h>
 
 #include <algorithm>
-#include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <utility>

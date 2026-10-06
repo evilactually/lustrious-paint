@@ -1,6 +1,5 @@
 #include <LsTransformGizmo.h>
 
-#include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <glm/gtc/matrix_transform.hpp>

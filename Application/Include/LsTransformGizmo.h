@@ -39,7 +39,6 @@ class LsTransformGizmo
   glm::vec2 startMouse = glm::vec2(0.0f);
   glm::vec3 startPoint = glm::vec3(0.0f); // where the mouse ray met the handle
   float startParameter = 0.0f;            // along the axis for axis drags
-  float startAngle = 0.0f;
   float angle = 0.0f;                     // accumulated, so it can go past a full turn
   float previousScreenAngle = 0.0f;
 
