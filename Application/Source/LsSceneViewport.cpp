@@ -219,6 +219,16 @@ void LsSceneViewport::FrameSelection() {
   }
 }
 
+void LsSceneViewport::CenterViewOnCursor() {
+  if (lookThrough && !lockCameraToView) {
+    SetLookThrough(false, false);
+  }
+  target = cursor;
+  if (lookThrough) {
+    SetWorldMatrix(scene->GetActiveCamera(), GetOrbitCamera(1.0f).GetCameraToWorld());
+  }
+}
+
 void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
   if (lookThrough && !lockCameraToView) {
     SetLookThrough(false, false);
@@ -233,77 +243,72 @@ void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
   }
 }
 
-bool LsSceneViewport::UpdatePlacing(bool viewHovered, glm::vec2 mouse) {
-  if (!scene->Find(placing)) {
-    placing = kLsInvalidNode;
-    return false;
-  }
-
-  bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false) || (viewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right));
-  if (cancel) {
-    scene->Remove(placing);
-    editor->SetSelected(kLsInvalidNode);
-    placing = kLsInvalidNode;
-    return true;
-  }
-  if (!viewHovered || !ImGui::IsMousePosValid()) {
-    return false;
-  }
-
-  // Everything but the object itself, it shouldn't land on its own surface
-  std::vector<LsScenePrimitive> others;
-  for (const LsScenePrimitive& primitive : primitives) {
-    if (!scene->IsAncestor(placing, primitive.nodeId)) {
-      others.push_back(primitive);
-    }
-  }
+void LsSceneViewport::PlaceCursor(glm::vec2 mouse) {
   LsRay ray = projection.GetRay(mouse);
   LsSceneHit hit;
-  glm::vec3 point, normal(0.0f, 1.0f, 0.0f);
-  if (LsRaycastPrimitives(others, ray, kLsAllRoles, kMaxDistance, hit)) {
-    point = hit.position;
-    normal = hit.normal;
+  if (LsRaycastPrimitives(primitives, ray, kLsAllRoles, kMaxDistance, hit)) {
+    cursor = hit.position;
   }
-  else if (ray.direction.y < -1.0e-3f && ray.origin.y > 0.0f) {
+  else if (std::abs(ray.direction.y) > 1.0e-4f && ray.origin.y*ray.direction.y < 0.0f) {
     // Nothing there, the ground plane through the origin stands in
-    point = ray.At(-ray.origin.y/ray.direction.y);
+    cursor = ray.At(-ray.origin.y/ray.direction.y);
   }
-  else {
-    point = ray.At(distance);
-  }
+  // The Scene panel's Add menu puts new objects there as well
+  editor->SetCreationPoint(cursor);
+}
 
-  // Resting on the surface rather than sunk halfway into it
-  glm::mat4 world = scene->GetObjectToWorld(placing).GetMatrix();
-  glm::vec3 origin(world[3]);
-  glm::vec3 min, max;
-  float offset = 0.0f;
-  if (scene->GetWorldBounds(placing, min, max)) {
-    for (int corner = 0; corner < 8; corner++) {
-      glm::vec3 p((corner & 1) ? max.x : min.x, (corner & 2) ? max.y : min.y, (corner & 4) ? max.z : min.z);
-      offset = std::max(offset, glm::dot(origin - p, normal));
-    }
+void LsSceneViewport::DrawCursor(ImDrawList* drawList) const {
+  glm::vec2 center;
+  if (!projection.ToScreen(cursor, center)) {
+    return;
   }
-  world[3] = glm::vec4(point + normal*offset, 1.0f);
-  SetWorldMatrix(placing, world);
-
-  if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-    placing = kLsInvalidNode;
-    return true;
+  // Blender's look: a ring of alternating red and white with a crosshair through a gap
+  const float radius = 10.0f;
+  const int segments = 8;
+  for (int i = 0; i < segments; i++) {
+    float a0 = 2.0f*3.14159265f*i/segments;
+    float a1 = 2.0f*3.14159265f*(i + 1)/segments;
+    ImU32 color = (i % 2) ? IM_COL32(255, 255, 255, 255) : IM_COL32(230, 60, 60, 255);
+    drawList->PathArcTo(LsToImVec2(center), radius, a0, a1, 6);
+    drawList->PathStroke(color, 0, 2.0f);
   }
-  return false;
+  const ImU32 cross = IM_COL32(20, 20, 20, 220);
+  const float inner = 4.0f;
+  const float outer = radius + 6.0f;
+  glm::vec2 directions[4] = { { 1.0f, 0.0f }, { -1.0f, 0.0f }, { 0.0f, 1.0f }, { 0.0f, -1.0f } };
+  for (glm::vec2 d : directions) {
+    drawList->AddLine(LsToImVec2(center + d*inner), LsToImVec2(center + d*outer), cross, 1.0f);
+  }
 }
 
 bool LsSceneViewport::Navigate(bool viewHovered, glm::vec2 viewSize) {
   ImGuiIO& io = ImGui::GetIO();
 
-  if (navigation == Navigation::None && viewHovered && !gizmo.IsActive()) {
+  leftClicked = false;
+  if (navigation == Navigation::None && viewHovered && !gizmo.IsActive() && !gizmo.IsHovered()) {
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       navigation = io.KeyAlt ? Navigation::Zoom : Navigation::Fly;
     }
     else if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
       navigation = Navigation::Pan;
     }
-    else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.KeyAlt) {
+    else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && viewPressed) {
+      // With alt it orbits right away, otherwise only once the press turns into a drag
+      if (io.KeyAlt) {
+        navigation = Navigation::Orbit;
+      }
+      else {
+        leftPressPending = true;
+      }
+    }
+  }
+  if (leftPressPending) {
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      leftPressPending = false;
+      leftClicked = true;
+    }
+    else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+      leftPressPending = false;
       navigation = Navigation::Orbit;
     }
   }
@@ -408,6 +413,9 @@ void LsSceneViewport::HandleShortcuts(bool viewHovered) {
     if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
       FrameSelection();
     }
+  }
+  if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_Home)) {
+    CenterViewOnCursor();
   }
 
   // Only with focus, the outliner has the same keys and hovering here mustn't double them
@@ -649,10 +657,7 @@ bool LsSceneViewport::DrawAxisWidget(ImDrawList* drawList, glm::vec2 corner, boo
 
 void LsSceneViewport::DrawStatus(ImDrawList* drawList) const {
   char text[160];
-  if (placing != kLsInvalidNode) {
-    snprintf(text, sizeof(text), "Click to put it down, Esc or right click cancels");
-  }
-  else if (navigation == Navigation::Fly) {
+  if (navigation == Navigation::Fly) {
     snprintf(text, sizeof(text), "W A S D to fly, Q E down and up, shift faster, wheel sets speed (x%.2f)", flySpeedScale);
   }
   else if (gizmo.IsActive()) {
@@ -670,27 +675,25 @@ void LsSceneViewport::DrawAddMenu() {
     return;
   }
   LsNodeId added = kLsInvalidNode;
-  // New things go where the view is looking
+  // New things go to the 3D cursor
   LsPlacement placement;
-  placement.translation = target;
+  placement.translation = cursor;
   if (ImGui::MenuItem("Group")) {
     added = scene->AddGroup("Group");
     scene->SetPlacement(added, placement);
-    placing = added;
   }
   if (ImGui::MenuItem("Camera")) {
     added = scene->AddCamera("Camera");
     // Seeing what the view sees, so it frames the current shot
     SetWorldMatrix(added, GetOrbitCamera(1.0f).GetCameraToWorld());
   }
-  ImGui::SetItemTooltip("Placed at the current view");
+  ImGui::SetItemTooltip("Placed at the current view, so it frames what the view shows");
   ImGui::Separator();
   for (uint32_t i = 0; i < static_cast<uint32_t>(LsShapeType::Count); i++) {
     LsShapeType type = static_cast<LsShapeType>(i);
     if (ImGui::MenuItem(LsShapeTypeName(type))) {
       added = scene->AddShape(LsShapeTypeName(type), LsShape::Default(type), eRoleConstruction);
       scene->SetPlacement(added, placement);
-      placing = added;
     }
   }
   if (added != kLsInvalidNode) {
@@ -710,13 +713,18 @@ void LsSceneViewport::DrawViewMenu() {
   ImGui::SliderFloat("Exposure", &settings.exposure, -10.0f, 10.0f, "%+.1f EV");
   ImGui::EndDisabled();
   ImGui::Checkbox("Grid", &settings.grid);
+  if (ImGui::MenuItem("Centre view on cursor", "Alt+Home")) {
+    CenterViewOnCursor();
+  }
   ImGui::SetNextItemWidth(ImGui::GetFontSize()*10.0f);
   ImGui::SliderFloat("Field of view", &fov, 10.0f, 120.0f, "%.0f\xC2\xB0");
   ImGui::SetItemTooltip("Of the editor view, the canvas camera has its own");
 
   ImGui::SeparatorText("Navigation");
   static const char* kControls[][2] = {
-    { "Alt + left drag", "Orbit" },
+    { "Left drag", "Orbit" },
+    { "Double click", "Place the 3D cursor, where new objects go" },
+    { "Alt + Home", "Centre the view on the 3D cursor" },
     { "Middle drag", "Pan" },
     { "Wheel, alt + right drag", "Zoom" },
     { "Right drag + WASD QE", "Fly" },
@@ -866,11 +874,6 @@ void LsSceneViewport::ToggleSceneView() {
     return;
   }
   // Whatever was going on in the view ends with it
-  if (placing != kLsInvalidNode) {
-    scene->Remove(placing);
-    editor->SetSelected(kLsInvalidNode);
-    placing = kLsInvalidNode;
-  }
   navigation = Navigation::None;
   mode = canFly ? Mode::ToCanvas : Mode::Canvas;
 }
@@ -978,21 +981,20 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
                                                       ImGuiButtonFlags_MouseButtonRight |
                                                       ImGuiButtonFlags_MouseButtonMiddle);
   viewHovered = ImGui::IsItemHovered();
+  // The toolbar overlaps the view, a press counts only when the view itself took it
+  viewPressed = ImGui::IsItemActivated();
   bool viewInput = viewHovered && interactive;
   ImGuiIO& io = ImGui::GetIO();
   glm::vec2 mouse = LsToVec2(io.MousePos);
 
   projection.origin = origin;
   projection.size = size;
-  bool placingClick = false;
   if (interactive) {
     // The camera may have been moved elsewhere, such as in the properties panel
     if (lookThrough && navigation == Navigation::None) {
       SyncOrbitToCamera();
     }
-    // Placing goes by last frame's camera, which is what the user saw when clicking
-    placingClick = placing != kLsInvalidNode && navigation == Navigation::None && UpdatePlacing(viewInput, mouse);
-    Navigate(viewInput && !placingClick, size);
+    Navigate(viewInput, size);
     HandleShortcuts(viewInput);
   }
 
@@ -1003,8 +1005,7 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
     projection.camera = InterpolateCamera(canvasCamera, projection.camera, blend);
   }
 
-  bool mouseFree = viewInput && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid() &&
-                   placing == kLsInvalidNode && !placingClick;
+  bool mouseFree = viewInput && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid();
   hovered = mouseFree && !gizmo.IsHovered() && !gizmo.IsActive() ? Pick(mouse) : kLsInvalidNode;
 
   // Render at the display's pixel density rather than in UI points
@@ -1036,7 +1037,7 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
 
     LsNodeId selected = editor->GetSelected();
     bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
-    if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection && placing == kLsInvalidNode) {
+    if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection) {
       glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
       if (gizmo.Manipulate(drawList, projection, gizmoMode, gizmoLocal, mouseFree, world)) {
         SetWorldMatrix(selected, world);
@@ -1048,11 +1049,19 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
     }
 
     bool axisClicked = DrawAxisWidget(drawList, glm::vec2(origin.x + size.x, origin.y), viewInput);
+    if (axisClicked) {
+      leftPressPending = false;
+    }
 
-    // Clicking selects, clicking empty space deselects
-    if (mouseFree && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked) {
+    // A double click moves the 3D cursor, a click that didn't drag selects
+    // (clicking empty space deselects)
+    if (mouseFree && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked) {
+      PlaceCursor(mouse);
+    }
+    if (mouseFree && leftClicked && !gizmo.IsActive()) {
       editor->SetSelected(Pick(mouse));
     }
+    DrawCursor(drawList);
 
     DrawStatus(drawList);
   }

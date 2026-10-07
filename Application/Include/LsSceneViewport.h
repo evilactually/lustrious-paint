@@ -28,10 +28,11 @@ struct ImDrawList;
 // canvas camera, optionally moving it along when navigating, which is the
 // quickest way to frame a painting.
 //
-// Navigation follows the common DCC layout: alt+left drag orbits, middle drag
-// pans, alt+right drag and the wheel zoom, right drag looks around with WASD/QE
-// flying, F frames the selection. Objects added from the view follow the mouse
-// over the surfaces until clicked down.
+// Navigation follows the common DCC layout: left drag (or alt+left drag) orbits,
+// middle drag pans, alt+right drag and the wheel zoom, right drag looks around
+// with WASD/QE flying, F frames the selection. As in Blender a double click puts
+// the 3D cursor on the surface under the mouse, new objects are created there,
+// and Alt+Home centres the view on it.
 //-------------------------------------------------------------------------------
 class LsSceneViewport
 {
@@ -57,6 +58,13 @@ class LsSceneViewport
   Navigation navigation = Navigation::None;
   float flySpeedScale = 1.0f;
 
+  // Where new objects go, placed with a double click
+  glm::vec3 cursor = glm::vec3(0.0f);
+  // A left press that is neither a drag yet nor a click
+  bool leftPressPending = false;
+  // A left press was released without dragging, which selects
+  bool leftClicked = false;
+
   // The orbit camera from before looking through, to return to
   struct {
     glm::vec3 target;
@@ -74,11 +82,10 @@ class LsSceneViewport
   LsNodeId drawnSelection = kLsInvalidNode;
   LsNodeId drawnHover = kLsInvalidNode;
   LsNodeId hovered = kLsInvalidNode;
-  // Just added, follows the mouse over surfaces until a click puts it down
-  LsNodeId placing = kLsInvalidNode;
 
   LsViewportProjection projection;
   bool viewHovered = false;
+  bool viewPressed = false;
 
   Mode mode = Mode::Canvas;
   double transitionStart = 0.0;
@@ -107,6 +114,10 @@ class LsSceneViewport
   // the UI but over the canvas, leaving input to the canvas
   void DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size);
 
+  // Puts the 3D cursor on the surface under the mouse, or the ground plane
+  void PlaceCursor(glm::vec2 mouse);
+  void DrawCursor(ImDrawList* drawList) const;
+
   // Returns true when the view moved
   bool Navigate(bool viewHovered, glm::vec2 viewSize);
   void HandleShortcuts(bool viewHovered);
@@ -125,12 +136,11 @@ class LsSceneViewport
   bool DrawAxisWidget(ImDrawList* drawList, glm::vec2 corner, bool viewHovered);
   void DrawStatus(ImDrawList* drawList) const;
 
-  // Moves the node being placed onto the surface under the mouse, returns true
-  // when a click ended placing and should not do anything else
-  bool UpdatePlacing(bool viewHovered, glm::vec2 mouse);
   // Places a node so it ends up at world, whatever its parents are
   void SetWorldMatrix(LsNodeId id, const glm::mat4& world);
   void FrameSelection();
+  // Orbits around the 3D cursor from now on, keeping the zoom
+  void CenterViewOnCursor();
   void AlignCameraToView();
   // Leaving either returns to the view from before, or carries on from the camera
   void SetLookThrough(bool enabled, bool restoreView = true);
@@ -152,7 +162,7 @@ public:
   float& SceneOverCanvasOpacity() { return sceneOverCanvasOpacity; }
   // Frames must keep coming even without input, such as while flying with keys held
   bool IsAnimating() const { return navigation == Navigation::Fly || mode == Mode::ToScene || mode == Mode::ToCanvas; }
-  // An edit made through the view is still going on, such as a drag or placing
-  // something, the scene changes are not finished yet
-  bool IsEditing() const { return placing != kLsInvalidNode || gizmo.IsActive() || navigation != Navigation::None; }
+  // An edit made through the view is still going on, such as a drag, the scene
+  // changes are not finished yet
+  bool IsEditing() const { return gizmo.IsActive() || navigation != Navigation::None; }
 };

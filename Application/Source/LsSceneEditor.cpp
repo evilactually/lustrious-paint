@@ -17,6 +17,16 @@ LsNodeId LsSceneEditor::GetInsertParent() const {
   return node->GetProperties().type == LsNodeType::Group ? selected : node->GetParent();
 }
 
+void LsSceneEditor::PlaceAtCreationPoint(LsNodeId id) {
+  const LsSceneNode* node = scene->Find(id);
+  if (!node) {
+    return;
+  }
+  LsPlacement placement = node->GetProperties().placement;
+  placement.translation = scene->GetObjectToWorld(node->GetParent()).Inverse().ApplyToPoint(creationPoint);
+  scene->SetPlacement(id, placement);
+}
+
 void LsSceneEditor::DrawOutliner() {
   if (!ImGui::Begin("Scene")) {
     ImGui::End();
@@ -92,6 +102,7 @@ void LsSceneEditor::DrawAddPopup() {
     }
   }
   if (added != kLsInvalidNode) {
+    PlaceAtCreationPoint(added);
     selected = added;
   }
   ImGui::EndPopup();
