@@ -46,6 +46,11 @@ glm::vec2 LsCanvasNavigator::WindowToCanvas(glm::vec2 point) const {
   return (point - offset)/zoom;
 }
 
+void LsCanvasNavigator::CenterIn(glm::vec2 areaMin, glm::vec2 areaSize) {
+  offset = glm::floor(areaMin + (areaSize - renderer->GetCanvasSize()*zoom)*0.5f);
+  ApplyView();
+}
+
 void LsCanvasNavigator::ZoomAround(glm::vec2 windowPoint, glm::vec2 canvasPoint, float newZoom) {
   zoom = glm::clamp(newZoom, kMinZoom, kMaxZoom);
   offset = windowPoint - canvasPoint*zoom;

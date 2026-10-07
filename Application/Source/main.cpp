@@ -43,6 +43,8 @@ class Application: LsFSdlEventHandler {
   std::unique_ptr<LsSceneEditor> sceneEditor;
   std::unique_ptr<LsSceneViewport> sceneViewport;
   bool dockLayoutBuilt = false;
+  // The canvas starts in the middle of its area, once the layout has given the area a size
+  bool canvasCentered = false;
 
   // Placeholder tools until the brush modes exist
   enum class Tool { Brush, Smooth, Inflate };
@@ -175,9 +177,7 @@ public:
       // Whatever the UI changed this frame becomes an undo step once the edit is over
       history->Update(ImGui::IsAnyItemActive() || sceneViewport->IsEditing());
 
-      ImGui::ShowDemoWindow();
-
-      if (ImGui::Begin("Brush")) {
+      if (ImGui::Begin("Brush", nullptr, ImGuiWindowFlags_NoCollapse)) {
         float brushRadius = canvasPainter->GetBrushRadius();
         if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px")) {
           canvasPainter->SetBrushRadius(brushRadius);
@@ -304,7 +304,7 @@ public:
   }
 
   // Fills the window with a dock space whose centre lets input through to the canvas
-  // or holds the 3D view, and keeps the Scene and Properties panels docked to its right side
+  // or holds the 3D view, and keeps the Scene, Properties and Brush panels docked to its right side
   void DrawDockedPanels() {
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
@@ -317,10 +317,13 @@ public:
       ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
+      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.25f, nullptr, &propertiesId);
       ImGui::DockBuilderGetNode(sceneId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderGetNode(propertiesId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
+      ImGui::DockBuilderGetNode(brushId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
+      ImGui::DockBuilderDockWindow("Brush", brushId);
       ImGui::DockBuilderFinish(dockspaceId);
       dockLayoutBuilt = true;
     }
@@ -328,7 +331,15 @@ public:
     sceneEditor->DrawOutliner();
     // The canvas and the 3D view take turns in the central node
     if (ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockspaceId)) {
-      sceneViewport->Draw(glm::vec2(central->Pos.x, central->Pos.y), glm::vec2(central->Size.x, central->Size.y));
+      glm::vec2 areaMin(central->Pos.x, central->Pos.y);
+      glm::vec2 areaSize(central->Size.x, central->Size.y);
+      if (!canvasCentered && areaSize.x > 0.0f && areaSize.y > 0.0f) {
+        // The canvas is placed in window pixels, the layout is in UI points
+        glm::vec2 pixelsPerPoint(ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplayFramebufferScale.y);
+        canvasNavigator->CenterIn(areaMin*pixelsPerPoint, areaSize*pixelsPerPoint);
+        canvasCentered = true;
+      }
+      sceneViewport->Draw(areaMin, areaSize);
     }
 
     if (ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse)) {

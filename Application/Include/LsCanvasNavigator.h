@@ -43,6 +43,8 @@ public:
   // Shows a cursor matching the navigation mode, call between BeginFrame and EndFrame
   void UpdateCursor() const;
   glm::vec2 WindowToCanvas(glm::vec2 point) const;
+  // Puts the canvas in the middle of an area of the window, in pixels, at the current zoom
+  void CenterIn(glm::vec2 areaMin, glm::vec2 areaSize);
   float GetZoom() const { return zoom; }
   void OnSdlEvent(const SDL_Event& event) override;
 };
