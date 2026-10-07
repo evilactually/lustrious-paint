@@ -38,6 +38,8 @@ add_slang_entry_point(image vertexMain   vertex   vert)
 add_slang_entry_point(image fragmentMain fragment frag)
 add_slang_entry_point(paint computeMain  compute  comp)
 add_slang_entry_point(viewport computeMain compute comp)
+add_slang_entry_point(sceneline vertexMain   vertex   vert)
+add_slang_entry_point(sceneline fragmentMain fragment frag)
 
 add_custom_target(
   Shaders

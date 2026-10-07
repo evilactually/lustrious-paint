@@ -17,10 +17,21 @@ const uint32_t kLsViewHovered    = 1u << 30;
 // For shapes without any role, which would otherwise be invisible and unclickable
 const uint32_t kLsViewUnassigned = 1u << 29;
 
+// Drawn over the traced scene and hidden where the scene is in front of it
+struct LsSceneLine
+{
+  glm::vec3 a = glm::vec3(0.0f);
+  glm::vec3 b = glm::vec3(0.0f);
+  glm::vec4 color = glm::vec4(1.0f); // display values with straight alpha
+  float width = 1.0f;                // in pixels
+  float fadeDistance = 0.0f;         // fades out towards this view depth, 0 never fades
+};
+
 struct LsSceneViewSettings
 {
   // Light the scene with its emitters and shadow casters instead of studio lights
   bool lit = false;
+  // Ground grid in the Y = 0 plane with the X and Z axes
   bool grid = true;
   // In stops, used when lit
   float exposure = 0.0f;
@@ -31,7 +42,9 @@ struct LsSceneViewSettings
 //-------------------------------------------------------------------------------
 // Renders the scene primitives from a camera into an image the UI can show with
 // ImGui::Image. A compute shader sphere traces the signed distance functions
-// directly, there is no mesh conversion.
+// directly, there is no mesh conversion, and also writes each pixel's depth.
+// Lines such as the grid are then rasterised on top, tested against that depth,
+// which keeps them sharp where tracing them would blur them.
 //-------------------------------------------------------------------------------
 class LsSceneView
 {
@@ -46,11 +59,26 @@ class LsSceneView
   VkPipeline pipeline = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
 
+  // Lines over the traced image
+  VkShaderModule lineVertexShader = VK_NULL_HANDLE;
+  VkShaderModule lineFragmentShader = VK_NULL_HANDLE;
+  VkDescriptorSetLayout lineDescriptorSetLayout = VK_NULL_HANDLE;
+  VkDescriptorSet lineDescriptorSet = VK_NULL_HANDLE;
+  VkPipelineLayout linePipelineLayout = VK_NULL_HANDLE;
+  VkPipeline linePipeline = VK_NULL_HANDLE;
+  VkRenderPass lineRenderPass = VK_NULL_HANDLE;
+  std::vector<LsSceneLine> lines;
+
   struct {
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
     VkDescriptorSet texture = VK_NULL_HANDLE; // ImGui's descriptor for sampling it
+    // View depth of the traced surfaces, for hiding lines behind them
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+    VkImageView depthView = VK_NULL_HANDLE;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
     uint32_t width = 0, height = 0;
   } target;
 
@@ -65,6 +93,11 @@ class LsSceneView
   bool primitivesDirty = true;
 
   uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties) const;
+  void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage,
+                   VkImage& image, VkDeviceMemory& memory, VkImageView& view);
+  void CreateLinePipeline();
+  void AppendGrid(const LsCamera& camera);
+  void DrawLines(VkCommandBuffer commandBuffer, const LsCamera& camera);
   void CreateTarget(uint32_t width, uint32_t height);
   void DestroyTarget();
   void CreatePrimitiveBuffer(size_t capacity);
@@ -78,6 +111,8 @@ public:
 
   // Copied, uploaded by the next Render
   void SetPrimitives(const std::vector<LsScenePrimitive>& primitives);
+  // Extra lines for the next Render, after which they are cleared
+  void AddLine(const LsSceneLine& line) { lines.push_back(line); }
   // Records the rendering into the current frame. Call between BeginFrame and
   // EndFrame, before the texture is drawn by the UI.
   void Render(uint32_t width, uint32_t height, const LsCamera& camera, const LsSceneViewSettings& settings);

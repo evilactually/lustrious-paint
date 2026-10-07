@@ -12,7 +12,6 @@ static const uint PRIMITIVE_HOVERED  = 1u << 30;
 static const uint PRIMITIVE_UNASSIGNED = 1u << 29;
 
 static const uint VIEW_LIT  = 1u << 0;
-static const uint VIEW_GRID = 1u << 1;
 
 static const uint SURFACE_ROLES = ROLE_CONSTRUCTION | ROLE_SHADOW_CASTER | ROLE_LIGHT_EMITTER | PRIMITIVE_UNASSIGNED;
 
@@ -40,6 +39,12 @@ RWTexture2D<float4> outputImage;
 
 [[vk::binding(1)]]
 StructuredBuffer<ScenePrimitive> primitives;
+
+// View depth of the nearest surface, so lines drawn afterwards (sceneline.slang)
+// can be hidden behind it
+[[vk::binding(2)]]
+[format("r32f")]
+RWTexture2D<float> depthImage;
 
 static const float MAX_DISTANCE = 500.0;
 static const int MAX_STEPS = 256;
@@ -222,38 +227,6 @@ float3 background(float3 direction)
   return lerp(float3(0.025, 0.026, 0.03), float3(0.075, 0.08, 0.095), h);
 }
 
-// Coverage of grid lines spaced cellSize apart, footprint is the pixel size on the plane
-float gridLines(float2 p, float cellSize, float footprint)
-{
-  float2 distance = abs(frac(p/cellSize + 0.5) - 0.5)*cellSize;
-  float2 coverage = 1.0 - smoothstep(0.0, footprint, distance);
-  return max(coverage.x, coverage.y);
-}
-
-float4 grid(float3 origin, float3 direction, float t)
-{
-  float3 p = origin + direction*t;
-  // Lines are as wide as a pixel, which grows at grazing angles
-  float footprint = t*view.pixelAngle/max(abs(direction.y), 0.05);
-  // Fade out where lines would be thinner than they are apart
-  float minor = gridLines(p.xz, 1.0, footprint)*saturate(1.0 - footprint/0.25);
-  float major = gridLines(p.xz, 10.0, footprint*1.5)*saturate(1.0 - footprint/2.5);
-  float fade = saturate(1.0 - t/150.0);
-
-  float4 color = float4(0.5, 0.5, 0.5, max(minor*0.25, major*0.45)*fade);
-  // World axes along the grid: X red, Z blue
-  float axisWidth = footprint*1.5;
-  float xAxis = 1.0 - smoothstep(0.0, axisWidth, abs(p.z));
-  float zAxis = 1.0 - smoothstep(0.0, axisWidth, abs(p.x));
-  if (xAxis > 0.0) {
-    color = lerp(color, float4(0.85, 0.25, 0.25, 0.8*fade), xAxis);
-  }
-  if (zAxis > 0.0) {
-    color = lerp(color, float4(0.25, 0.45, 0.9, 0.8*fade), zAxis);
-  }
-  return color;
-}
-
 float3 linearToSrgb(float3 c)
 {
   c = saturate(c);
@@ -310,15 +283,6 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
     color = background(direction);
   }
 
-  if ((view.flags & VIEW_GRID) != 0 && direction.y*origin.y < 0.0) {
-    float t = -origin.y/direction.y;
-    // A ground plane coincides with the grid, keep the grid on top of it
-    if (t <= hit.t*1.001 + 1.0e-3) {
-      float4 lines = grid(origin, direction, t);
-      color = lerp(color, lines.rgb, lines.a);
-    }
-  }
-
   // Participating media composite over everything behind them
   float mediaPixels;
   Hit media = trace(origin, direction, ROLE_PARTICIPATING_MEDIA, mediaPixels);
@@ -350,4 +314,7 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
   }
 
   outputImage[globalId.xy] = float4(linearToSrgb(color), 1.0);
+  // Along the view axis, which is where up and right are both perpendicular to
+  float3 axis = normalize(cross(view.up.xyz, view.right.xyz));
+  depthImage[globalId.xy] = hit.index != ~0u ? hit.t*dot(direction, axis) : 1.0e30;
 }

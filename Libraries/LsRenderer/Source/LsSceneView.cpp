@@ -1,5 +1,6 @@
 #include <LsSceneView.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -22,14 +23,25 @@ struct LsViewportPushConstants
 };
 static_assert(sizeof(LsViewportPushConstants) == 96, "LsViewportPushConstants must match viewport.slang");
 
-static const uint32_t kViewLit  = 1u << 0;
-static const uint32_t kViewGrid = 1u << 1;
+// Mirrors SceneLinePushConstants in Shaders/sceneline.slang
+struct LsSceneLinePushConstants
+{
+  glm::vec4 positions[2]; // clip space
+  glm::vec4 color;
+  float fadeDistance;
+  float pad[3];
+};
+static_assert(sizeof(LsSceneLinePushConstants) == 64, "LsSceneLinePushConstants must match sceneline.slang");
+
+static const uint32_t kViewLit = 1u << 0;
 static const uint32_t kWorkGroupSize = 8;
+// Lines nearer than this are cut off, in world units
+static const float kLineNearDepth = 0.01f;
 
 LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(renderer), device(renderer->device) {
   shader = CreateShaderModule(device, "Shaders/viewport.comp.spv");
 
-  VkDescriptorSetLayoutBinding bindings[2] = {};
+  VkDescriptorSetLayoutBinding bindings[3] = {};
   bindings[0].binding = 0;
   bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
   bindings[0].descriptorCount = 1;
@@ -38,23 +50,29 @@ LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(render
   bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   bindings[1].descriptorCount = 1;
   bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  bindings[2].binding = 2;
+  bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+  bindings[2].descriptorCount = 1;
+  bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
   VkDescriptorSetLayoutCreateInfo layoutInfo = {};
   layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  layoutInfo.bindingCount = 2;
+  layoutInfo.bindingCount = 3;
   layoutInfo.pBindings = bindings;
   if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
     throw std::string("Could not create scene view descriptor set layout!");
   }
 
-  VkDescriptorPoolSize poolSizes[2] = {
-    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+  // The tracer's set writes the colour and depth images, the line set reads the depth
+  VkDescriptorPoolSize poolSizes[3] = {
+    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 },
     { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 },
+    { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1 },
   };
   VkDescriptorPoolCreateInfo poolInfo = {};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.maxSets = 1;
-  poolInfo.poolSizeCount = 2;
+  poolInfo.maxSets = 2;
+  poolInfo.poolSizeCount = 3;
   poolInfo.pPoolSizes = poolSizes;
   if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
     throw std::string("Could not create scene view descriptor pool!");
@@ -106,6 +124,7 @@ LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(render
     throw std::string("Could not create scene view sampler!");
   }
 
+  CreateLinePipeline();
   CreatePrimitiveBuffer(64);
 }
 
@@ -113,6 +132,12 @@ LsSceneView::~LsSceneView() {
   vkDeviceWaitIdle(device);
   DestroyTarget();
   DestroyPrimitiveBuffer();
+  vkDestroyPipeline(device, linePipeline, nullptr);
+  vkDestroyPipelineLayout(device, linePipelineLayout, nullptr);
+  vkDestroyRenderPass(device, lineRenderPass, nullptr);
+  vkDestroyDescriptorSetLayout(device, lineDescriptorSetLayout, nullptr);
+  vkDestroyShaderModule(device, lineVertexShader, nullptr);
+  vkDestroyShaderModule(device, lineFragmentShader, nullptr);
   vkDestroySampler(device, sampler, nullptr);
   vkDestroyPipeline(device, pipeline, nullptr);
   vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -131,45 +156,66 @@ uint32_t LsSceneView::FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags pr
   return static_cast<uint32_t>(type);
 }
 
-void LsSceneView::CreateTarget(uint32_t width, uint32_t height) {
+void LsSceneView::CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage,
+                              VkImage& image, VkDeviceMemory& memory, VkImageView& view) {
   VkImageCreateInfo imageInfo = {};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+  imageInfo.format = format;
   imageInfo.extent = { width, height, 1 };
   imageInfo.mipLevels = 1;
   imageInfo.arrayLayers = 1;
   imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
   imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-  imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+  imageInfo.usage = usage;
   imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  if (vkCreateImage(device, &imageInfo, nullptr, &target.image) != VK_SUCCESS) {
+  if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
     throw std::string("Could not create scene view image!");
   }
 
   VkMemoryRequirements requirements;
-  vkGetImageMemoryRequirements(device, target.image, &requirements);
+  vkGetImageMemoryRequirements(device, image, &requirements);
   VkMemoryAllocateInfo allocateInfo = {};
   allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocateInfo.allocationSize = requirements.size;
   allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-  if (vkAllocateMemory(device, &allocateInfo, nullptr, &target.memory) != VK_SUCCESS) {
+  if (vkAllocateMemory(device, &allocateInfo, nullptr, &memory) != VK_SUCCESS) {
     throw std::string("Could not allocate scene view image memory!");
   }
-  vkBindImageMemory(device, target.image, target.memory, 0);
+  vkBindImageMemory(device, image, memory, 0);
 
   VkImageViewCreateInfo viewInfo = {};
   viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  viewInfo.image = target.image;
+  viewInfo.image = image;
   viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  viewInfo.format = imageInfo.format;
+  viewInfo.format = format;
   viewInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-  if (vkCreateImageView(device, &viewInfo, nullptr, &target.view) != VK_SUCCESS) {
+  if (vkCreateImageView(device, &viewInfo, nullptr, &view) != VK_SUCCESS) {
     throw std::string("Could not create scene view image view!");
   }
+}
 
-  // Written by compute and sampled by the UI without changing layout
+void LsSceneView::CreateTarget(uint32_t width, uint32_t height) {
+  CreateImage(width, height, VK_FORMAT_R8G8B8A8_UNORM,
+              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+              target.image, target.memory, target.view);
+  CreateImage(width, height, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+              target.depthImage, target.depthMemory, target.depthView);
+
+  VkFramebufferCreateInfo framebufferInfo = {};
+  framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+  framebufferInfo.renderPass = lineRenderPass;
+  framebufferInfo.attachmentCount = 1;
+  framebufferInfo.pAttachments = &target.view;
+  framebufferInfo.width = width;
+  framebufferInfo.height = height;
+  framebufferInfo.layers = 1;
+  if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &target.framebuffer) != VK_SUCCESS) {
+    throw std::string("Could not create scene view framebuffer!");
+  }
+
+  // Written by compute and the lines, and sampled by the UI, all in the general layout
   target.texture = ImGui_ImplVulkan_AddTexture(sampler, target.view, VK_IMAGE_LAYOUT_GENERAL);
   target.width = width;
   target.height = height;
@@ -180,16 +226,150 @@ void LsSceneView::DestroyTarget() {
   if (target.texture) {
     ImGui_ImplVulkan_RemoveTexture(target.texture);
   }
-  if (target.view) {
-    vkDestroyImageView(device, target.view, nullptr);
+  if (target.framebuffer) {
+    vkDestroyFramebuffer(device, target.framebuffer, nullptr);
   }
-  if (target.image) {
-    vkDestroyImage(device, target.image, nullptr);
-  }
-  if (target.memory) {
-    vkFreeMemory(device, target.memory, nullptr);
+  VkImageView views[2] = { target.view, target.depthView };
+  VkImage images[2] = { target.image, target.depthImage };
+  VkDeviceMemory memories[2] = { target.memory, target.depthMemory };
+  for (int i = 0; i < 2; i++) {
+    if (views[i]) {
+      vkDestroyImageView(device, views[i], nullptr);
+    }
+    if (images[i]) {
+      vkDestroyImage(device, images[i], nullptr);
+    }
+    if (memories[i]) {
+      vkFreeMemory(device, memories[i], nullptr);
+    }
   }
   target = {};
+}
+
+void LsSceneView::CreateLinePipeline() {
+  lineVertexShader = CreateShaderModule(device, "Shaders/sceneline.vert.spv");
+  lineFragmentShader = CreateShaderModule(device, "Shaders/sceneline.frag.spv");
+
+  VkDescriptorSetLayoutBinding binding = {};
+  binding.binding = 0;
+  binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+  binding.descriptorCount = 1;
+  binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+  VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+  layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  layoutInfo.bindingCount = 1;
+  layoutInfo.pBindings = &binding;
+  if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &lineDescriptorSetLayout) != VK_SUCCESS) {
+    throw std::string("Could not create scene line descriptor set layout!");
+  }
+  VkDescriptorSetAllocateInfo allocateInfo = {};
+  allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  allocateInfo.descriptorPool = descriptorPool;
+  allocateInfo.descriptorSetCount = 1;
+  allocateInfo.pSetLayouts = &lineDescriptorSetLayout;
+  if (vkAllocateDescriptorSets(device, &allocateInfo, &lineDescriptorSet) != VK_SUCCESS) {
+    throw std::string("Could not allocate scene line descriptor set!");
+  }
+
+  VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(LsSceneLinePushConstants) };
+  VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+  pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  pipelineLayoutInfo.setLayoutCount = 1;
+  pipelineLayoutInfo.pSetLayouts = &lineDescriptorSetLayout;
+  pipelineLayoutInfo.pushConstantRangeCount = 1;
+  pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+  if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &linePipelineLayout) != VK_SUCCESS) {
+    throw std::string("Could not create scene line pipeline layout!");
+  }
+
+  // Draws over what the tracer wrote, the image stays in the general layout throughout
+  VkAttachmentDescription attachment = {};
+  attachment.format = VK_FORMAT_R8G8B8A8_UNORM;
+  attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+  attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  attachment.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
+  attachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+  VkAttachmentReference colorReference = { 0, VK_IMAGE_LAYOUT_GENERAL };
+  VkSubpassDescription subpass = {};
+  subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+  subpass.colorAttachmentCount = 1;
+  subpass.pColorAttachments = &colorReference;
+  VkRenderPassCreateInfo renderPassInfo = {};
+  renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+  renderPassInfo.attachmentCount = 1;
+  renderPassInfo.pAttachments = &attachment;
+  renderPassInfo.subpassCount = 1;
+  renderPassInfo.pSubpasses = &subpass;
+  if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &lineRenderPass) != VK_SUCCESS) {
+    throw std::string("Could not create scene line render pass!");
+  }
+
+  VkPipelineShaderStageCreateInfo stages[2] = {};
+  stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+  stages[0].module = lineVertexShader;
+  stages[0].pName = "main";
+  stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+  stages[1].module = lineFragmentShader;
+  stages[1].pName = "main";
+
+  VkPipelineVertexInputStateCreateInfo vertexInput = {};
+  vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+  VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+  inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+  inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+  // The size and the line width change, so they are set when drawing
+  VkPipelineViewportStateCreateInfo viewportState = {};
+  viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+  viewportState.viewportCount = 1;
+  viewportState.scissorCount = 1;
+  VkPipelineRasterizationStateCreateInfo rasterization = {};
+  rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+  rasterization.polygonMode = VK_POLYGON_MODE_FILL;
+  rasterization.cullMode = VK_CULL_MODE_NONE;
+  rasterization.lineWidth = 1.0f;
+  VkPipelineMultisampleStateCreateInfo multisample = {};
+  multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+  multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  VkPipelineColorBlendAttachmentState blendAttachment = {};
+  blendAttachment.blendEnable = VK_TRUE;
+  blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+  blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+  blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+  blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+  blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+  VkPipelineColorBlendStateCreateInfo colorBlend = {};
+  colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+  colorBlend.attachmentCount = 1;
+  colorBlend.pAttachments = &blendAttachment;
+  VkDynamicState dynamicStates[3] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_LINE_WIDTH };
+  VkPipelineDynamicStateCreateInfo dynamicState = {};
+  dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+  dynamicState.dynamicStateCount = 3;
+  dynamicState.pDynamicStates = dynamicStates;
+
+  VkGraphicsPipelineCreateInfo pipelineInfo = {};
+  pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  pipelineInfo.stageCount = 2;
+  pipelineInfo.pStages = stages;
+  pipelineInfo.pVertexInputState = &vertexInput;
+  pipelineInfo.pInputAssemblyState = &inputAssembly;
+  pipelineInfo.pViewportState = &viewportState;
+  pipelineInfo.pRasterizationState = &rasterization;
+  pipelineInfo.pMultisampleState = &multisample;
+  pipelineInfo.pColorBlendState = &colorBlend;
+  pipelineInfo.pDynamicState = &dynamicState;
+  pipelineInfo.layout = linePipelineLayout;
+  pipelineInfo.renderPass = lineRenderPass;
+  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &linePipeline) != VK_SUCCESS) {
+    throw std::string("Could not create scene line pipeline!");
+  }
 }
 
 void LsSceneView::CreatePrimitiveBuffer(size_t capacity) {
@@ -235,18 +415,25 @@ void LsSceneView::DestroyPrimitiveBuffer() {
 
 void LsSceneView::UpdateDescriptors() {
   VkDescriptorImageInfo imageInfo = { VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_GENERAL };
+  VkDescriptorImageInfo depthInfo = { VK_NULL_HANDLE, target.depthView, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorBufferInfo bufferInfo = { primitiveBuffer.buffer, 0, VK_WHOLE_SIZE };
 
-  VkWriteDescriptorSet writes[2] = {};
+  VkWriteDescriptorSet writes[4] = {};
   uint32_t writeCount = 0;
-  if (target.view) {
+  auto writeImage = [&](VkDescriptorSet set, uint32_t binding, const VkDescriptorImageInfo* info,
+                        VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
     writes[writeCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[writeCount].dstSet = descriptorSet;
-    writes[writeCount].dstBinding = 0;
+    writes[writeCount].dstSet = set;
+    writes[writeCount].dstBinding = binding;
     writes[writeCount].descriptorCount = 1;
-    writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    writes[writeCount].pImageInfo = &imageInfo;
+    writes[writeCount].descriptorType = type;
+    writes[writeCount].pImageInfo = info;
     writeCount++;
+  };
+  if (target.view) {
+    writeImage(descriptorSet, 0, &imageInfo);
+    writeImage(descriptorSet, 2, &depthInfo);
+    writeImage(lineDescriptorSet, 0, &depthInfo, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
   }
   if (primitiveBuffer.buffer) {
     writes[writeCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -299,32 +486,37 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
   }
   VkCommandBuffer commandBuffer = renderer->commandBuffer;
 
-  VkImageMemoryBarrier barrier = {};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  // The old contents are overwritten completely
-  barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.image = target.image;
-  barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+  VkImageMemoryBarrier barriers[2] = {};
+  for (int i = 0; i < 2; i++) {
+    barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers[i].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers[i].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    // The old contents are overwritten completely
+    barriers[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barriers[i].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[i].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+  }
+  barriers[0].image = target.image;
+  barriers[1].image = target.depthImage;
   vkCmdPipelineBarrier(commandBuffer,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &barrier);
+                       0, 0, nullptr, 0, nullptr, 2, barriers);
 
   LsViewportPushConstants constants = {};
   float tanHalfFov = camera.GetTanHalfFovY();
   constants.origin = glm::vec4(camera.GetPosition(), std::exp2(settings.exposure));
   constants.right = glm::vec4(camera.GetRight()*tanHalfFov*camera.GetAspect(), 0.0f);
   constants.up = glm::vec4(camera.GetUp()*tanHalfFov, 0.0f);
-  constants.forward = glm::vec4(camera.GetForward(), 0.0f);
+  // A lens shift only moves where the image centre looks, the shader normalises the rays
+  glm::vec2 shift = camera.GetLensShift();
+  constants.forward = glm::vec4(camera.GetForward() + camera.GetRight()*shift.x + camera.GetUp()*shift.y, 0.0f);
   constants.size[0] = width;
   constants.size[1] = height;
   constants.primitiveCount = static_cast<uint32_t>(primitives.size());
-  constants.flags = (settings.lit ? kViewLit : 0) | (settings.grid ? kViewGrid : 0);
+  constants.flags = settings.lit ? kViewLit : 0;
   constants.pixelAngle = 2.0f*tanHalfFov/static_cast<float>(height);
 
   vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
@@ -332,12 +524,130 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
   vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
   vkCmdDispatch(commandBuffer, (width + kWorkGroupSize - 1)/kWorkGroupSize, (height + kWorkGroupSize - 1)/kWorkGroupSize, 1);
 
-  // The UI samples it later in this frame
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+  // Lines draw over the colour and read the depth
+  barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barriers[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  barriers[0].oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+  barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  barriers[1].oldLayout = VK_IMAGE_LAYOUT_GENERAL;
   vkCmdPipelineBarrier(commandBuffer,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                       0, 0, nullptr, 0, nullptr, 2, barriers);
+
+  if (settings.grid) {
+    AppendGrid(camera);
+  }
+  DrawLines(commandBuffer, camera);
+  lines.clear();
+
+  // The UI samples it later in this frame
+  barriers[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &barrier);
+                       0, 0, nullptr, 0, nullptr, 1, barriers);
+}
+
+void LsSceneView::AppendGrid(const LsCamera& camera) {
+  struct Level { float spacing; float halfExtent; glm::vec4 color; };
+  // Minor lines every unit near the camera, major ones every ten units further out.
+  // Light, so they show on mid grey ground as well as on the dark background.
+  const Level levels[2] = {
+    { 1.0f, 50.0f, glm::vec4(0.9f, 0.9f, 0.9f, 0.22f) },
+    { 10.0f, 250.0f, glm::vec4(0.95f, 0.95f, 0.95f, 0.4f) },
+  };
+  glm::vec3 eye = camera.GetPosition();
+  for (const Level& level : levels) {
+    // Centred under the camera on whole cells, so the lines don't move with it
+    float centerX = std::round(eye.x/level.spacing)*level.spacing;
+    float centerZ = std::round(eye.z/level.spacing)*level.spacing;
+    int count = static_cast<int>(level.halfExtent/level.spacing);
+    for (int i = -count; i <= count; i++) {
+      float x = centerX + i*level.spacing;
+      float z = centerZ + i*level.spacing;
+      // Axes and the coarser level have their own lines
+      bool skipX = std::abs(x) < 1.0e-3f || (level.spacing < 10.0f && std::abs(std::fmod(x, 10.0f)) < 1.0e-3f);
+      bool skipZ = std::abs(z) < 1.0e-3f || (level.spacing < 10.0f && std::abs(std::fmod(z, 10.0f)) < 1.0e-3f);
+      LsSceneLine line;
+      line.color = level.color;
+      line.fadeDistance = level.halfExtent;
+      if (!skipX) {
+        line.a = glm::vec3(x, 0.0f, centerZ - level.halfExtent);
+        line.b = glm::vec3(x, 0.0f, centerZ + level.halfExtent);
+        lines.push_back(line);
+      }
+      if (!skipZ) {
+        line.a = glm::vec3(centerX - level.halfExtent, 0.0f, z);
+        line.b = glm::vec3(centerX + level.halfExtent, 0.0f, z);
+        lines.push_back(line);
+      }
+    }
+  }
+
+  // World axes along the grid: X red, Z blue
+  const float axisLength = 1000.0f;
+  LsSceneLine axis;
+  axis.width = 2.0f;
+  axis.fadeDistance = 500.0f;
+  axis.color = glm::vec4(0.85f, 0.3f, 0.3f, 0.9f);
+  axis.a = glm::vec3(eye.x - axisLength, 0.0f, 0.0f);
+  axis.b = glm::vec3(eye.x + axisLength, 0.0f, 0.0f);
+  lines.push_back(axis);
+  axis.color = glm::vec4(0.3f, 0.5f, 0.95f, 0.9f);
+  axis.a = glm::vec3(0.0f, 0.0f, eye.z - axisLength);
+  axis.b = glm::vec3(0.0f, 0.0f, eye.z + axisLength);
+  lines.push_back(axis);
+}
+
+void LsSceneView::DrawLines(VkCommandBuffer commandBuffer, const LsCamera& camera) {
+  VkRenderPassBeginInfo beginInfo = {};
+  beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  beginInfo.renderPass = lineRenderPass;
+  beginInfo.framebuffer = target.framebuffer;
+  beginInfo.renderArea = { { 0, 0 }, { target.width, target.height } };
+  vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+  VkViewport viewport = { 0.0f, 0.0f, float(target.width), float(target.height), 0.0f, 1.0f };
+  VkRect2D scissor = { { 0, 0 }, { target.width, target.height } };
+  vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+  vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipeline);
+  vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipelineLayout, 0, 1, &lineDescriptorSet, 0, nullptr);
+
+  // Clip space with w as the view depth and z from 0 at the near plane, so the
+  // rasteriser cuts lines there. Vulkan's y points down.
+  glm::vec3 position = camera.GetPosition();
+  glm::vec3 right = camera.GetRight();
+  glm::vec3 up = camera.GetUp();
+  glm::vec3 forward = camera.GetForward();
+  glm::vec2 shift = camera.GetLensShift();
+  float tanY = camera.GetTanHalfFovY();
+  float tanX = tanY*camera.GetAspect();
+  auto toClip = [&](glm::vec3 p) {
+    glm::vec3 d = p - position;
+    float depth = glm::dot(d, forward);
+    float x = glm::dot(d, right) - shift.x*depth;
+    float y = glm::dot(d, up) - shift.y*depth;
+    return glm::vec4(x/tanX, -y/tanY, depth - kLineNearDepth, depth);
+  };
+
+  float width = -1.0f;
+  for (const LsSceneLine& line : lines) {
+    LsSceneLinePushConstants constants = {};
+    constants.positions[0] = toClip(line.a);
+    constants.positions[1] = toClip(line.b);
+    constants.color = line.color;
+    constants.fadeDistance = line.fadeDistance;
+    if (line.width != width) {
+      width = line.width;
+      vkCmdSetLineWidth(commandBuffer, width);
+    }
+    vkCmdPushConstants(commandBuffer, linePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0, sizeof(constants), &constants);
+    vkCmdDraw(commandBuffer, 2, 1, 0, 0);
+  }
+  vkCmdEndRenderPass(commandBuffer);
 }
