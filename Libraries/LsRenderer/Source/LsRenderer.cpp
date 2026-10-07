@@ -1100,6 +1100,14 @@ void LsRenderer::SetCanvasView(glm::vec2 offset, float zoom) {
   canvasView.zoom = zoom;
 }
 
+ImTextureID LsRenderer::GetCanvasTexture() {
+  if ( !canvasUiTexture && uiInitialized ) {
+    // Sampled where the compute shader paints it, in the general layout
+    canvasUiTexture = ImGui_ImplVulkan_AddTexture(canvasState.sampler, canvasState.view, VK_IMAGE_LAYOUT_GENERAL);
+  }
+  return reinterpret_cast<ImTextureID>(canvasUiTexture);
+}
+
 glm::vec2 LsRenderer::GetCanvasSize() {
   return glm::vec2(static_cast<float>(canvasState.width), static_cast<float>(canvasState.height));
 }
@@ -1665,6 +1673,10 @@ void LsRenderer::ShutdownUi() {
     return;
   }
 
+  if ( canvasUiTexture ) {
+    ImGui_ImplVulkan_RemoveTexture(canvasUiTexture);
+    canvasUiTexture = VK_NULL_HANDLE;
+  }
   ImGui_ImplVulkan_Shutdown();
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext();

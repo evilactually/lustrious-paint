@@ -95,7 +95,8 @@ public:
 	  canvasPainter = std::make_shared<LsCanvasPainter>(renderer, canvasNavigator);
     //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
-    pointGrid->SetBackgroundColor(0.1f, 0.0f, 0.1f);
+    const glm::vec3 canvasBackground(0.1f, 0.0f, 0.1f);
+    pointGrid->SetBackgroundColor(canvasBackground.r, canvasBackground.g, canvasBackground.b);
 
     scene = std::make_shared<LsScene>();
     CreateStarterScene();
@@ -103,6 +104,8 @@ public:
     history = std::make_unique<LsSceneHistory>(scene);
     sceneEditor = std::make_unique<LsSceneEditor>(scene);
     sceneViewport = std::make_unique<LsSceneViewport>(renderer, scene, sceneEditor.get());
+    // The 3D view fades in from what surrounds the canvas
+    sceneViewport->SetCanvasBackground(canvasBackground);
 
     LsImage image = renderer->CreateImage(640, 800);
     renderer->CreateImage(8000, 8000);
@@ -147,17 +150,21 @@ public:
         window->HideMouse();
       }
 
-      pointGrid->Render();
-      renderer->DrawCanvas();
-      if (!overUi && !navigating) {
-        brushRig->Render();
-      }
-
-      canvasPainter->Render();
-      //stuffingDemo->Render();
-
       DrawDockedPanels();
       DrawToolbar();
+      HandleViewToggle(overUi);
+
+      // After laying out the UI, which decides whether the canvas or the 3D view
+      // shows, and before the UI is rendered over everything at the end of the frame
+      pointGrid->Render();
+      if (!sceneViewport->IsShowingScene()) {
+        renderer->DrawCanvas();
+        if (!overUi && !navigating) {
+          brushRig->Render();
+        }
+        canvasPainter->Render();
+      }
+      //stuffingDemo->Render();
 
       if (ImGui::IsKeyPressed(ImGuiKey_F9, false)) {
         char path[64];
@@ -182,6 +189,23 @@ public:
     }
 
 
+  }
+
+  // Tab over the canvas shows or hides the scene over it, in the 3D view it goes
+  // back to the canvas. A focused panel claims Tab for keyboard navigation, the
+  // mouse decides here.
+  void HandleViewToggle(bool overUi) {
+    bool overCanvasArea = sceneViewport->IsShowingScene() ? sceneViewport->IsHovered() : !overUi;
+    bool tabPressed = ImGui::IsKeyPressed(ImGuiKey_Tab, ImGuiInputFlags_None, ImGuiKeyOwner_Any);
+    if (ImGui::GetIO().WantTextInput || !overCanvasArea || !tabPressed) {
+      return;
+    }
+    if (sceneViewport->IsShowingScene()) {
+      sceneViewport->ToggleSceneView();
+    }
+    else {
+      sceneViewport->SetSceneOverCanvas(!sceneViewport->IsSceneOverCanvas());
+    }
   }
 
   // Text fields have their own undo while they are being typed in
@@ -219,8 +243,12 @@ public:
     scene->SetPlacement(camera, LsPlacement::FromMatrix(view.GetCameraToWorld()));
   }
 
-  // Vertical tool strip floating over the canvas, buttons only, no window background
+  // Vertical tool strip floating over the canvas, buttons only, no window background.
+  // The 3D view has its own.
   void DrawToolbar() {
+    if (sceneViewport->IsShowingScene()) {
+      return;
+    }
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground |
                              ImGuiWindowFlags_NoDecoration |
                              ImGuiWindowFlags_AlwaysAutoResize |
@@ -240,6 +268,22 @@ public:
     };
 
     const ImVec2 buttonSize(ImGui::GetFontSize()*5.0f, 0.0f);
+    if (ImGui::Button("3D View", buttonSize)) {
+      sceneViewport->ToggleSceneView();
+    }
+    ImGui::SetItemTooltip("Fly out of the canvas into the scene");
+
+    // The scene through the canvas camera, to see what is being painted over
+    bool sceneShown = sceneViewport->IsSceneOverCanvas();
+    if (ImGui::Checkbox("Scene", &sceneShown)) {
+      sceneViewport->SetSceneOverCanvas(sceneShown);
+    }
+    ImGui::SetItemTooltip("Show the scene over the canvas, as the canvas camera sees it (Tab)");
+    if (sceneShown) {
+      ImGui::SetNextItemWidth(buttonSize.x);
+      ImGui::SliderFloat("##SceneOpacity", &sceneViewport->SceneOverCanvasOpacity(), 0.0f, 1.0f, "%.2f");
+      ImGui::SetItemTooltip("Opacity of the scene over the canvas");
+    }
     // for (const auto& button : buttons) {
     //   // The selected tool is drawn in the accent colour
     //   bool selected = currentTool == button.tool;
@@ -259,8 +303,8 @@ public:
     ImGui::PopStyleVar();
   }
 
-  // Fills the window with a dock space whose centre lets input through to the canvas,
-  // and keeps the Properties panel docked to its right side
+  // Fills the window with a dock space whose centre lets input through to the canvas
+  // or holds the 3D view, and keeps the Scene and Properties panels docked to its right side
   void DrawDockedPanels() {
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
@@ -270,23 +314,22 @@ public:
       ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
       ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
 
-      ImGuiID centerId;
-      ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, &centerId);
-      // The 3D view shares the rest with the canvas, which shows through the central node
-      ImGuiID viewId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, 0.5f, nullptr, nullptr);
+      ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
       ImGui::DockBuilderGetNode(sceneId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderGetNode(propertiesId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
-      ImGui::DockBuilderDockWindow("3D View", viewId);
       ImGui::DockBuilderFinish(dockspaceId);
       dockLayoutBuilt = true;
     }
 
     sceneEditor->DrawOutliner();
-    sceneViewport->Draw();
+    // The canvas and the 3D view take turns in the central node
+    if (ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockspaceId)) {
+      sceneViewport->Draw(glm::vec2(central->Pos.x, central->Pos.y), glm::vec2(central->Size.x, central->Size.y));
+    }
 
     if (ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse)) {
       sceneEditor->DrawProperties();

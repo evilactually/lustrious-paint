@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <SDL3/SDL.h>
+#include <imgui.h>
 #include <LsImage.h>
 #include <chrono>
 #include <string>
@@ -51,6 +52,8 @@ public:
   glm::vec2 GetCanvasOffset() { return canvasView.offset; }
   float GetCanvasZoom() { return canvasView.zoom; }
   glm::vec2 GetCanvasSize(); // in canvas pixels
+  // The canvas image for drawing with Dear ImGui, such as on a plane in the 3D view
+  ImTextureID GetCanvasTexture();
   // SetTransformation(glm::max4x4& transformation)
   // CreateVertexBuffer (separate class)
   // SetVertexBuffer(&VertexBuffer)
@@ -231,6 +234,7 @@ private:
     float zoom = 1.0f;
   } canvasView;
 
+  VkDescriptorSet canvasUiTexture = VK_NULL_HANDLE; // ImGui's descriptor for the canvas
   VkDescriptorPool descriptorPool;
   VkDescriptorSet imageDescriptorSet; // make member?
 };

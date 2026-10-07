@@ -16,11 +16,17 @@ struct ImDrawList;
 //-------------------------------------------------------------------------------
 // @ LsSceneViewport
 //-------------------------------------------------------------------------------
-// The "3D View" window: shows the scene from a free editor camera, selects
-// objects by clicking them and moves them with a transform gizmo. Camera nodes
-// are drawn as frustums ending in the canvas they paint, and the view can look
-// through the canvas camera, optionally moving it along when navigating, which
-// is the quickest way to frame a painting.
+// The 3D view of the scene, which shares the canvas area with the canvas.
+// Switching flies the view out of the canvas camera so the canvas becomes the
+// plane at the end of its frustum, or back in until that plane covers the
+// canvas exactly where it was on screen. While painting, the scene can also be
+// shown over the canvas through the canvas camera, without leaving the canvas.
+//
+// It shows the scene from a free editor camera, selects objects by clicking
+// them and moves them with a transform gizmo. Camera nodes are drawn as
+// frustums ending in the canvas they paint, and the view can look through the
+// canvas camera, optionally moving it along when navigating, which is the
+// quickest way to frame a painting.
 //
 // Navigation follows the common DCC layout: alt+left drag orbits, middle drag
 // pans, alt+right drag and the wheel zoom, right drag looks around with WASD/QE
@@ -30,6 +36,7 @@ struct ImDrawList;
 class LsSceneViewport
 {
   enum class Navigation { None, Orbit, Pan, Zoom, Fly };
+  enum class Mode { Canvas, ToScene, Scene, ToCanvas };
 
   std::shared_ptr<LsRenderer> renderer;
   std::shared_ptr<LsScene> scene;
@@ -71,6 +78,15 @@ class LsSceneViewport
   LsNodeId placing = kLsInvalidNode;
 
   LsViewportProjection projection;
+  bool viewHovered = false;
+
+  Mode mode = Mode::Canvas;
+  double transitionStart = 0.0;
+  // What the canvas area shows in canvas mode around the canvas
+  glm::vec3 canvasBackground = glm::vec3(0.0f);
+  // The scene over the canvas while painting, so it shows what is painted over
+  bool sceneOverCanvas = false;
+  float sceneOverCanvasOpacity = 0.5f;
 
   glm::vec3 GetOrbitPosition() const;
   LsCamera GetOrbitCamera(float aspect) const;
@@ -80,6 +96,16 @@ class LsSceneViewport
   float GetCanvasAspect() const;
   // What the view shows: the orbit camera, or the canvas camera fitted inside the view
   LsCamera GetViewCamera(float viewAspect, glm::vec2& frameNdc) const;
+
+  // The canvas camera seen so its canvas lands exactly where the canvas is drawn
+  // in canvas mode. False without a canvas camera.
+  bool GetCanvasAlignedCamera(LsCamera& camera) const;
+  // How far a transition has got, 0 at its start and 1 at its end
+  float GetTransitionProgress() const;
+  void DrawCanvasInScene(ImDrawList* drawList, float alpha) const;
+  // Renders the scene through the canvas camera, lined up with the canvas, under
+  // the UI but over the canvas, leaving input to the canvas
+  void DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size);
 
   // Returns true when the view moved
   bool Navigate(bool viewHovered, glm::vec2 viewSize);
@@ -112,10 +138,20 @@ class LsSceneViewport
 public:
   LsSceneViewport(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsScene> scene, LsSceneEditor* editor);
   ~LsSceneViewport();
-  // Draws the "3D View" window, call between BeginFrame and EndFrame
-  void Draw();
+  // Draws the 3D view over the canvas area, origin and size in UI points, unless
+  // the canvas is showing. Call between BeginFrame and EndFrame.
+  void Draw(glm::vec2 origin, glm::vec2 size);
+  // Switches between the canvas and the 3D view
+  void ToggleSceneView();
+  // The canvas area is taken by the 3D view, including during the transitions
+  bool IsShowingScene() const { return mode != Mode::Canvas; }
+  bool IsHovered() const { return mode != Mode::Canvas && viewHovered; }
+  void SetCanvasBackground(glm::vec3 color) { canvasBackground = color; }
+  bool IsSceneOverCanvas() const { return sceneOverCanvas; }
+  void SetSceneOverCanvas(bool shown) { sceneOverCanvas = shown; }
+  float& SceneOverCanvasOpacity() { return sceneOverCanvasOpacity; }
   // Frames must keep coming even without input, such as while flying with keys held
-  bool IsAnimating() const { return navigation == Navigation::Fly; }
+  bool IsAnimating() const { return navigation == Navigation::Fly || mode == Mode::ToScene || mode == Mode::ToCanvas; }
   // An edit made through the view is still going on, such as a drag or placing
   // something, the scene changes are not finished yet
   bool IsEditing() const { return placing != kLsInvalidNode || gizmo.IsActive() || navigation != Navigation::None; }

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <utility>
+#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
 #include <LsRenderer.h>
 #include <LsSceneEditor.h>
@@ -20,6 +21,8 @@ static const float kCameraDisplayDepth = 0.6f;
 // The canvas frame fills this much of the view when looking through its camera
 static const float kCameraFrameFill = 0.9f;
 static const float kPickPixels = 6.0f;
+// Flying between the canvas and the 3D view
+static const double kTransitionSeconds = 0.6;
 
 static const ImU32 kSelectionColor = IM_COL32(255, 140, 40, 255);
 
@@ -742,6 +745,12 @@ void LsSceneViewport::DrawToolbar() {
   ImGui::SetCursorPos(ImVec2(start.x + 6.0f, start.y + 4.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
 
+  if (ImGui::Button("Canvas")) {
+    ToggleSceneView();
+  }
+  ImGui::SetItemTooltip("Back to painting on the canvas (Tab)");
+  ImGui::SameLine(0.0f, 16.0f);
+
   struct { const char* label; LsGizmoMode mode; const char* tooltip; } tools[] = {
     { "Move", LsGizmoMode::Translate, "Move the selection (W)" },
     { "Rotate", LsGizmoMode::Rotate, "Rotate the selection (E)" },
@@ -795,49 +804,206 @@ void LsSceneViewport::DrawToolbar() {
   ImGui::Dummy(ImVec2(0.0f, 2.0f));
 }
 
-void LsSceneViewport::Draw() {
-  ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f), ImGuiCond_FirstUseEver);
+// In between two views: position and the frustum's shape blend, orientation turns along the shorter way
+static LsCamera InterpolateCamera(const LsCamera& a, const LsCamera& b, float t) {
+  glm::quat qa = glm::quat_cast(glm::mat3(a.GetCameraToWorld()));
+  glm::quat qb = glm::quat_cast(glm::mat3(b.GetCameraToWorld()));
+  if (glm::dot(qa, qb) < 0.0f) {
+    qb = -qb;
+  }
+  glm::mat4 cameraToWorld = glm::mat4_cast(glm::normalize(glm::slerp(qa, qb, t)));
+  cameraToWorld[3] = glm::vec4(glm::mix(a.GetPosition(), b.GetPosition(), t), 1.0f);
+  // Zooming looks even when the field of view changes geometrically
+  float tanY = std::exp(glm::mix(std::log(a.GetTanHalfFovY()), std::log(b.GetTanHalfFovY()), t));
+  LsCamera camera(cameraToWorld, glm::degrees(2.0f*std::atan(tanY)), b.GetAspect());
+  camera.SetLensShift(glm::mix(a.GetLensShift(), b.GetLensShift(), t));
+  return camera;
+}
+
+bool LsSceneViewport::GetCanvasAlignedCamera(LsCamera& camera) const {
+  LsNodeId active = scene->GetActiveCamera();
+  if (active == kLsInvalidNode) {
+    return false;
+  }
+  // The canvas is placed in window pixels, the view in UI points
+  glm::vec2 pixelsPerPoint = LsToVec2(ImGui::GetIO().DisplayFramebufferScale);
+  glm::vec2 canvasMin = renderer->GetCanvasOffset()/pixelsPerPoint;
+  glm::vec2 canvasSize = renderer->GetCanvasSize()*renderer->GetCanvasZoom()/pixelsPerPoint;
+  if (canvasSize.y <= 0.0f) {
+    return false;
+  }
+
+  // Each UI point covers the same angle as on the canvas, and the lens shift
+  // moves the image so the canvas centre is where it is drawn
+  LsCamera canvasCamera = scene->GetCamera(active, GetCanvasAspect());
+  float tanPerPoint = canvasCamera.GetTanHalfFovY()/(canvasSize.y*0.5f);
+  glm::vec2 canvasCenter = canvasMin + canvasSize*0.5f;
+  glm::vec2 viewCenter = projection.origin + projection.size*0.5f;
+  float viewTanY = tanPerPoint*projection.size.y*0.5f;
+  camera = LsCamera(canvasCamera.GetCameraToWorld(), glm::degrees(2.0f*std::atan(viewTanY)), projection.size.x/projection.size.y);
+  camera.SetLensShift(glm::vec2(viewCenter.x - canvasCenter.x, canvasCenter.y - viewCenter.y)*tanPerPoint);
+  return true;
+}
+
+float LsSceneViewport::GetTransitionProgress() const {
+  return glm::clamp(static_cast<float>((ImGui::GetTime() - transitionStart)/kTransitionSeconds), 0.0f, 1.0f);
+}
+
+void LsSceneViewport::ToggleSceneView() {
+  bool toScene = mode == Mode::Canvas || mode == Mode::ToCanvas;
+  bool canFly = scene->GetActiveCamera() != kLsInvalidNode;
+  // Turning round halfway carries on from where the view is
+  double now = ImGui::GetTime();
+  if (mode == Mode::ToScene || mode == Mode::ToCanvas) {
+    transitionStart = now - (1.0f - GetTransitionProgress())*kTransitionSeconds;
+  }
+  else {
+    transitionStart = now;
+  }
+
+  if (toScene) {
+    mode = canFly ? Mode::ToScene : Mode::Scene;
+    return;
+  }
+  // Whatever was going on in the view ends with it
+  if (placing != kLsInvalidNode) {
+    scene->Remove(placing);
+    editor->SetSelected(kLsInvalidNode);
+    placing = kLsInvalidNode;
+  }
+  navigation = Navigation::None;
+  mode = canFly ? Mode::ToCanvas : Mode::Canvas;
+}
+
+void LsSceneViewport::DrawCanvasInScene(ImDrawList* drawList, float alpha) const {
+  LsNodeId active = scene->GetActiveCamera();
+  ImTextureID texture = renderer->GetCanvasTexture();
+  if (active == kLsInvalidNode || !texture || alpha <= 0.0f) {
+    return;
+  }
+  LsCamera camera = scene->GetCamera(active, GetCanvasAspect());
+  ImU32 tint = IM_COL32(255, 255, 255, static_cast<int>(alpha*255.0f + 0.5f));
+
+  // The texture is mapped linearly across each quad, small ones keep that close to perspective
+  const int cells = 16;
+  glm::vec2 points[cells + 1][cells + 1];
+  bool visible[cells + 1][cells + 1];
+  for (int row = 0; row <= cells; row++) {
+    for (int column = 0; column <= cells; column++) {
+      glm::vec2 ndc(-1.0f + 2.0f*column/cells, 1.0f - 2.0f*row/cells);
+      visible[row][column] = projection.ToScreen(camera.GetImagePlanePoint(ndc, kCameraDisplayDepth), points[row][column]);
+    }
+  }
+  for (int row = 0; row < cells; row++) {
+    for (int column = 0; column < cells; column++) {
+      if (!visible[row][column] || !visible[row][column + 1] || !visible[row + 1][column + 1] || !visible[row + 1][column]) {
+        continue;
+      }
+      ImVec2 uv0(float(column)/cells, float(row)/cells);
+      ImVec2 uv1(float(column + 1)/cells, float(row + 1)/cells);
+      drawList->AddImageQuad(texture,
+                             LsToImVec2(points[row][column]), LsToImVec2(points[row][column + 1]),
+                             LsToImVec2(points[row + 1][column + 1]), LsToImVec2(points[row + 1][column]),
+                             uv0, ImVec2(uv1.x, uv0.y), uv1, ImVec2(uv0.x, uv1.y), tint);
+    }
+  }
+}
+
+void LsSceneViewport::DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size) {
+  projection.origin = origin;
+  projection.size = glm::max(size, glm::vec2(1.0f));
+  LsCamera camera;
+  if (!GetCanvasAlignedCamera(camera)) {
+    return;
+  }
+  projection.camera = camera;
+  hovered = kLsInvalidNode;
+  UpdatePrimitives();
+  glm::vec2 pixels = glm::max(glm::floor(projection.size*LsToVec2(ImGui::GetIO().DisplayFramebufferScale)), glm::vec2(1.0f));
+  view->Render(static_cast<uint32_t>(pixels.x), static_cast<uint32_t>(pixels.y), camera, settings);
+
+  // The background list goes under every window but over what the renderer drew, the canvas
+  ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+  drawList->PushClipRect(LsToImVec2(origin), LsToImVec2(origin + projection.size), true);
+  int alpha = static_cast<int>(glm::clamp(sceneOverCanvasOpacity, 0.0f, 1.0f)*255.0f + 0.5f);
+  drawList->AddImage(view->GetTexture(), LsToImVec2(origin), LsToImVec2(origin + projection.size),
+                     ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), IM_COL32(255, 255, 255, alpha));
+  drawList->PopClipRect();
+}
+
+void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
+  if (mode == Mode::Canvas) {
+    viewHovered = false;
+    if (sceneOverCanvas) {
+      DrawSceneOverCanvas(origin, size);
+    }
+    return;
+  }
+
+  // 0 shows the canvas, 1 the scene
+  bool transitioning = mode == Mode::ToScene || mode == Mode::ToCanvas;
+  float blend = 1.0f;
+  if (transitioning) {
+    float progress = GetTransitionProgress();
+    float eased = progress*progress*(3.0f - 2.0f*progress);
+    blend = mode == Mode::ToScene ? eased : 1.0f - eased;
+    if (progress >= 1.0f) {
+      if (mode == Mode::ToCanvas) {
+        mode = Mode::Canvas;
+        viewHovered = false;
+        return;
+      }
+      mode = Mode::Scene;
+      transitioning = false;
+    }
+  }
+  bool interactive = mode == Mode::Scene;
+
+  size = glm::max(size, glm::vec2(1.0f));
+  ImGui::SetNextWindowPos(LsToImVec2(origin));
+  ImGui::SetNextWindowSize(LsToImVec2(size));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  bool open = ImGui::Begin("3D View", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse);
-  ImGui::PopStyleVar();
-  if (!open) {
-    navigation = Navigation::None;
-    ImGui::End();
-    return;
-  }
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  // Stays behind floating panels, and Tab belongs to switching back
+  ImGui::Begin("##SceneView", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+                                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                                       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav |
+                                       ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::PopStyleVar(2);
 
-  DrawToolbar();
-
-  glm::vec2 position = LsToVec2(ImGui::GetCursorScreenPos());
-  glm::vec2 size = glm::max(LsToVec2(ImGui::GetContentRegionAvail()), glm::vec2(0.0f));
-  if (size.x < 1.0f || size.y < 1.0f) {
-    ImGui::End();
-    return;
-  }
-
-  // One item covers the whole view, so it keeps the mouse while dragging with any button
+  // One item covers the whole view, so it keeps the mouse while dragging with any button.
+  // The toolbar goes on top of it.
+  ImGui::SetNextItemAllowOverlap();
   ImGui::InvisibleButton("##View", LsToImVec2(size), ImGuiButtonFlags_MouseButtonLeft |
                                                       ImGuiButtonFlags_MouseButtonRight |
                                                       ImGuiButtonFlags_MouseButtonMiddle);
-  bool viewHovered = ImGui::IsItemHovered();
+  viewHovered = ImGui::IsItemHovered();
+  bool viewInput = viewHovered && interactive;
   ImGuiIO& io = ImGui::GetIO();
   glm::vec2 mouse = LsToVec2(io.MousePos);
 
-  projection.origin = position;
+  projection.origin = origin;
   projection.size = size;
-  // The camera may have been moved elsewhere, such as in the properties panel
-  if (lookThrough && navigation == Navigation::None) {
-    SyncOrbitToCamera();
+  bool placingClick = false;
+  if (interactive) {
+    // The camera may have been moved elsewhere, such as in the properties panel
+    if (lookThrough && navigation == Navigation::None) {
+      SyncOrbitToCamera();
+    }
+    // Placing goes by last frame's camera, which is what the user saw when clicking
+    placingClick = placing != kLsInvalidNode && navigation == Navigation::None && UpdatePlacing(viewInput, mouse);
+    Navigate(viewInput && !placingClick, size);
+    HandleShortcuts(viewInput);
   }
-  // Placing goes by last frame's camera, which is what the user saw when clicking
-  bool placingClick = placing != kLsInvalidNode && navigation == Navigation::None && UpdatePlacing(viewHovered, mouse);
-  Navigate(viewHovered && !placingClick, size);
-  HandleShortcuts(viewHovered);
 
   glm::vec2 frameNdc;
   projection.camera = GetViewCamera(size.x/size.y, frameNdc);
+  LsCamera canvasCamera;
+  if (transitioning && GetCanvasAlignedCamera(canvasCamera)) {
+    projection.camera = InterpolateCamera(canvasCamera, projection.camera, blend);
+  }
 
-  bool mouseFree = viewHovered && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid() &&
+  bool mouseFree = viewInput && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid() &&
                    placing == kLsInvalidNode && !placingClick;
   hovered = mouseFree && !gizmo.IsHovered() && !gizmo.IsActive() ? Pick(mouse) : kLsInvalidNode;
 
@@ -847,34 +1013,54 @@ void LsSceneViewport::Draw() {
   view->Render(static_cast<uint32_t>(pixels.x), static_cast<uint32_t>(pixels.y), projection.camera, settings);
 
   ImDrawList* drawList = ImGui::GetWindowDrawList();
-  drawList->PushClipRect(LsToImVec2(position), LsToImVec2(position + size), true);
-  drawList->AddImage(view->GetTexture(), LsToImVec2(position), LsToImVec2(position + size));
-  DrawCameras(drawList);
-  if (lookThrough) {
-    DrawCameraFrame(drawList, frameNdc);
+  drawList->PushClipRect(LsToImVec2(origin), LsToImVec2(origin + size), true);
+  drawList->AddImage(view->GetTexture(), LsToImVec2(origin), LsToImVec2(origin + size));
+
+  // The scene fades in from the canvas background while the canvas stays as it was
+  if (blend < 1.0f) {
+    float cover = 1.0f - glm::smoothstep(0.0f, 0.6f, blend);
+    glm::vec3 background = glm::clamp(canvasBackground, 0.0f, 1.0f)*255.0f;
+    drawList->AddRectFilled(LsToImVec2(origin), LsToImVec2(origin + size),
+                            IM_COL32(int(background.r), int(background.g), int(background.b), int(cover*255.0f)));
+  }
+  // Looking through the camera the scene is what matters, the canvas would cover all of it
+  DrawCanvasInScene(drawList, lookThrough ? 1.0f - blend : 1.0f);
+  if (blend > 0.5f) {
+    DrawCameras(drawList);
   }
 
-  LsNodeId selected = editor->GetSelected();
-  bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
-  if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection && placing == kLsInvalidNode) {
-    glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
-    if (gizmo.Manipulate(drawList, projection, gizmoMode, gizmoLocal, mouseFree, world)) {
-      SetWorldMatrix(selected, world);
+  if (interactive) {
+    if (lookThrough) {
+      DrawCameraFrame(drawList, frameNdc);
     }
-    if (gizmo.IsActive() && (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
-      gizmo.Cancel(world);
-      SetWorldMatrix(selected, world);
+
+    LsNodeId selected = editor->GetSelected();
+    bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
+    if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection && placing == kLsInvalidNode) {
+      glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
+      if (gizmo.Manipulate(drawList, projection, gizmoMode, gizmoLocal, mouseFree, world)) {
+        SetWorldMatrix(selected, world);
+      }
+      if (gizmo.IsActive() && (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+        gizmo.Cancel(world);
+        SetWorldMatrix(selected, world);
+      }
     }
+
+    bool axisClicked = DrawAxisWidget(drawList, glm::vec2(origin.x + size.x, origin.y), viewInput);
+
+    // Clicking selects, clicking empty space deselects
+    if (mouseFree && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked) {
+      editor->SetSelected(Pick(mouse));
+    }
+
+    DrawStatus(drawList);
   }
-
-  bool axisClicked = DrawAxisWidget(drawList, glm::vec2(position.x + size.x, position.y), viewHovered);
-
-  // Clicking selects, clicking empty space deselects
-  if (mouseFree && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked) {
-    editor->SetSelected(Pick(mouse));
-  }
-
-  DrawStatus(drawList);
   drawList->PopClipRect();
+
+  if (interactive) {
+    ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+    DrawToolbar();
+  }
   ImGui::End();
 }
