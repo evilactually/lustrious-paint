@@ -5,6 +5,7 @@ set( CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH} )
 set( LIBRARY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Libraries/")
 
 set(INCLUDE_FILES
+  Include/LsCanvas.h
   Include/LsImage.h
   Include/LsRenderer.h
   Include/LsSceneView.h
@@ -19,6 +20,7 @@ set(INCLUDE_FILES
 
 set(SOURCE_FILES
   Source/LsRenderer.cpp
+  Source/LsCanvas.cpp
   Source/LsImage.cpp
   Source/LsSceneView.cpp
   Source/LsUiTheme.cpp )

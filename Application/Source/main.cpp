@@ -10,6 +10,7 @@
 #include <LsVulkanLoader.h>
 #include <LsBrushRig.h>
 #include <LsPointGrid.h>
+#include <LsCanvas.h>
 #include <LsCanvasPainter.h>
 #include <LsStuffingDemo.h>
 #include <LsScene.h>
@@ -35,7 +36,10 @@ class Application: LsFSdlEventHandler {
   std::shared_ptr<LsBrushRig> brushRig;
   std::shared_ptr<LsPointGrid> pointGrid;
   std::shared_ptr<LsCanvasNavigator> canvasNavigator;
+  std::shared_ptr<LsCanvas> canvas;
   std::shared_ptr<LsCanvasPainter> canvasPainter;
+  // Scene revision the canvas last got its primitives from
+  uint64_t canvasSceneRevision = UINT64_MAX;
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
   std::shared_ptr<LsRenderer> renderer;
   std::shared_ptr<LsScene> scene;
@@ -59,6 +63,7 @@ public:
     sceneViewport.reset();
     stuffingDemo.reset();
     canvasPainter.reset();
+    canvas.reset();
     canvasNavigator.reset();
     pointGrid.reset();
     brushRig.reset();
@@ -94,7 +99,8 @@ public:
 	  brushRig = std::make_shared<LsBrushRig>(renderer);
 	  pointGrid = std::make_shared<LsPointGrid>(renderer);
 	  canvasNavigator = std::make_shared<LsCanvasNavigator>(renderer);
-	  canvasPainter = std::make_shared<LsCanvasPainter>(renderer, canvasNavigator);
+	  canvas = std::make_shared<LsCanvas>(renderer);
+	  canvasPainter = std::make_shared<LsCanvasPainter>(renderer, canvasNavigator, canvas);
     //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     const glm::vec3 canvasBackground(0.1f, 0.0f, 0.1f);
@@ -156,6 +162,9 @@ public:
       DrawToolbar();
       HandleViewToggle(overUi);
 
+      // Strokes painted since the last frame, before anything draws the canvas
+      UpdateCanvas();
+
       // After laying out the UI, which decides whether the canvas or the 3D view
       // shows, and before the UI is rendered over everything at the end of the frame
       pointGrid->Render();
@@ -182,6 +191,23 @@ public:
         if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px")) {
           canvasPainter->SetBrushRadius(brushRadius);
         }
+        // What the canvas shows of the painted positions
+        int display = static_cast<int>(canvas->GetDisplay());
+        if (ImGui::Combo("Display", &display, "Depth\0Position\0")) {
+          canvas->SetDisplay(static_cast<LsCanvasDisplay>(display));
+        }
+        bool isolines = canvas->GetIsolines();
+        if (ImGui::Checkbox("Isolines", &isolines)) {
+          canvas->SetIsolines(isolines);
+        }
+        ImGui::SetItemTooltip("Contour lines of the depth, every tenth one brighter");
+        if (isolines) {
+          float spacing = canvas->GetIsolineSpacing();
+          if (ImGui::DragFloat("Spacing", &spacing, 0.005f, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+            canvas->SetIsolineSpacing(spacing);
+          }
+          ImGui::SetItemTooltip("Depth between isolines, in scene units");
+        }
       }
       ImGui::End();
 
@@ -189,6 +215,23 @@ public:
     }
 
 
+  }
+
+  // Strokes transfer positions from the scene as it is now, through the canvas camera
+  void UpdateCanvas() {
+    if (scene->GetRevision() != canvasSceneRevision) {
+      canvas->SetPrimitives(scene->Flatten());
+      canvasSceneRevision = scene->GetRevision();
+    }
+    LsNodeId camera = scene->GetActiveCamera();
+    if (camera != kLsInvalidNode) {
+      glm::vec2 size = renderer->GetCanvasSize();
+      canvas->SetCamera(scene->GetCamera(camera, size.x/size.y));
+    }
+    else {
+      canvas->ClearCamera();
+    }
+    canvas->Render();
   }
 
   // Tab over the canvas shows or hides the scene over it, in the 3D view it goes
@@ -221,25 +264,47 @@ public:
     }
   }
 
-  // Ground, an object to paint from, and a light, so there is something to start from
+  // A Cornell box: a 2 by 2 by 2 room open at the front, lit by a panel under the
+  // ceiling, with a tall and a short box inside, so there is something to start from
   void CreateStarterScene() {
-    scene->AddShape("Ground", LsShape::Plane(10.0f), eRoleConstruction);
+    const LsSceneRoles solid = eRoleConstruction | eRoleShadowCaster;
+    // Walls are thin boxes around the room, which spans x and z from -1 to 1 and y from 0 to 2
+    const float halfRoom = 1.0f;
+    const float halfThickness = 0.05f;
+    const float outer = halfRoom + halfThickness;
 
-    LsNodeId sphere = scene->AddShape("Sphere", LsShape::Sphere(0.5f), eRoleConstruction | eRoleShadowCaster);
-    LsPlacement placement;
-    placement.translation = glm::vec3(0.0f, 0.5f, 0.0f);
-    scene->SetPlacement(sphere, placement);
+    LsNodeId room = scene->AddGroup("Room");
+    auto addBox = [&](const char* name, glm::vec3 halfExtents, glm::vec3 position, float yawDegrees,
+                      LsSceneRoles roles, LsNodeId parent) {
+      LsNodeId id = scene->AddShape(name, LsShape::Box(halfExtents), roles, parent);
+      LsPlacement placement;
+      placement.translation = position;
+      placement.rotation.y = yawDegrees;
+      scene->SetPlacement(id, placement);
+      return id;
+    };
+    addBox("Floor", glm::vec3(outer, halfThickness, outer), glm::vec3(0.0f, -halfThickness, 0.0f), 0.0f, solid, room);
+    addBox("Ceiling", glm::vec3(outer, halfThickness, outer), glm::vec3(0.0f, 2.0f*halfRoom + halfThickness, 0.0f), 0.0f, solid, room);
+    addBox("Back Wall", glm::vec3(outer, halfRoom, halfThickness), glm::vec3(0.0f, halfRoom, -outer), 0.0f, solid, room);
+    addBox("Left Wall", glm::vec3(halfThickness, halfRoom, outer), glm::vec3(-outer, halfRoom, 0.0f), 0.0f, solid, room);
+    addBox("Right Wall", glm::vec3(halfThickness, halfRoom, outer), glm::vec3(outer, halfRoom, 0.0f), 0.0f, solid, room);
 
-    LsNodeId light = scene->AddShape("Key Light", LsShape::Sphere(0.25f), eRoleLightEmitter);
+    // Just below the ceiling, so the ceiling doesn't shadow it
+    LsNodeId light = addBox("Light", glm::vec3(0.25f, 0.01f, 0.2f), glm::vec3(0.0f, 2.0f*halfRoom - 0.02f, 0.0f), 0.0f,
+                            eRoleLightEmitter, room);
     LsSceneNodeProperties properties = scene->Find(light)->GetProperties();
-    properties.placement.translation = glm::vec3(2.0f, 3.0f, 2.0f);
-    // Lights the sphere to about mid grey at the default exposure
-    properties.emissionIntensity = 150.0f;
+    properties.emissionColor = glm::vec3(1.0f, 0.85f, 0.7f);
+    // Lights the floor to about mid grey at the default exposure
+    properties.emissionIntensity = 60.0f;
     scene->SetProperties(light, properties);
 
-    // Looking at the sphere from the front, slightly above
+    // The classic pair, turned towards each other
+    addBox("Tall Box", glm::vec3(0.3f, 0.6f, 0.3f), glm::vec3(-0.35f, 0.6f, -0.3f), 18.0f, solid, kLsInvalidNode);
+    addBox("Short Box", glm::vec3(0.3f, 0.3f, 0.3f), glm::vec3(0.35f, 0.3f, 0.35f), -18.0f, solid, kLsInvalidNode);
+
+    // Looking into the room through the open front, which just fills the frame
     LsNodeId camera = scene->AddCamera("Canvas Camera");
-    LsCamera view = LsCamera::LookAt(glm::vec3(0.0f, 1.2f, 4.0f), glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 40.0f, 1.0f);
+    LsCamera view = LsCamera::LookAt(glm::vec3(0.0f, halfRoom, 3.9f), glm::vec3(0.0f, halfRoom, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 40.0f, 1.0f);
     scene->SetPlacement(camera, LsPlacement::FromMatrix(view.GetCameraToWorld()));
   }
 
@@ -308,7 +373,8 @@ public:
   void DrawDockedPanels() {
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
-    // Rebuild the layout on every launch, so a layout saved in imgui.ini can't move the panel
+    // Rebuild the layout on every launch, so each session starts from it. Panels can be
+    // undocked and rearranged while it runs.
     if (!dockLayoutBuilt) {
       ImGui::DockBuilderRemoveNode(dockspaceId);
       ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
@@ -318,9 +384,6 @@ public:
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
       ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.25f, nullptr, &propertiesId);
-      ImGui::DockBuilderGetNode(sceneId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
-      ImGui::DockBuilderGetNode(propertiesId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
-      ImGui::DockBuilderGetNode(brushId)->LocalFlags |= ImGuiDockNodeFlags_NoUndocking;
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
       ImGui::DockBuilderDockWindow("Brush", brushId);

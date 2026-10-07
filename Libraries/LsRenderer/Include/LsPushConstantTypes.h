@@ -12,12 +12,6 @@ struct PointPushConstants {
   float size = 1.0f;
 };
 
-struct PaintPushConstants {
-  float position[2]; // 8
-  //float color[4]; // 16
-  float radius;
-};
-
 struct ImagePushConstants {
 	float positions[12]; // 2x4=8
 };

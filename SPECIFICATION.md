@@ -7,22 +7,34 @@ In traditional painting rendering comes as a final process that is performed man
 
 CANVAS
 ------
-Each pixel in the canvas represents a paint in 3D space.
+Each pixel in the canvas represents a point in 3D space storing following information:
 
-1. World Position
-2. Absolute Normal
-3. BRDF function
+1. Position in space (represented by distance along the ray between canvas point and camera center)
+2. Surface Normal
+3. Material (as BRDF function parametrized by surface-specific properties)
+4. Light Rig (which emitters and shadow casters light the pixel, painted with light strokes)
 
 The BRDF function contains information about color and surface properties that will be used to determine final light output towards the canvas pixel.
 
-Pixel color is determined by performing a single path trace to scene light sources.
+Pixel color is determined by tracing from the pixel's position to the emitters of its light rig, see RENDERING.
+
+### Position storage
+
+A pixel stores its position as the distance t from the canvas camera centre along the unit length ray through the pixel centre, and the world position is reconstructed when needed as `camera position + ray direction * t`. A distance of 0 means the pixel has no position yet.
+
+1. A point can't leave its ray, so it always projects back onto its own pixel. Brushes can't move a point to another pixel by accident or through numerical drift.
+2. One fp32 value per pixel instead of three (256 MB instead of 768 MB at 8000x8000).
+3. Brushes work on one value: transferring from an SDF takes the hit distance of the ray march as it is, and smoothing, flattening or pushing/pulling depth (question 21) blend distances of neighbouring pixels without drifting off the rays.
+4. fp32 and linear, not a hyperbolic z-buffer depth, since shadow rays start from these positions.
+
+Positions are tied to the canvas camera: moving the camera or changing its field of view moves every painted point with it. The painting keeps its pixels and only its relation to the scene changes, see question 15.
 
 SCENE
 -----
 Collection of geometrical primitives used to influence scene geoemetry during painting. The scene geometry is specified using SDF functions.
 
 1. Shadow Caster
-2. Surface Normal
+2. Solid
 3. Light Emitter
 4. Participating Media
 
@@ -42,15 +54,21 @@ The details are still open, see Modeling under OPEN QUESTIONS.
 
 BRUSH
 -----
-A brush is used to transfer various pixel attributes onto canvas pixels. A typical workflow is passing SDF primitive in the scene and painting its position and normals into canvas. Then setting up a light rig and painting BRDF information with color and surface properties. The light rig simply contains information about which occluders and emitters are enabled per pixel.
+A brush is used to transfer various pixel attributes onto canvas pixels. A typical workflow is passing SDF primitive in the scene and painting its position and normals into canvas. Then setting up a light rig, painting it onto the canvas with a light stroke, and painting BRDF information with color and surface properties. The light rig contains information about which occluders and emitters are enabled per pixel, see LIGHT RIG.
 
 Construction geometry serves as a general layout guide for large shapes while individual brush strokes can provide local attribute overrides to accentuate high-detail features in an image without having to resort to complex 3D sculpting. An artist may layout a head as a oval shape and then alter normals to create detailed face.
 
+LIGHT RIG
+---------
+A light rig is a set of emitters and shadow casters that are switched on. The artist selects which lights and casters are on, or picks a saved preset, and paints the rig onto canvas pixels with a light stroke. Each pixel stores the rig it was painted with, so different regions of the canvas can be lit by different rigs (a rim light only one figure sees, a key light used only on the background), which is how painters light anyway, while each rig on its own stays physically correct.
+[LsUtility](Libraries/LsUtility)
+Emitters and casters live in the scene, so moving or editing one changes every pixel whose rig includes it.
+
 RENDERING
 ---------
-Each pixel of physically based digital painting is rendered using raytracing. The entire hemisphere of rays must be traced for each voxel corresponding to pixel on canvas. Secondary bounces need not be considred, only tracing to emitters and checking for shadow casters.
+Each pixel of physically based digital painting is rendered using raytracing. The entire hemisphere of rays must be traced for each voxel corresponding to pixel on canvas, against the emitters and shadow casters of the pixel's light rig. Secondary bounces need not be considered, only tracing to emitters and checking for shadow casters.
 
-Changes in light rig will trigger rerendering, same as change in voxel properties, such as BRDF or normal changes. Changes in sccene geoemtry which is not part of light rig, but that was used as construction geometry to set base voxel positions will not trigger rerender, unless their positions are transferred onto the voxels.
+A pixel is re-rendered when its own attributes change (position, normal, BRDF, light rig) or when an emitter or shadow caster in its rig is changed. Changes in scene geometry which is not part of any light rig, but that was used as construction geometry to set base voxel positions, will not trigger a re-render, unless their positions are transferred onto the voxels.
 
 REFLECTIONS (REVERSE LIGHT TRACING)
 -----------------------------------
@@ -115,6 +133,8 @@ Since some light can be area lights (SDF geometric objects as emitters) we need 
 
 4. Is World Position free 3D, or constrained to lie on the canvas camera ray through the pixel (so it can be stored as a single depth value)? Painting a position off the ray would make the point project to a different pixel - is that allowed?
    Answer:
+
+   Constrained to the ray, stored as the distance along it, see Position storage under CANVAS. Off the ray is not allowed.
 
 5. What happens with pixels that have no position yet (never painted)? Background colour, environment light, transparent, excluded from rendering?
    Answer: They will show microwave background radioation from Big Bang. No, they are just black.
@@ -198,6 +218,8 @@ No, painted points do not cas shadows. The artist places shadow casters in the s
 18. How does the brush transfer position/normal from an SDF: ray-march from the canvas camera through each covered pixel and take the first hit? What about pixels the brush covers where the ray misses the SDF?
     Answer:
 
+    For a first pass, the brush sphere traces the construction geometry from the canvas camera through each covered pixel centre and writes the distance of the first hit. Pixels whose ray misses keep what they had.
+
 19. Can a stroke write a selected subset of channels (e.g. only normal, only roughness, only light-rig mask) - i.e. channel locks/masks per brush?
     Answer:
 
@@ -211,6 +233,8 @@ No, painted points do not cas shadows. The artist places shadow casters in the s
 
 22. Light rig per pixel "contains information about which occluders and emitters are enabled". How many emitters/occluders must be addressable (a 32-bit mask? 64?). Are light-rig masks painted with the same brush, and can there be named light rigs/presets?
     Answer:
+
+    The artist selects which lights are on, or picks a preset, and paints with it in a light stroke (see LIGHT RIG). The mask size and how soft brush edges blend two rigs are still open, see question 45.
 
 23. Colour picking: in which colour space is albedo painted (sRGB picker, linear storage)? Is there an eyedropper that picks rendered colour vs. stored albedo?
     Answer:
@@ -253,6 +277,14 @@ Stored attribute should be the default choice for picking.
     Answer:
 
     Correct, the same normal does not give the same reflection under perspective, so the reflected directions must be recomputed per voxel from its own view direction. Painted light stays at infinite distance; only the lookup direction changes.
+
+### Light rig
+
+45. How does a soft brush edge or partial opacity blend two rigs? Options: the pixel stores one rig (hard edges only); it stores a weight per light (a partly-on light); or it stores up to two rigs with a blend weight.
+    Answer:
+
+46. Parked: storing captured incident light per pixel instead of a rig, which would decouple the canvas from the scene so pixels change only when painted. Set aside because a sharp per-pixel light environment is too large (gigabytes at 8000x8000 even compressed); the most compact form found was storing frozen emitter snapshots plus per-pixel visibility.
+    Answer:
 
 ### Application
 

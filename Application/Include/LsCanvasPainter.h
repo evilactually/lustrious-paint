@@ -5,11 +5,13 @@
 #include <glm/glm.hpp>
 #include <LsFSdlEventHandler.h>
 #include <LsCanvasNavigator.h>
+#include <LsCanvas.h>
 
 class LsCanvasPainter: public LsFSdlEventHandler
 {
   std::shared_ptr<LsRenderer> renderer;
   std::shared_ptr<LsCanvasNavigator> navigator;
+  std::shared_ptr<LsCanvas> canvas;
   SDL_FPoint grabOffset;
   bool dragging = false;
   bool painting = false;
@@ -25,7 +27,8 @@ class LsCanvasPainter: public LsFSdlEventHandler
   void BeginStroke(glm::vec2 canvasPoint);
   void ContinueStroke(glm::vec2 canvasPoint);
 public:
-  LsCanvasPainter(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsCanvasNavigator> navigator);
+  LsCanvasPainter(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsCanvasNavigator> navigator,
+                  std::shared_ptr<LsCanvas> canvas);
   ~LsCanvasPainter();
   void Render();
   bool HitTest(SDL_FPoint point);

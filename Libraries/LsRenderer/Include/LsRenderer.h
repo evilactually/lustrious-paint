@@ -23,6 +23,7 @@ class LsRenderer {
 #endif
   friend class LsImage;
   friend class LsSceneView;
+  friend class LsCanvas;
 public:
   LsRenderer(SDL_Window* window);
   ~LsRenderer();
@@ -59,9 +60,6 @@ public:
   // SetVertexBuffer(&VertexBuffer)
   // DrawLines(void)
   // DrawPoints(void)
-  void CanvasStroke(float x, float y, float radius);
-  // Paints a dab at each position (canvas pixels) in order, with a single submission
-  void CanvasStroke(const std::vector<glm::vec2>& dabs, float radius);
   // Dear ImGui: a UI frame is started by BeginFrame and drawn on top of everything by EndFrame,
   // so ImGui:: calls can be made anywhere in between
   bool ProcessUiEvent(const SDL_Event& event); // returns true when the UI captures the event
@@ -82,7 +80,6 @@ private:
   void RenderUi();
 
   void getComputeQueue();
-  //void CanvasStroke();
   void BeginDrawing();
   void EndDrawing();
 #ifdef GIF_RECORDING
@@ -217,16 +214,7 @@ private:
     VkImageView view;
     VkImageLayout imageLayout;
     VkDescriptorImageInfo descriptor;
-    VkDescriptorSetLayout descriptorSetLayout;
-    VkDescriptorSet descriptorSet;
-    VkPipelineLayout pipelineLayout;
-    VkShaderModule paintComputeShader;
-    VkPipeline pipeline;
     uint32_t queueFamilyIndex;
-    VkQueue queue;
-    VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
-    VkFence fence;
   } canvasState;
 
   struct {

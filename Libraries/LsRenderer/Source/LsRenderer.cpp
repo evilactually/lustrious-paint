@@ -1256,11 +1256,12 @@ void LsRenderer::InitializeCanvas(uint32_t width, uint32_t height) {
   imageCreateInfo.arrayLayers = 1;
   imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
   imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-  imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+  imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   imageCreateInfo.queueFamilyIndexCount = 0;
   imageCreateInfo.pQueueFamilyIndices = nullptr;
-  imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_GENERAL; //was undefined?
+  // LsCanvas clears it and moves it to the general layout on its first frame
+  imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   VkMemoryRequirements memoryRequirements;
   if (vkCreateImage(device, &imageCreateInfo, nullptr, &canvasState.image) != VK_SUCCESS) {
@@ -1319,192 +1320,18 @@ void LsRenderer::InitializeCanvas(uint32_t width, uint32_t height) {
   canvasState.descriptor.imageView = canvasState.view;
   canvasState.descriptor.imageLayout = canvasState.imageLayout;
 
-  // Create vkDescriptorSetLayout, needed by Allocate and CreatePipeline
-  VkDescriptorSetLayoutBinding setLayoutBinding {};
-  setLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  setLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  setLayoutBinding.binding = 0;
-  setLayoutBinding.descriptorCount = 1;
-
-
-  VkDescriptorSetLayoutCreateInfo descriptorLayout {};
-  descriptorLayout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  descriptorLayout.pBindings = &setLayoutBinding;
-  descriptorLayout.bindingCount = 1;
-
-  vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr, &canvasState.descriptorSetLayout);
-
-  // Descriptor pool
-  //VkDescriptorPool descriptorPool;
+  // Descriptor pool for drawing the canvas, LsCanvas paints it with its own descriptors
   VkDescriptorPoolSize descriptorPoolSize {};
-  descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  descriptorPoolSize.descriptorCount = 1;
-  std::vector<VkDescriptorPoolSize> poolSizes;
-  poolSizes.push_back(descriptorPoolSize);
   descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  poolSizes.push_back(descriptorPoolSize);
+  descriptorPoolSize.descriptorCount = 1;
 
   VkDescriptorPoolCreateInfo descriptorPoolInfo {};
   descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  descriptorPoolInfo.poolSizeCount = poolSizes.size();
-  descriptorPoolInfo.pPoolSizes = poolSizes.data();
-  descriptorPoolInfo.maxSets = 2;
-  
+  descriptorPoolInfo.poolSizeCount = 1;
+  descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
+  descriptorPoolInfo.maxSets = 1;
+
   vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool);
-
-  // Allocate descriptor sets
-  VkDescriptorSetAllocateInfo descriptorSetAllocateInfo {};
-  descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  descriptorSetAllocateInfo.descriptorPool = descriptorPool;
-  descriptorSetAllocateInfo.pSetLayouts = &canvasState.descriptorSetLayout; // NULL POINTER !
-  descriptorSetAllocateInfo.descriptorSetCount = 1;
-
-  vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &canvasState.descriptorSet);
-  //vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &canvasState.descriptorSet);
-
-  VkWriteDescriptorSet writeDescriptorSet {};
-  writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  writeDescriptorSet.dstSet = canvasState.descriptorSet;
-  writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  writeDescriptorSet.dstBinding = 0;
-  writeDescriptorSet.pImageInfo = &canvasState.descriptor;
-  writeDescriptorSet.descriptorCount = 1;
-  vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, NULL);
-
-  // Create Pipeline Layout
-  VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo {};
-  pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutCreateInfo.setLayoutCount = 1;
-  pipelineLayoutCreateInfo.pSetLayouts = &canvasState.descriptorSetLayout;
-
-
-  VkPushConstantRange pushConstantRange = {
-    VK_SHADER_STAGE_COMPUTE_BIT,
-    0,
-    sizeof(PaintPushConstants)
-  };
-
-  pipelineLayoutCreateInfo.flags = 0;
-  //pipelineLayoutCreateInfo.setLayoutCount = 0;
-  //pipelineLayoutCreateInfo.pSetLayouts = nullptr;
-  pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-  pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
-
-  vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &canvasState.pipelineLayout);
-
-  // Create pipeline
-  VkComputePipelineCreateInfo computePipelineCreateInfo {};
-  computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  computePipelineCreateInfo.layout = canvasState.pipelineLayout;
-  computePipelineCreateInfo.flags = 0;
-
-  // ...shader stage
-  VkPipelineShaderStageCreateInfo shaderStage = {};
-  shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  shaderStage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  shaderStage.module = CreateShaderModule(device, "Shaders/paint.comp.spv" );
-  shaderStage.pName = "main"; // todo : make param
-  assert(shaderStage.module != VK_NULL_HANDLE);
-  canvasState.paintComputeShader = shaderStage.module;
-
-  computePipelineCreateInfo.stage = shaderStage;
-
-  vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &canvasState.pipeline);
-
-  // Get queue, queue was already created during device creation, we are just getting it
-  vkGetDeviceQueue(device, canvasState.queueFamilyIndex, 0, &canvasState.queue);
-  
-  // Create command pool, separate command pool as queue family for compute may be different than graphics
-  VkCommandPoolCreateInfo cmdPoolInfo = {};
-  cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cmdPoolInfo.queueFamilyIndex = canvasState.queueFamilyIndex;
-  cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &canvasState.commandPool);
-
-  // Allocate command buffers  
-  VkCommandBufferAllocateInfo commandBufferAllocateInfo {};
-  commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  commandBufferAllocateInfo.commandPool = canvasState.commandPool;
-  commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  commandBufferAllocateInfo.commandBufferCount = 1;
-  vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &canvasState.commandBuffer);
-
-  // Fence for compute CB sync
-  VkFenceCreateInfo fenceCreateInfo {};
-  fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  vkCreateFence(device, &fenceCreateInfo, nullptr, &canvasState.fence);
-
-  //BuildComputeCommandBuffer();
-  cout << "Size: " << sizeof(PaintPushConstants) << std::endl;
-
-}
-
-void LsRenderer::CanvasStroke(float x, float y, float radius)
-{
-  CanvasStroke(std::vector<glm::vec2>{ glm::vec2(x, y) }, radius);
-}
-
-void LsRenderer::CanvasStroke(const std::vector<glm::vec2>& dabs, float radius)
-{
-  if (dabs.empty()) {
-    return;
-  }
-
-  // Flush the queue if we're rebuilding the command buffer after a pipeline change to ensure it's not currently in use
-  vkQueueWaitIdle(canvasState.queue);
-
-  VkCommandBufferBeginInfo cmdBufferBeginInfo {};
-  cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-  vkBeginCommandBuffer(canvasState.commandBuffer, &cmdBufferBeginInfo);
-
-  vkCmdBindPipeline(canvasState.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, canvasState.pipeline);
-  vkCmdBindDescriptorSets(canvasState.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, canvasState.pipelineLayout, 0, 1, &canvasState.descriptorSet, 0, 0);
-
-  // Each dab reads and writes the canvas after the previous one, so they composite in order
-  VkMemoryBarrier dabBarrier {};
-  dabBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-  dabBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  dabBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-
-  for (size_t i = 0; i < dabs.size(); i++) {
-    if (i > 0) {
-      vkCmdPipelineBarrier( canvasState.commandBuffer,
-                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            0,
-                            1, &dabBarrier,
-                            0, nullptr,
-                            0, nullptr );
-    }
-
-    PaintPushConstants paintPushConstants;
-    paintPushConstants.position[0] = dabs[i].x;
-    paintPushConstants.position[1] = dabs[i].y;
-    paintPushConstants.radius = radius;
-
-    vkCmdPushConstants( canvasState.commandBuffer,
-                        canvasState.pipelineLayout,
-                        VK_SHADER_STAGE_COMPUTE_BIT,
-                        0, // offset
-                        sizeof(PaintPushConstants),
-                        &paintPushConstants );
-
-    vkCmdDispatch(canvasState.commandBuffer, canvasState.width / 16, canvasState.height / 16, 1);
-  }
-
-  vkEndCommandBuffer(canvasState.commandBuffer);
-
-  vkWaitForFences(device, 1, &canvasState.fence, VK_TRUE, UINT64_MAX);
-  vkResetFences(device, 1, &canvasState.fence);
-
-  VkSubmitInfo computeSubmitInfo {};
-  computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  computeSubmitInfo.commandBufferCount = 1;
-  computeSubmitInfo.pCommandBuffers = &canvasState.commandBuffer;
-
-  vkQueueSubmit(canvasState.queue, 1, &computeSubmitInfo, canvasState.fence);
 }
 
 void LsRenderer::BeginDrawing() {

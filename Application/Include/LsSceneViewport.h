@@ -50,10 +50,10 @@ class LsSceneViewport
   bool gizmoLocal = false;
 
   // Orbit camera: looks at target from distance, yaw about +Y and pitch above the horizon
-  glm::vec3 target = glm::vec3(0.0f, 0.6f, 1.5f);
-  float distance = 9.0f;
-  float yaw = 55.0f;   // in degrees
-  float pitch = 22.0f; // in degrees
+  glm::vec3 target = glm::vec3(0.0f, 1.0f, 0.5f);
+  float distance = 8.0f;
+  float yaw = 35.0f;   // in degrees
+  float pitch = 20.0f; // in degrees
   float fov = 50.0f;   // vertical, in degrees
   Navigation navigation = Navigation::None;
   float flySpeedScale = 1.0f;

@@ -4,8 +4,9 @@
 #include <LsRenderer.h>
 #include <LsCanvasPainter.h>
 
-LsCanvasPainter::LsCanvasPainter(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsCanvasNavigator> navigator) :
-  renderer(renderer), navigator(navigator) {}
+LsCanvasPainter::LsCanvasPainter(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsCanvasNavigator> navigator,
+                                 std::shared_ptr<LsCanvas> canvas) :
+  renderer(renderer), navigator(navigator), canvas(canvas) {}
 
 LsCanvasPainter::~LsCanvasPainter() {
 
@@ -38,7 +39,7 @@ float LsCanvasPainter::GetDabSpacing() {
 }
 
 void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
-  renderer->CanvasStroke(canvasPoint.x, canvasPoint.y, brushRadius/navigator->GetZoom());
+  canvas->Paint({ canvasPoint }, brushRadius/navigator->GetZoom());
   lastStrokeSample = canvasPoint;
   distanceToNextDab = GetDabSpacing();
 }
@@ -61,7 +62,7 @@ void LsCanvasPainter::ContinueStroke(glm::vec2 canvasPoint) {
   }
   lastStrokeSample = canvasPoint;
 
-  renderer->CanvasStroke(dabs, brushRadius/navigator->GetZoom());
+  canvas->Paint(dabs, brushRadius/navigator->GetZoom());
 }
 
 void LsCanvasPainter::OnSdlEvent(const SDL_Event& event) {
