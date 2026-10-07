@@ -410,3 +410,17 @@ TEST_CASE( "history" ) {
   history.Update(false);
   REQUIRE_FALSE(history.CanRedo());
 }
+
+TEST_CASE( "camera lens shift" ) {
+  LsCamera camera = LsCamera::LookAt({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 90.0f, 1.0f);
+  camera.SetLensShift({0.5f, -0.25f});
+  // The image centre looks off the axis by the shift
+  REQUIRE(Near(camera.GenerateRay({0.0f, 0.0f}).direction, glm::normalize(glm::vec3(0.5f, -0.25f, -1.0f))));
+  REQUIRE(Near(camera.GetImagePlanePoint({1.0f, 1.0f}, 2.0f), {3.0f, 1.5f, -2.0f}));
+  glm::vec2 ndc;
+  REQUIRE(camera.Project(camera.GenerateRay({0.3f, 0.7f}).At(5.0f), ndc));
+  REQUIRE(Near(glm::vec3(ndc, 0.0f), {0.3f, 0.7f, 0.0f}));
+  // The forward axis itself lands off centre
+  REQUIRE(camera.Project({0.0f, 0.0f, -1.0f}, ndc));
+  REQUIRE(Near(glm::vec3(ndc, 0.0f), {-0.5f, 0.25f, 0.0f}));
+}

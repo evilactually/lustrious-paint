@@ -51,7 +51,8 @@ glm::mat4 LsCamera::GetCameraToWorld() const {
 LsRay LsCamera::GenerateRay(glm::vec2 ndc) const {
   LsRay ray;
   ray.origin = position;
-  ray.direction = glm::normalize(forward + right*(ndc.x*tanHalfFovY*aspect) + up*(ndc.y*tanHalfFovY));
+  ray.direction = glm::normalize(forward + right*(ndc.x*tanHalfFovY*aspect + lensShift.x) +
+                                           up*(ndc.y*tanHalfFovY + lensShift.y));
   return ray;
 }
 
@@ -65,11 +66,12 @@ bool LsCamera::Project(glm::vec3 world, glm::vec2& ndc) const {
   if (depth <= 1.0e-6f) {
     return false;
   }
-  ndc.x = glm::dot(d, right)/(depth*tanHalfFovY*aspect);
-  ndc.y = glm::dot(d, up)/(depth*tanHalfFovY);
+  ndc.x = (glm::dot(d, right)/depth - lensShift.x)/(tanHalfFovY*aspect);
+  ndc.y = (glm::dot(d, up)/depth - lensShift.y)/tanHalfFovY;
   return true;
 }
 
 glm::vec3 LsCamera::GetImagePlanePoint(glm::vec2 ndc, float depth) const {
-  return position + (forward + right*(ndc.x*tanHalfFovY*aspect) + up*(ndc.y*tanHalfFovY))*depth;
+  return position + (forward + right*(ndc.x*tanHalfFovY*aspect + lensShift.x) +
+                                up*(ndc.y*tanHalfFovY + lensShift.y))*depth;
 }
