@@ -30,34 +30,112 @@ struct ScenePrimitive
   uint nodeId;
 };
 
-// Signed distance in object space, see LsShape::Distance
+// A shape built from its packed ScenePrimitive::shapeParams
+interface IShape
+{
+  __init(float4 params);
+  // Signed distance in object space, see LsShape::Distance
+  float distance(float3 p);
+};
+
+struct Sphere : IShape
+{
+  float radius;
+
+  __init(float4 params) { radius = params.x; }
+
+  float distance(float3 p)
+  {
+    return length(p) - radius;
+  }
+};
+
+struct Box : IShape
+{
+  float3 halfExtents;
+  float rounding;
+
+  __init(float4 params) { halfExtents = params.xyz; rounding = params.w; }
+
+  float distance(float3 p)
+  {
+    float3 q = abs(p) - (halfExtents - rounding);
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - rounding;
+  }
+};
+
+struct Capsule : IShape
+{
+  float halfHeight;
+  float radius;
+
+  __init(float4 params) { halfHeight = params.x; radius = params.y; }
+
+  float distance(float3 p)
+  {
+    p.y -= clamp(p.y, -halfHeight, halfHeight);
+    return length(p) - radius;
+  }
+};
+
+struct Cylinder : IShape
+{
+  float halfHeight;
+  float radius;
+
+  __init(float4 params) { halfHeight = params.x; radius = params.y; }
+
+  float distance(float3 p)
+  {
+    float2 d = abs(float2(length(p.xz), p.y)) - float2(radius, halfHeight);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+  }
+};
+
+struct Torus : IShape
+{
+  float majorRadius;
+  float minorRadius;
+
+  __init(float4 params) { majorRadius = params.x; minorRadius = params.y; }
+
+  float distance(float3 p)
+  {
+    float2 q = float2(length(p.xz) - majorRadius, p.y);
+    return length(q) - minorRadius;
+  }
+};
+
+// Two-sided square, see LsShape::Distance
+struct Plane : IShape
+{
+  float halfSize;
+
+  __init(float4 params) { halfSize = params.x; }
+
+  float distance(float3 p)
+  {
+    float2 outside = max(abs(p.xz) - halfSize, 0.0);
+    return length(float3(outside.x, p.y, outside.y));
+  }
+};
+
+float shapeDistance<S : IShape>(float4 params, float3 p)
+{
+  return S(params).distance(p);
+}
+
+// Dispatches on the runtime shape type
 float shapeDistance(uint shapeType, float4 params, float3 p)
 {
   switch (shapeType) {
-    case SHAPE_SPHERE:
-      return length(p) - params.x;
-    case SHAPE_BOX: {
-      float3 q = abs(p) - (params.xyz - params.w);
-      return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - params.w;
-    }
-    case SHAPE_CAPSULE:
-      p.y -= clamp(p.y, -params.x, params.x);
-      return length(p) - params.y;
-    case SHAPE_CYLINDER: {
-      float2 d = abs(float2(length(p.xz), p.y)) - float2(params.y, params.x);
-      return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-    }
-    case SHAPE_TORUS: {
-      float2 q = float2(length(p.xz) - params.x, p.y);
-      return length(q) - params.y;
-    }
-    case SHAPE_PLANE: {
-      // Two-sided square, see LsShape::Distance
-      float2 outside = max(abs(p.xz) - params.x, 0.0);
-      return length(float3(outside.x, p.y, outside.y));
-    }
-    default:
-      return 0.0;
+    case SHAPE_SPHERE:   return shapeDistance<Sphere>(params, p);
+    case SHAPE_BOX:      return shapeDistance<Box>(params, p);
+    case SHAPE_CAPSULE:  return shapeDistance<Capsule>(params, p);
+    case SHAPE_CYLINDER: return shapeDistance<Cylinder>(params, p);
+    case SHAPE_TORUS:    return shapeDistance<Torus>(params, p);
+    case SHAPE_PLANE:    return shapeDistance<Plane>(params, p);
+    default:             return 0.0;
   }
 }
 
