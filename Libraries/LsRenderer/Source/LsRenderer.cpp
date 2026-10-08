@@ -776,6 +776,7 @@ void LsRenderer::BeginFrame() {
   }
 
   vkResetFences( device, 1, &submitCompleteFence );
+  frameNumber++;
 
   VkResult result = vkAcquireNextImageKHR( device,
                                            swapChainInfo.swapChain, 

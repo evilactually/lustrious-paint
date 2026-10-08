@@ -91,6 +91,15 @@ class LsSceneViewport
   LsNodeId drawnHover = kLsInvalidNode;
   LsNodeId hovered = kLsInvalidNode;
 
+  // Surfaces are picked by rays traced on the GPU with the view, their results
+  // arrive a frame later. 0 when nothing is waiting.
+  LsRaycastTicket hoverTicket = 0;
+  LsNodeId hoveredSurface = kLsInvalidNode;
+  LsRaycastTicket selectTicket = 0;
+  LsRaycastTicket cursorTicket = 0;
+  LsRay cursorRay = {};
+  LsRaycastTicket orbitTicket = 0;
+
   LsViewportProjection projection;
   bool viewHovered = false;
   bool viewPressed = false;
@@ -134,7 +143,10 @@ class LsSceneViewport
   // Camera nodes that are not hidden, apart from the one being looked through
   std::vector<LsNodeId> GetDrawnCameras() const;
   LsNodeId PickCamera(glm::vec2 mouse) const;
-  LsNodeId Pick(glm::vec2 mouse) const;
+  // Applies the results of the rays that have come back from the GPU
+  void UpdatePicks();
+  // Forgets the rays still being traced, their results no longer apply
+  void CancelPicks();
 
   void DrawToolbar();
   void DrawAddMenu();
@@ -171,7 +183,10 @@ public:
   float& SceneOverCanvasOpacity() { return sceneOverCanvasOpacity; }
   LsSceneOverlay& SceneOverlay() { return sceneOverlay; }
   // Frames must keep coming even without input, such as while flying with keys held
-  bool IsAnimating() const { return navigation == Navigation::Fly || mode == Mode::ToScene || mode == Mode::ToCanvas; }
+  // and while a click waits for its ray to come back
+  bool IsAnimating() const {
+    return navigation == Navigation::Fly || mode == Mode::ToScene || mode == Mode::ToCanvas || selectTicket || cursorTicket;
+  }
   // An edit made through the view is still going on, such as a drag, the scene
   // changes are not finished yet
   bool IsEditing() const { return gizmo.IsActive() || navigation != Navigation::None; }

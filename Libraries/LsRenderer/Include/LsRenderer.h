@@ -169,6 +169,9 @@ private:
   } semaphores;
 
   VkFence submitCompleteFence;      // protects command buffer from being reset too soon
+  // Counts BeginFrame calls. Work recorded in one frame has finished on the GPU
+  // once a later frame has begun, there is only one frame in flight.
+  uint64_t frameNumber = 0;
   
   VkRenderPass renderPass;
 

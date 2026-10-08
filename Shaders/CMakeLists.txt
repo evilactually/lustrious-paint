@@ -40,6 +40,7 @@ add_slang_entry_point(canvas paintMain   compute  paint.comp)
 add_slang_entry_point(canvas rangeMain   compute  range.comp)
 add_slang_entry_point(canvas resolveMain compute  resolve.comp)
 add_slang_entry_point(viewport computeMain compute comp)
+add_slang_entry_point(pick pickMain compute comp)
 add_slang_entry_point(sceneline vertexMain   vertex   vert)
 add_slang_entry_point(sceneline fragmentMain fragment frag)
 

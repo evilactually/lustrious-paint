@@ -33,6 +33,38 @@ struct LsSceneLinePushConstants
 };
 static_assert(sizeof(LsSceneLinePushConstants) == 64, "LsSceneLinePushConstants must match sceneline.slang");
 
+// Mirror PickPushConstants, PickRay and PickHit in Shaders/pick.slang
+struct LsPickPushConstants
+{
+  uint32_t primitiveCount;
+  uint32_t rayCount;
+  uint32_t pad[2];
+};
+static_assert(sizeof(LsPickPushConstants) == 16, "LsPickPushConstants must match pick.slang");
+
+struct LsPickRay
+{
+  glm::vec4 origin;    // w = max distance
+  glm::vec4 direction; // unit length
+  uint32_t roleMask;
+  uint32_t pad[3];
+};
+static_assert(sizeof(LsPickRay) == 48, "LsPickRay must match pick.slang");
+
+struct LsPickHit
+{
+  glm::vec4 position; // w = distance along the ray
+  glm::vec4 normal;
+  uint32_t nodeId;
+  uint32_t hit;
+  uint32_t pad[2];
+};
+static_assert(sizeof(LsPickHit) == 48, "LsPickHit must match pick.slang");
+
+// More than the editor asks for in a frame, the rest wait for the next one
+static const uint32_t kMaxRaysPerFrame = 64;
+static const uint32_t kPickWorkGroupSize = 64;
+
 static const uint32_t kViewLit = 1u << 0;
 static const uint32_t kViewOutlines = 1u << 1;
 static const uint32_t kViewOutlinesOnly = 1u << 2;
@@ -65,15 +97,16 @@ LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(render
     throw std::string("Could not create scene view descriptor set layout!");
   }
 
-  // The tracer's set writes the colour and depth images, the line set reads the depth
+  // The tracer's set writes the colour and depth images, the line set reads the
+  // depth, the pick set reads the primitives and rays and writes the hits
   VkDescriptorPoolSize poolSizes[3] = {
     { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 },
-    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 },
     { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1 },
   };
   VkDescriptorPoolCreateInfo poolInfo = {};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.maxSets = 2;
+  poolInfo.maxSets = 3;
   poolInfo.poolSizeCount = 3;
   poolInfo.pPoolSizes = poolSizes;
   if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
@@ -127,6 +160,7 @@ LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(render
   }
 
   CreateLinePipeline();
+  CreatePickPipeline();
   CreatePrimitiveBuffer(64);
 }
 
@@ -134,6 +168,12 @@ LsSceneView::~LsSceneView() {
   vkDeviceWaitIdle(device);
   DestroyTarget();
   DestroyPrimitiveBuffer();
+  DestroyHostBuffer(rayBuffer);
+  DestroyHostBuffer(hitBuffer);
+  vkDestroyPipeline(device, pickPipeline, nullptr);
+  vkDestroyPipelineLayout(device, pickPipelineLayout, nullptr);
+  vkDestroyDescriptorSetLayout(device, pickDescriptorSetLayout, nullptr);
+  vkDestroyShaderModule(device, pickShader, nullptr);
   vkDestroyPipeline(device, linePipeline, nullptr);
   vkDestroyPipelineLayout(device, linePipelineLayout, nullptr);
   vkDestroyRenderPass(device, lineRenderPass, nullptr);
@@ -374,6 +414,95 @@ void LsSceneView::CreateLinePipeline() {
   }
 }
 
+void LsSceneView::CreatePickPipeline() {
+  pickShader = CreateShaderModule(device, "Shaders/pick.comp.spv");
+
+  // Primitives, rays and hits
+  VkDescriptorSetLayoutBinding bindings[3] = {};
+  for (uint32_t i = 0; i < 3; i++) {
+    bindings[i].binding = i;
+    bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[i].descriptorCount = 1;
+    bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  }
+  VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+  layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  layoutInfo.bindingCount = 3;
+  layoutInfo.pBindings = bindings;
+  if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &pickDescriptorSetLayout) != VK_SUCCESS) {
+    throw std::string("Could not create scene pick descriptor set layout!");
+  }
+  VkDescriptorSetAllocateInfo allocateInfo = {};
+  allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  allocateInfo.descriptorPool = descriptorPool;
+  allocateInfo.descriptorSetCount = 1;
+  allocateInfo.pSetLayouts = &pickDescriptorSetLayout;
+  if (vkAllocateDescriptorSets(device, &allocateInfo, &pickDescriptorSet) != VK_SUCCESS) {
+    throw std::string("Could not allocate scene pick descriptor set!");
+  }
+
+  VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(LsPickPushConstants) };
+  VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+  pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  pipelineLayoutInfo.setLayoutCount = 1;
+  pipelineLayoutInfo.pSetLayouts = &pickDescriptorSetLayout;
+  pipelineLayoutInfo.pushConstantRangeCount = 1;
+  pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+  if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pickPipelineLayout) != VK_SUCCESS) {
+    throw std::string("Could not create scene pick pipeline layout!");
+  }
+
+  VkComputePipelineCreateInfo pipelineInfo = {};
+  pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipelineInfo.layout = pickPipelineLayout;
+  pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  pipelineInfo.stage.module = pickShader;
+  pipelineInfo.stage.pName = "main";
+  if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pickPipeline) != VK_SUCCESS) {
+    throw std::string("Could not create scene pick pipeline!");
+  }
+
+  CreateHostBuffer(kMaxRaysPerFrame*sizeof(LsPickRay), rayBuffer);
+  CreateHostBuffer(kMaxRaysPerFrame*sizeof(LsPickHit), hitBuffer);
+}
+
+void LsSceneView::CreateHostBuffer(VkDeviceSize size, HostBuffer& buffer) {
+  VkBufferCreateInfo bufferInfo = {};
+  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  bufferInfo.size = size;
+  bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
+    throw std::string("Could not create scene view host buffer!");
+  }
+  VkMemoryRequirements requirements;
+  vkGetBufferMemoryRequirements(device, buffer.buffer, &requirements);
+  VkMemoryAllocateInfo allocateInfo = {};
+  allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocateInfo.allocationSize = requirements.size;
+  allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  if (vkAllocateMemory(device, &allocateInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
+    throw std::string("Could not allocate scene view host buffer memory!");
+  }
+  vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
+  vkMapMemory(device, buffer.memory, 0, VK_WHOLE_SIZE, 0, &buffer.mapped);
+}
+
+void LsSceneView::DestroyHostBuffer(HostBuffer& buffer) {
+  if (buffer.mapped) {
+    vkUnmapMemory(device, buffer.memory);
+  }
+  if (buffer.buffer) {
+    vkDestroyBuffer(device, buffer.buffer, nullptr);
+  }
+  if (buffer.memory) {
+    vkFreeMemory(device, buffer.memory, nullptr);
+  }
+  buffer = {};
+}
+
 void LsSceneView::CreatePrimitiveBuffer(size_t capacity) {
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -419,8 +548,10 @@ void LsSceneView::UpdateDescriptors() {
   VkDescriptorImageInfo imageInfo = { VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorImageInfo depthInfo = { VK_NULL_HANDLE, target.depthView, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorBufferInfo bufferInfo = { primitiveBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo rayInfo = { rayBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo hitInfo = { hitBuffer.buffer, 0, VK_WHOLE_SIZE };
 
-  VkWriteDescriptorSet writes[4] = {};
+  VkWriteDescriptorSet writes[7] = {};
   uint32_t writeCount = 0;
   auto writeImage = [&](VkDescriptorSet set, uint32_t binding, const VkDescriptorImageInfo* info,
                         VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
@@ -437,14 +568,22 @@ void LsSceneView::UpdateDescriptors() {
     writeImage(descriptorSet, 2, &depthInfo);
     writeImage(lineDescriptorSet, 0, &depthInfo, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
   }
-  if (primitiveBuffer.buffer) {
+  auto writeBuffer = [&](VkDescriptorSet set, uint32_t binding, const VkDescriptorBufferInfo* info) {
     writes[writeCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[writeCount].dstSet = descriptorSet;
-    writes[writeCount].dstBinding = 1;
+    writes[writeCount].dstSet = set;
+    writes[writeCount].dstBinding = binding;
     writes[writeCount].descriptorCount = 1;
     writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    writes[writeCount].pBufferInfo = &bufferInfo;
+    writes[writeCount].pBufferInfo = info;
     writeCount++;
+  };
+  if (primitiveBuffer.buffer) {
+    writeBuffer(descriptorSet, 1, &bufferInfo);
+    writeBuffer(pickDescriptorSet, 0, &bufferInfo);
+  }
+  if (rayBuffer.buffer && hitBuffer.buffer) {
+    writeBuffer(pickDescriptorSet, 1, &rayInfo);
+    writeBuffer(pickDescriptorSet, 2, &hitInfo);
   }
   vkUpdateDescriptorSets(device, writeCount, writes, 0, nullptr);
 }
@@ -456,6 +595,85 @@ void LsSceneView::SetPrimitives(const std::vector<LsScenePrimitive>& primitives)
 
 ImTextureID LsSceneView::GetTexture() const {
   return reinterpret_cast<ImTextureID>(target.texture);
+}
+
+LsRaycastTicket LsSceneView::QueueRaycast(const LsRay& ray, LsSceneRoles roleMask, float maxDistance) {
+  LsRaycastTicket ticket = nextTicket++;
+  queuedRays.push_back({ ticket, ray, roleMask, maxDistance });
+  return ticket;
+}
+
+LsRaycastStatus LsSceneView::GetRaycast(LsRaycastTicket ticket, LsSceneHit& hit) {
+  CollectRaycasts();
+  auto found = completed.find(ticket);
+  if (found != completed.end()) {
+    if (!found->second.hit) {
+      return LsRaycastStatus::Miss;
+    }
+    hit = found->second.sceneHit;
+    return LsRaycastStatus::Hit;
+  }
+  bool queued = std::any_of(queuedRays.begin(), queuedRays.end(), [&](const QueuedRay& r) { return r.ticket == ticket; });
+  bool traced = std::find(tracedTickets.begin(), tracedTickets.end(), ticket) != tracedTickets.end();
+  return queued || traced ? LsRaycastStatus::Pending : LsRaycastStatus::Unknown;
+}
+
+void LsSceneView::CollectRaycasts() {
+  if (tracedTickets.empty() || renderer->frameNumber <= tracedFrame) {
+    return;
+  }
+  completed.clear();
+  const LsPickHit* hits = static_cast<const LsPickHit*>(hitBuffer.mapped);
+  for (size_t i = 0; i < tracedTickets.size(); i++) {
+    Completed result = {};
+    result.hit = hits[i].hit != 0;
+    if (result.hit) {
+      result.sceneHit.node = hits[i].nodeId;
+      result.sceneHit.position = glm::vec3(hits[i].position);
+      result.sceneHit.distance = hits[i].position.w;
+      result.sceneHit.normal = glm::vec3(hits[i].normal);
+    }
+    completed[tracedTickets[i]] = result;
+  }
+  tracedTickets.clear();
+}
+
+void LsSceneView::TraceQueuedRays(VkCommandBuffer commandBuffer) {
+  // The last rays' hits are read before they are overwritten, and rays recorded
+  // earlier in this frame still own the buffers
+  CollectRaycasts();
+  if (queuedRays.empty() || !tracedTickets.empty()) {
+    return;
+  }
+
+  uint32_t count = static_cast<uint32_t>(std::min<size_t>(queuedRays.size(), kMaxRaysPerFrame));
+  LsPickRay* rays = static_cast<LsPickRay*>(rayBuffer.mapped);
+  for (uint32_t i = 0; i < count; i++) {
+    const QueuedRay& queued = queuedRays[i];
+    rays[i] = {};
+    rays[i].origin = glm::vec4(queued.ray.origin, queued.maxDistance);
+    rays[i].direction = glm::vec4(glm::normalize(queued.ray.direction), 0.0f);
+    rays[i].roleMask = queued.roleMask;
+    tracedTickets.push_back(queued.ticket);
+  }
+  queuedRays.erase(queuedRays.begin(), queuedRays.begin() + count);
+  tracedFrame = renderer->frameNumber;
+
+  LsPickPushConstants constants = {};
+  constants.primitiveCount = static_cast<uint32_t>(primitives.size());
+  constants.rayCount = count;
+  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pickPipeline);
+  vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pickPipelineLayout, 0, 1, &pickDescriptorSet, 0, nullptr);
+  vkCmdPushConstants(commandBuffer, pickPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+  vkCmdDispatch(commandBuffer, (count + kPickWorkGroupSize - 1)/kPickWorkGroupSize, 1, 1);
+
+  // Read on the host once the frame's fence has been waited on
+  VkMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
 void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera, const LsSceneViewSettings& settings) {
@@ -487,6 +705,8 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
     renderer->EndDrawing();
   }
   VkCommandBuffer commandBuffer = renderer->commandBuffer;
+
+  TraceQueuedRays(commandBuffer);
 
   VkImageMemoryBarrier barriers[2] = {};
   for (int i = 0; i < 2; i++) {

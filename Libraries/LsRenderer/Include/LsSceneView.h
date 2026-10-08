@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include <vulkan_dynamic.hpp>
 #include <imgui.h>
@@ -40,6 +41,17 @@ struct LsSceneViewSettings
   bool outlines = false;
   // Only the outlines on a transparent image, without shading, grid or media
   bool outlinesOnly = false;
+};
+
+// Handle to a ray queued with LsSceneView::QueueRaycast, 0 is never one
+using LsRaycastTicket = uint64_t;
+
+enum class LsRaycastStatus
+{
+  Pending, // not traced yet, or traced in the frame still being recorded
+  Hit,
+  Miss,
+  Unknown, // never queued, or its result was dropped
 };
 
 //-------------------------------------------------------------------------------
@@ -97,6 +109,46 @@ class LsSceneView
   std::vector<LsScenePrimitive> primitives;
   bool primitivesDirty = true;
 
+  // Ray queries, traced on the GPU against the same primitives as the image
+  VkShaderModule pickShader = VK_NULL_HANDLE;
+  VkDescriptorSetLayout pickDescriptorSetLayout = VK_NULL_HANDLE;
+  VkDescriptorSet pickDescriptorSet = VK_NULL_HANDLE;
+  VkPipelineLayout pickPipelineLayout = VK_NULL_HANDLE;
+  VkPipeline pickPipeline = VK_NULL_HANDLE;
+  // Rays in, hits out, both in host memory and small enough for a frame's queries
+  struct HostBuffer {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  };
+  HostBuffer rayBuffer;
+  HostBuffer hitBuffer;
+  struct QueuedRay {
+    LsRaycastTicket ticket;
+    LsRay ray;
+    LsSceneRoles roleMask;
+    float maxDistance;
+  };
+  // Waiting for the next Render
+  std::vector<QueuedRay> queuedRays;
+  // Recorded by a Render, their hits are in hitBuffer once a later frame begins
+  std::vector<LsRaycastTicket> tracedTickets;
+  uint64_t tracedFrame = 0;
+  // Read back from hitBuffer, kept until the next rays are traced
+  struct Completed {
+    bool hit;
+    LsSceneHit sceneHit;
+  };
+  std::unordered_map<LsRaycastTicket, Completed> completed;
+  LsRaycastTicket nextTicket = 1;
+
+  void CreatePickPipeline();
+  void CreateHostBuffer(VkDeviceSize size, HostBuffer& buffer);
+  void DestroyHostBuffer(HostBuffer& buffer);
+  // Moves the hits of the traced rays into the completed results once the GPU is done
+  void CollectRaycasts();
+  void TraceQueuedRays(VkCommandBuffer commandBuffer);
+
   uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties) const;
   void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage,
                    VkImage& image, VkDeviceMemory& memory, VkImageView& view);
@@ -123,4 +175,11 @@ public:
   void Render(uint32_t width, uint32_t height, const LsCamera& camera, const LsSceneViewSettings& settings);
   // Valid after the first Render, changes when the size does
   ImTextureID GetTexture() const;
+
+  // Queues a ray to trace like LsRaycastPrimitives, against the primitives the
+  // next Render uploads. Its result is ready in the frame after that Render.
+  LsRaycastTicket QueueRaycast(const LsRay& ray, LsSceneRoles roleMask, float maxDistance);
+  // The result of a queued ray, hit is set when it hit something. Results are
+  // kept until the Render after they are ready, so read them before that.
+  LsRaycastStatus GetRaycast(LsRaycastTicket ticket, LsSceneHit& hit);
 };

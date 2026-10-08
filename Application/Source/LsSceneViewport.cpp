@@ -141,11 +141,10 @@ void LsSceneViewport::SyncOrbitToCamera() {
     return;
   }
   LsCamera camera = scene->GetCamera(active, GetCanvasAspect());
-  // Orbiting a locked camera should turn it about its subject, not a point behind it
-  LsSceneHit hit;
-  LsRay ray = { camera.GetPosition(), camera.GetForward() };
-  if (LsRaycastPrimitives(primitives, ray, kLsAllRoles, kMaxDistance, hit)) {
-    distance = glm::clamp(hit.distance, kMinDistance, kMaxDistance);
+  // Orbiting a locked camera should turn it about its subject, not a point behind
+  // it. The distance to that comes a frame later, see UpdatePicks.
+  if (!orbitTicket) {
+    orbitTicket = view->QueueRaycast({ camera.GetPosition(), camera.GetForward() }, kLsAllRoles, kMaxDistance);
   }
   SetOrbitFromCamera(camera);
 }
@@ -244,17 +243,63 @@ void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
 }
 
 void LsSceneViewport::PlaceCursor(glm::vec2 mouse) {
-  LsRay ray = projection.GetRay(mouse);
+  // Moves when the ray comes back, see UpdatePicks
+  cursorRay = projection.GetRay(mouse);
+  cursorTicket = view->QueueRaycast(cursorRay, kLsAllRoles, kMaxDistance);
+}
+
+void LsSceneViewport::UpdatePicks() {
+  // Clears the ticket once its result is in
+  auto resolve = [this](LsRaycastTicket& ticket, LsSceneHit& hit) {
+    LsRaycastStatus status = ticket ? view->GetRaycast(ticket, hit) : LsRaycastStatus::Unknown;
+    if (status != LsRaycastStatus::Pending) {
+      ticket = 0;
+    }
+    return status;
+  };
   LsSceneHit hit;
-  if (LsRaycastPrimitives(primitives, ray, kLsAllRoles, kMaxDistance, hit)) {
-    cursor = hit.position;
+
+  LsRaycastStatus status = resolve(hoverTicket, hit);
+  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
+    hoveredSurface = status == LsRaycastStatus::Hit ? hit.node : kLsInvalidNode;
   }
-  else if (std::abs(ray.direction.y) > 1.0e-4f && ray.origin.y*ray.direction.y < 0.0f) {
-    // Nothing there, the ground plane through the origin stands in
-    cursor = ray.At(-ray.origin.y/ray.direction.y);
+
+  // Clicking empty space deselects
+  status = resolve(selectTicket, hit);
+  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
+    editor->SetSelected(status == LsRaycastStatus::Hit ? hit.node : kLsInvalidNode);
   }
-  // The Scene panel's Add menu puts new objects there as well
-  editor->SetCreationPoint(cursor);
+
+  status = resolve(cursorTicket, hit);
+  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
+    const LsRay& ray = cursorRay;
+    if (status == LsRaycastStatus::Hit) {
+      cursor = hit.position;
+    }
+    else if (std::abs(ray.direction.y) > 1.0e-4f && ray.origin.y*ray.direction.y < 0.0f) {
+      // Nothing there, the ground plane through the origin stands in
+      cursor = ray.At(-ray.origin.y/ray.direction.y);
+    }
+    // The Scene panel's Add menu puts new objects there as well
+    editor->SetCreationPoint(cursor);
+  }
+
+  // The camera keeps its pose, only the point it orbits about moves. Navigating
+  // has taken over from the camera in the meantime, the old pose no longer applies.
+  status = resolve(orbitTicket, hit);
+  LsNodeId active = scene->GetActiveCamera();
+  if (status == LsRaycastStatus::Hit && lookThrough && navigation == Navigation::None && active != kLsInvalidNode) {
+    distance = glm::clamp(hit.distance, kMinDistance, kMaxDistance);
+    SetOrbitFromCamera(scene->GetCamera(active, GetCanvasAspect()));
+  }
+}
+
+void LsSceneViewport::CancelPicks() {
+  hoverTicket = 0;
+  hoveredSurface = kLsInvalidNode;
+  selectTicket = 0;
+  cursorTicket = 0;
+  orbitTicket = 0;
 }
 
 void LsSceneViewport::DrawCursor(ImDrawList* drawList) const {
@@ -524,19 +569,6 @@ LsNodeId LsSceneViewport::PickCamera(glm::vec2 mouse) const {
     }
   }
   return best;
-}
-
-LsNodeId LsSceneViewport::Pick(glm::vec2 mouse) const {
-  // Wireframes are thin, they win over the surfaces behind them
-  LsNodeId camera = PickCamera(mouse);
-  if (camera != kLsInvalidNode) {
-    return camera;
-  }
-  LsSceneHit hit;
-  if (LsRaycastPrimitives(primitives, projection.GetRay(mouse), kLsAllRoles, 1000.0f, hit)) {
-    return hit.node;
-  }
-  return kLsInvalidNode;
 }
 
 void LsSceneViewport::DrawCameras(ImDrawList* drawList) const {
@@ -940,6 +972,7 @@ void LsSceneViewport::DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size) {
 void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
   if (mode == Mode::Canvas) {
     viewHovered = false;
+    CancelPicks();
     if (sceneOverCanvas) {
       DrawSceneOverCanvas(origin, size);
     }
@@ -992,6 +1025,7 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
 
   projection.origin = origin;
   projection.size = size;
+  UpdatePicks();
   if (interactive) {
     // The camera may have been moved elsewhere, such as in the properties panel
     if (lookThrough && navigation == Navigation::None) {
@@ -1009,7 +1043,22 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
   }
 
   bool mouseFree = viewInput && navigation == Navigation::None && !io.KeyAlt && ImGui::IsMousePosValid();
-  hovered = mouseFree && !gizmo.IsHovered() && !gizmo.IsActive() ? Pick(mouse) : kLsInvalidNode;
+  hovered = kLsInvalidNode;
+  if (mouseFree && !gizmo.IsHovered() && !gizmo.IsActive()) {
+    // Wireframes are thin, they win over the surfaces behind them. The surface
+    // is the one under the mouse a frame ago.
+    hovered = PickCamera(mouse);
+    if (hovered == kLsInvalidNode) {
+      hovered = hoveredSurface;
+    }
+    if (!hoverTicket) {
+      hoverTicket = view->QueueRaycast(projection.GetRay(mouse), kLsAllRoles, 1000.0f);
+    }
+  }
+  else {
+    hoverTicket = 0;
+    hoveredSurface = kLsInvalidNode;
+  }
 
   // Render at the display's pixel density rather than in UI points
   UpdatePrimitives();
@@ -1062,7 +1111,15 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
       PlaceCursor(mouse);
     }
     if (mouseFree && leftClicked && !gizmo.IsActive()) {
-      editor->SetSelected(Pick(mouse));
+      LsNodeId camera = PickCamera(mouse);
+      if (camera != kLsInvalidNode) {
+        editor->SetSelected(camera);
+        selectTicket = 0;
+      }
+      else {
+        // Selects when the ray comes back, see UpdatePicks
+        selectTicket = view->QueueRaycast(projection.GetRay(mouse), kLsAllRoles, 1000.0f);
+      }
     }
     DrawCursor(drawList);
 
