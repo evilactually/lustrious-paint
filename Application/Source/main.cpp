@@ -50,9 +50,6 @@ class Application: LsFSdlEventHandler {
   // The canvas starts in the middle of its area, once the layout has given the area a size
   bool canvasCentered = false;
 
-  // Placeholder tools until the brush modes exist
-  enum class Tool { Brush, Smooth, Inflate };
-  Tool currentTool = Tool::Brush;
 public:
   Application() {
     LsCloseConsole();
@@ -160,6 +157,7 @@ public:
 
       DrawDockedPanels();
       DrawToolbar();
+      HandleToolShortcuts();
       HandleViewToggle(overUi);
 
       // Strokes painted since the last frame, before anything draws the canvas
@@ -232,6 +230,19 @@ public:
       canvas->ClearCamera();
     }
     canvas->Render();
+  }
+
+  // B and E pick the brush and the eraser, as in most painting applications
+  void HandleToolShortcuts() {
+    if (ImGui::GetIO().WantTextInput || sceneViewport->IsShowingScene()) {
+      return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+      canvasPainter->SetTool(LsPaintTool::Brush);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+      canvasPainter->SetTool(LsPaintTool::Eraser);
+    }
   }
 
   // Tab over the canvas shows or hides the scene over it, in the 3D view it goes
@@ -326,10 +337,9 @@ public:
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::Begin("##Toolbar", nullptr, flags);
 
-    struct { const char* label; Tool tool; } buttons[] = {
-      { "Brush", Tool::Brush },
-      { "Smooth", Tool::Smooth },
-      { "Inflate", Tool::Inflate },
+    struct { const char* label; LsPaintTool tool; const char* tooltip; } buttons[] = {
+      { "Brush", LsPaintTool::Brush, "Paint positions from the construction geometry (B)" },
+      { "Eraser", LsPaintTool::Eraser, "Remove painted positions (E)" },
     };
 
     const ImVec2 buttonSize(ImGui::GetFontSize()*5.0f, 0.0f);
@@ -345,24 +355,33 @@ public:
     }
     ImGui::SetItemTooltip("Show the scene over the canvas, as the canvas camera sees it (Tab)");
     if (sceneShown) {
+      int overlay = static_cast<int>(sceneViewport->SceneOverlay());
+      ImGui::SetNextItemWidth(buttonSize.x);
+      if (ImGui::Combo("##SceneOverlay", &overlay, "Shaded\0Outlines\0Both\0")) {
+        sceneViewport->SceneOverlay() = static_cast<LsSceneOverlay>(overlay);
+      }
+      ImGui::SetItemTooltip("Show the scene shaded, as outlines of its shapes, or both");
       ImGui::SetNextItemWidth(buttonSize.x);
       ImGui::SliderFloat("##SceneOpacity", &sceneViewport->SceneOverCanvasOpacity(), 0.0f, 1.0f, "%.2f");
       ImGui::SetItemTooltip("Opacity of the scene over the canvas");
     }
-    // for (const auto& button : buttons) {
-    //   // The selected tool is drawn in the accent colour
-    //   bool selected = currentTool == button.tool;
-    //   if (selected) {
-    //     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-    //     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive));
-    //   }
-    //   if (ImGui::Button(button.label, buttonSize)) {
-    //     currentTool = button.tool;
-    //   }
-    //   if (selected) {
-    //     ImGui::PopStyleColor(2);
-    //   }
-    // }
+
+    ImGui::Spacing();
+    for (const auto& button : buttons) {
+      // The selected tool is drawn in the accent colour
+      bool selected = canvasPainter->GetTool() == button.tool;
+      if (selected) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive));
+      }
+      if (ImGui::Button(button.label, buttonSize)) {
+        canvasPainter->SetTool(button.tool);
+      }
+      if (selected) {
+        ImGui::PopStyleColor(2);
+      }
+      ImGui::SetItemTooltip("%s", button.tooltip);
+    }
 
     ImGui::End();
     ImGui::PopStyleVar();

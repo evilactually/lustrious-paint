@@ -923,7 +923,10 @@ void LsSceneViewport::DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size) {
   hovered = kLsInvalidNode;
   UpdatePrimitives();
   glm::vec2 pixels = glm::max(glm::floor(projection.size*LsToVec2(ImGui::GetIO().DisplayFramebufferScale)), glm::vec2(1.0f));
-  view->Render(static_cast<uint32_t>(pixels.x), static_cast<uint32_t>(pixels.y), camera, settings);
+  LsSceneViewSettings overlaySettings = settings;
+  overlaySettings.outlines = sceneOverlay != LsSceneOverlay::Shaded;
+  overlaySettings.outlinesOnly = sceneOverlay == LsSceneOverlay::Outlines;
+  view->Render(static_cast<uint32_t>(pixels.x), static_cast<uint32_t>(pixels.y), camera, overlaySettings);
 
   // The background list goes under every window but over what the renderer drew, the canvas
   ImDrawList* drawList = ImGui::GetBackgroundDrawList();

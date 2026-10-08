@@ -13,6 +13,14 @@ class LsRenderer;
 class LsSceneEditor;
 struct ImDrawList;
 
+// How the scene is shown over the canvas
+enum class LsSceneOverlay
+{
+  Shaded,
+  Outlines,
+  ShadedWithOutlines,
+};
+
 //-------------------------------------------------------------------------------
 // @ LsSceneViewport
 //-------------------------------------------------------------------------------
@@ -94,6 +102,7 @@ class LsSceneViewport
   // The scene over the canvas while painting, so it shows what is painted over
   bool sceneOverCanvas = false;
   float sceneOverCanvasOpacity = 0.5f;
+  LsSceneOverlay sceneOverlay = LsSceneOverlay::Outlines;
 
   glm::vec3 GetOrbitPosition() const;
   LsCamera GetOrbitCamera(float aspect) const;
@@ -160,6 +169,7 @@ public:
   bool IsSceneOverCanvas() const { return sceneOverCanvas; }
   void SetSceneOverCanvas(bool shown) { sceneOverCanvas = shown; }
   float& SceneOverCanvasOpacity() { return sceneOverCanvasOpacity; }
+  LsSceneOverlay& SceneOverlay() { return sceneOverlay; }
   // Frames must keep coming even without input, such as while flying with keys held
   bool IsAnimating() const { return navigation == Navigation::Fly || mode == Mode::ToScene || mode == Mode::ToCanvas; }
   // An edit made through the view is still going on, such as a drag, the scene

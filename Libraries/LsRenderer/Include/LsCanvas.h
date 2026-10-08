@@ -17,6 +17,13 @@ enum class LsCanvasDisplay : uint32_t
   Position = 1, // absolute world coordinates in RGB
 };
 
+// What a dab does to the pixels it covers. Values are shared with Shaders/canvas.slang.
+enum class LsCanvasDabMode : uint32_t
+{
+  Transfer = 0, // positions from the construction geometry
+  Erase = 1,    // back to no position
+};
+
 //-------------------------------------------------------------------------------
 // @ LsCanvas
 //-------------------------------------------------------------------------------
@@ -87,6 +94,7 @@ class LsCanvas
   struct Dab {
     glm::vec2 center; // in canvas pixels
     float radius;     // in canvas pixels
+    LsCanvasDabMode mode;
   };
   std::vector<Dab> dabs;
 
@@ -118,7 +126,7 @@ public:
   float GetIsolineSpacing() const { return isolineSpacing; }
   void SetIsolineSpacing(float spacing);
   // Queues a dab for each centre in order, positions and radius in canvas pixels
-  void Paint(const std::vector<glm::vec2>& centers, float radius);
+  void Paint(const std::vector<glm::vec2>& centers, float radius, LsCanvasDabMode mode = LsCanvasDabMode::Transfer);
   // Records the queued dabs and, when anything changed, the canvas image into
   // the current frame. Call between BeginFrame and EndFrame, before the canvas
   // is drawn.

@@ -35,6 +35,11 @@ struct LsSceneViewSettings
   bool grid = true;
   // In stops, used when lit
   float exposure = 0.0f;
+  // Outline every shape the way the selection is outlined: silhouettes against
+  // whatever is behind them, not the inner edges of a shape
+  bool outlines = false;
+  // Only the outlines on a transparent image, without shading, grid or media
+  bool outlinesOnly = false;
 };
 
 //-------------------------------------------------------------------------------

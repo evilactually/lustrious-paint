@@ -12,6 +12,10 @@ static const uint PRIMITIVE_HOVERED  = 1u << 30;
 static const uint PRIMITIVE_UNASSIGNED = 1u << 29;
 
 static const uint VIEW_LIT  = 1u << 0;
+// Outline every shape the way the selection is outlined
+static const uint VIEW_OUTLINES = 1u << 1;
+// Only the outlines, everything else transparent, for drawing over the canvas
+static const uint VIEW_OUTLINES_ONLY = 1u << 2;
 
 static const uint SURFACE_ROLES = ROLE_CONSTRUCTION | ROLE_SHADOW_CASTER | ROLE_LIGHT_EMITTER | PRIMITIVE_UNASSIGNED;
 
@@ -55,6 +59,43 @@ struct Hit
   uint index; // ~0 when nothing was hit
 };
 
+// The two different primitives a ray came closest to, in pixels, so the closest
+// approach to any primitive other than the one it hits is known at the end
+struct NearMisses
+{
+  float pixels[2];
+  uint index[2];
+
+  [mutating]
+  void add(uint i, float p)
+  {
+    if (i == index[0]) {
+      pixels[0] = min(pixels[0], p);
+    }
+    else if (i == index[1]) {
+      pixels[1] = min(pixels[1], p);
+    }
+    else if (p < pixels[1]) {
+      pixels[1] = p;
+      index[1] = i;
+    }
+    if (pixels[1] < pixels[0]) {
+      float swapPixels = pixels[0];
+      uint swapIndex = index[0];
+      pixels[0] = pixels[1];
+      index[0] = index[1];
+      pixels[1] = swapPixels;
+      index[1] = swapIndex;
+    }
+  }
+
+  // Closest approach to anything but the given primitive
+  float excluding(uint i)
+  {
+    return index[0] == i ? pixels[1] : pixels[0];
+  }
+};
+
 // Union of primitives with any role in roleMask, skipping one primitive
 float distanceTo(float3 p, uint roleMask, uint skip, out uint closest)
 {
@@ -76,16 +117,23 @@ float distanceTo(float3 p, uint roleMask, uint skip, out uint closest)
 // Closest approach of the ray to the selection, in pixels, so the outline keeps
 // its width at any distance. The selection counts whatever its roles are, so a
 // selected medium gets an outline from the surface pass too.
-Hit trace(float3 origin, float3 direction, uint roleMask, out float selectionPixels)
+// Near misses of the traced primitives are gathered for outlines.
+Hit trace(float3 origin, float3 direction, uint roleMask, out float selectionPixels, out NearMisses nearMisses)
 {
   Hit hit;
   hit.t = MAX_DISTANCE;
   hit.index = ~0u;
   selectionPixels = 1.0e30;
+  nearMisses.pixels[0] = 1.0e30;
+  nearMisses.pixels[1] = 1.0e30;
+  nearMisses.index[0] = ~0u;
+  nearMisses.index[1] = ~0u;
+  bool outlines = (view.flags & VIEW_OUTLINES) != 0;
 
   float t = 0.0;
   for (int step = 0; step < MAX_STEPS && t < MAX_DISTANCE; step++) {
     float3 p = origin + direction*t;
+    float footprint = max(t, 1.0e-3)*view.pixelAngle;
     float distance = 1.0e30;
     float selectedDistance = 1.0e30;
     uint closest = ~0u;
@@ -101,11 +149,13 @@ Hit trace(float3 origin, float3 direction, uint roleMask, out float selectionPix
         distance = d;
         closest = i;
       }
+      if (traced && outlines) {
+        nearMisses.add(i, d/footprint);
+      }
       if (selected) {
         selectedDistance = min(selectedDistance, d);
       }
     }
-    float footprint = max(t, 1.0e-3)*view.pixelAngle;
     selectionPixels = min(selectionPixels, selectedDistance/footprint);
     if (closest != ~0u && distance < 0.25*footprint) {
       hit.t = t;
@@ -249,7 +299,25 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
   bool lit = (view.flags & VIEW_LIT) != 0;
 
   float selectionPixels;
-  Hit hit = trace(origin, direction, SURFACE_ROLES, selectionPixels);
+  NearMisses nearMisses;
+  Hit hit = trace(origin, direction, SURFACE_ROLES, selectionPixels, nearMisses);
+  bool outlinesOnly = (view.flags & VIEW_OUTLINES_ONLY) != 0;
+  // Shapes the ray passed within about a pixel of, without hitting them
+  float outlinePixels = nearMisses.excluding(hit.index);
+  float outline = outlinePixels > 0.0 ? 1.0 - smoothstep(0.75, 1.5, outlinePixels) : 0.0;
+  if (outlinesOnly) {
+    // Straight alpha, the UI blends it over the canvas. The selection keeps its colour.
+    float4 line = float4(1.0, 1.0, 1.0, outline);
+    if (selectionPixels > 0.0 && selectionPixels < 2.0 &&
+        (hit.index == ~0u || (primitives[hit.index].roles & PRIMITIVE_SELECTED) == 0)) {
+      float selection = 1.0 - smoothstep(1.0, 2.0, selectionPixels);
+      line = lerp(line, float4(1.0, 0.55, 0.15, 1.0), selection);
+    }
+    outputImage[globalId.xy] = line;
+    float3 viewAxis = normalize(cross(view.up.xyz, view.right.xyz));
+    depthImage[globalId.xy] = hit.index != ~0u ? hit.t*dot(direction, viewAxis) : 1.0e30;
+    return;
+  }
 
   float3 color;
   if (hit.index != ~0u) {
@@ -285,7 +353,8 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
 
   // Participating media composite over everything behind them
   float mediaPixels;
-  Hit media = trace(origin, direction, ROLE_PARTICIPATING_MEDIA, mediaPixels);
+  NearMisses mediaMisses;
+  Hit media = trace(origin, direction, ROLE_PARTICIPATING_MEDIA, mediaPixels, mediaMisses);
   if (media.index != ~0u && media.t < hit.t) {
     ScenePrimitive medium = primitives[media.index];
     // Thickness of the medium in front of the surface, by fixed steps through it
@@ -305,6 +374,8 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
     }
     color = lerp(color, fog, opacity*0.8);
   }
+
+  color = lerp(color, float3(0.9, 0.9, 0.88), outline*0.8);
 
   // Outline around the visible part of the selection, from rays that came close
   // but went past it (rays through a selected medium went inside instead)

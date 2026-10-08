@@ -12,6 +12,9 @@ import scene;
 static const uint DISPLAY_DEPTH    = 0;
 static const uint DISPLAY_POSITION = 1;
 
+static const uint DAB_TRANSFER = 0;
+static const uint DAB_ERASE    = 1;
+
 struct CanvasPushConstants
 {
   float4 origin;  // xyz = canvas camera position
@@ -26,7 +29,7 @@ struct CanvasPushConstants
   float pixelAngle; // tan(fov/2)*2/height, footprint of a pixel one unit away
   uint display;     // DISPLAY_*
   float isolineSpacing; // view depth between isolines, 0 for none
-  float pad2;
+  uint dabMode;     // DAB_*
 };
 
 [[vk::push_constant]]
@@ -116,6 +119,11 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
   }
   float2 delta = float2(pixel) + 0.5 - canvas.dabCenter;
   if (dot(delta, delta) >= canvas.dabRadius*canvas.dabRadius) {
+    return;
+  }
+
+  if (canvas.dabMode == DAB_ERASE) {
+    distanceImage[pixel] = 0.0;
     return;
   }
 

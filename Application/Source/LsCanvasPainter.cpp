@@ -39,7 +39,8 @@ float LsCanvasPainter::GetDabSpacing() {
 }
 
 void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
-  canvas->Paint({ canvasPoint }, brushRadius/navigator->GetZoom());
+  strokeMode = tool == LsPaintTool::Eraser ? LsCanvasDabMode::Erase : LsCanvasDabMode::Transfer;
+  canvas->Paint({ canvasPoint }, brushRadius/navigator->GetZoom(), strokeMode);
   lastStrokeSample = canvasPoint;
   distanceToNextDab = GetDabSpacing();
 }
@@ -62,7 +63,7 @@ void LsCanvasPainter::ContinueStroke(glm::vec2 canvasPoint) {
   }
   lastStrokeSample = canvasPoint;
 
-  canvas->Paint(dabs, brushRadius/navigator->GetZoom());
+  canvas->Paint(dabs, brushRadius/navigator->GetZoom(), strokeMode);
 }
 
 void LsCanvasPainter::OnSdlEvent(const SDL_Event& event) {

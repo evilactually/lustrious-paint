@@ -22,7 +22,7 @@ struct LsCanvasPushConstants
   float pixelAngle;
   uint32_t display;
   float isolineSpacing; // 0 for none
-  float pad;
+  uint32_t dabMode;
 };
 static_assert(sizeof(LsCanvasPushConstants) == 112, "LsCanvasPushConstants must match canvas.slang");
 
@@ -311,9 +311,9 @@ void LsCanvas::SetIsolineSpacing(float spacing) {
   }
 }
 
-void LsCanvas::Paint(const std::vector<glm::vec2>& centers, float radius) {
+void LsCanvas::Paint(const std::vector<glm::vec2>& centers, float radius, LsCanvasDabMode mode) {
   for (const glm::vec2& center : centers) {
-    dabs.push_back({ center, radius });
+    dabs.push_back({ center, radius, mode });
   }
 }
 
@@ -435,6 +435,7 @@ void LsCanvas::Render() {
     constants.offset[1] = first.y;
     constants.dabCenter = dab.center;
     constants.dabRadius = dab.radius;
+    constants.dabMode = static_cast<uint32_t>(dab.mode);
     vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
     glm::uvec2 extent = glm::uvec2(last - first) + 1u;
     vkCmdDispatch(commandBuffer, (extent.x + kWorkGroupSize - 1)/kWorkGroupSize, (extent.y + kWorkGroupSize - 1)/kWorkGroupSize, 1);

@@ -34,6 +34,8 @@ struct LsSceneLinePushConstants
 static_assert(sizeof(LsSceneLinePushConstants) == 64, "LsSceneLinePushConstants must match sceneline.slang");
 
 static const uint32_t kViewLit = 1u << 0;
+static const uint32_t kViewOutlines = 1u << 1;
+static const uint32_t kViewOutlinesOnly = 1u << 2;
 static const uint32_t kWorkGroupSize = 8;
 // Lines nearer than this are cut off, in world units
 static const float kLineNearDepth = 0.01f;
@@ -516,7 +518,9 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
   constants.size[0] = width;
   constants.size[1] = height;
   constants.primitiveCount = static_cast<uint32_t>(primitives.size());
-  constants.flags = settings.lit ? kViewLit : 0;
+  constants.flags = (settings.lit ? kViewLit : 0) |
+                    (settings.outlines || settings.outlinesOnly ? kViewOutlines : 0) |
+                    (settings.outlinesOnly ? kViewOutlinesOnly : 0);
   constants.pixelAngle = 2.0f*tanHalfFov/static_cast<float>(height);
 
   vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
@@ -536,7 +540,7 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                        0, 0, nullptr, 0, nullptr, 2, barriers);
 
-  if (settings.grid) {
+  if (settings.grid && !settings.outlinesOnly) {
     AppendGrid(camera);
   }
   DrawLines(commandBuffer, camera);
