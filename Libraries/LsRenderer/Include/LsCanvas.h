@@ -74,6 +74,19 @@ struct LsLightRig
 // Rigs are kept in this many slots, slot 0 is no rig: only the scene's emitters
 const uint32_t kLsMaxRigs = 256;
 
+// The painted attributes of every pixel as stored on the GPU, row by row, for
+// saving: distance along the ray, octahedral normal, the two packed halves of
+// the BRDF and the light rig index, see canvas.slang
+struct LsCanvasAttributes
+{
+  uint32_t width = 0, height = 0;
+  std::vector<float> distance;
+  std::vector<uint32_t> normal;
+  std::vector<uint32_t> materialColor;
+  std::vector<uint32_t> materialSurface;
+  std::vector<uint32_t> rig;
+};
+
 // Reflectance of a painted point, the metallic-roughness model of glTF 2.0 with
 // pbrt-v4's Trowbridge-Reitz microfacets, see Shaders/brdf.slang
 struct LsBrdfParameters
@@ -296,6 +309,28 @@ class LsCanvas
   bool pickedRigReady = false;
   uint32_t pickedRig = 0;
   void CollectPick();
+  // Reading the attributes back: requested, copied into the staging buffer in
+  // a frame, then read once that frame has finished
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+  } readbackBuffer;
+  bool readbackRequested = false;
+  bool readbackRecorded = false;
+  uint64_t readbackFrame = 0;
+  void RecordReadback(VkCommandBuffer commandBuffer);
+  void DestroyReadbackBuffer();
+  // Uploading attributes: filled by SetAttributes, copied to the images in the
+  // next Render and freed once that frame has finished
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+  } uploadBuffer;
+  bool uploadPending = false;
+  bool uploadRecorded = false;
+  uint64_t uploadFrame = 0;
+  void RecordUpload(VkCommandBuffer commandBuffer);
+  void DestroyUploadBuffer();
   // Distinct BRDFs painted so far, for picking them again
   std::vector<LsBrdfParameters> paintedBrdfs;
   LsBrdfParameters brushBrdf;
@@ -329,7 +364,7 @@ class LsCanvas
   // Origin and ray basis of the camera the canvas image was last resolved with
   glm::vec4 resolvedFrame[4] = {};
   bool resolveNeeded = true;
-  LsCanvasDisplay display = LsCanvasDisplay::Depth;
+  LsCanvasDisplay display = LsCanvasDisplay::Rendering;
   bool isolines = true;
   float isolineSpacing = 0.1f; // in world units of view depth
 
@@ -420,6 +455,19 @@ public:
   bool TakePickedNormal(glm::vec3& normal);
   // The rig of the pixel under the centre of the latest pick, 0 for none, true once when it has finished
   bool TakePickedRig(uint32_t& rig);
+  // Copies every pixel's attributes from the GPU, as the next Render has them
+  void RequestAttributes();
+  // True once the requested attributes have been copied, a frame after the request
+  bool TakeAttributes(LsCanvasAttributes& attributes);
+  // Replaces every pixel's attributes, as the next Render. The size must be the canvas's.
+  void SetAttributes(const LsCanvasAttributes& attributes);
+  // Removes every light, occluder and rig, without touching the pixels, for
+  // putting back those of a document in their slots with the Set...At calls
+  void ClearLighting();
+  void SetLocalLightAt(uint32_t slot, const LsLocalLight& light);
+  void SetOccluderAt(uint32_t slot, const LsOccluder& occluder);
+  void SetRigAt(uint32_t slot, const LsLightRig& rig);
+  void SetPaintedBrdfs(const std::vector<LsBrdfParameters>& brdfs) { paintedBrdfs = brdfs; }
   // Every distinct BRDF painted so far, in the order they were first painted
   const std::vector<LsBrdfParameters>& GetPaintedBrdfs() const { return paintedBrdfs; }
   const LsCanvasRenderSettings& GetRenderSettings() const { return renderSettings; }

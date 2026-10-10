@@ -16,6 +16,7 @@ set(INCLUDE_FILES
   "Include/LsSceneViewport.h"
   "Include/LsTransformGizmo.h"
   "Include/LsLightingPanel.h"
+  "Include/LsDocument.h"
   "Include/LsViewportProjection.h"
   "Include/Version.h.in")
 
@@ -30,7 +31,8 @@ set(SOURCE_FILES
   "Source/LsCanvasNavigator.cpp"
   "Source/LsSceneViewport.cpp"
   "Source/LsTransformGizmo.cpp"
-  "Source/LsLightingPanel.cpp")
+  "Source/LsLightingPanel.cpp"
+  "Source/LsDocument.cpp")
 
 set(RESOURCE_FILES
   "${CMAKE_BINARY_DIR}/Resources/Version.rc"

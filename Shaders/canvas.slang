@@ -504,7 +504,8 @@ void paintNormal(int2 pixel, float3 n, float coverage)
 // Blends each pixel a dab covers towards a weighted average of its
 // neighbourhood, by the dab's coverage. Unlike painting, dabs compound, so
 // going over an area again smooths it further. Only attributes a pixel has are
-// blended, blending never adds a position or a normal.
+// blended, blending never adds a position. Normals blend as they are rendered,
+// so a pixel with a position but no painted normal gets the blended one.
 //
 // The neighbours are read while the dab blends them, so every pixel of the dab's
 // rectangle is written to the stroke images, blended or as it was, and the
@@ -564,9 +565,11 @@ void blendMain(uint3 globalId : SV_DispatchThreadID)
           plane.add(float2(tap - pixel)/spacing, 1.0/z, w);
         }
         if (normals) {
-          uint bits = normalImage[tap];
-          if (bits != NO_NORMAL) {
-            normalSum += w*decodeNormal(bits);
+          // As rendered, painted or from the positions, so the shading of shapes
+          // blends without normals painted on them first
+          float3 n;
+          if (renderedNormal(tap, n)) {
+            normalSum += w*n;
             normalWeight += w;
           }
         }
@@ -591,8 +594,9 @@ void blendMain(uint3 globalId : SV_DispatchThreadID)
       t *= 1.0/(inverseDepth*z);
       changed = true;
     }
-    if (normalBits != NO_NORMAL && normalWeight > 0.0 && dot(normalSum, normalSum) > 1.0e-12) {
-      float3 blended = lerp(decodeNormal(normalBits), normalize(normalSum), coverage);
+    float3 normalBefore;
+    if (renderedNormal(pixel, normalBefore) && normalWeight > 0.0 && dot(normalSum, normalSum) > 1.0e-12) {
+      float3 blended = lerp(normalBefore, normalize(normalSum), coverage);
       if (dot(blended, blended) > 1.0e-8) {
         normalBits = encodeNormal(normalize(blended));
         changed = true;
@@ -1112,6 +1116,18 @@ void renderMain(uint3 globalId : SV_DispatchThreadID)
     sum += renderSample(p, origin, lighting, frame, wo, brdf, random);
   }
   radianceImage[pixel] = accumulated + float4(sum, float(count));
+}
+
+// The normal a pixel is rendered with, as shadingNormal, or its painted normal
+// where it has no position. False with neither.
+bool renderedNormal(int2 pixel, out float3 n)
+{
+  if (shadingNormal(pixel, n)) {
+    return true;
+  }
+  uint bits = normalImage[pixel];
+  n = bits != NO_NORMAL ? decodeNormal(bits) : float3(0.0, 0.0, 1.0);
+  return bits != NO_NORMAL;
 }
 
 // The normal a pixel is rendered with: the painted one, or the one its

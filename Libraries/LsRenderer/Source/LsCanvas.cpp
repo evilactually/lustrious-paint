@@ -262,6 +262,8 @@ LsCanvas::~LsCanvas() {
   vkUnmapMemory(device, pickBuffer.memory);
   vkDestroyBuffer(device, pickBuffer.buffer, nullptr);
   vkFreeMemory(device, pickBuffer.memory, nullptr);
+  DestroyReadbackBuffer();
+  DestroyUploadBuffer();
   auto destroyHostBuffer = [&](VkBuffer buffer, VkDeviceMemory memory) {
     vkUnmapMemory(device, memory);
     vkDestroyBuffer(device, buffer, nullptr);
@@ -683,6 +685,223 @@ void LsCanvas::SetRig(uint32_t slot, const LsLightRig& rig) {
   }
 }
 
+void LsCanvas::RequestAttributes() {
+  readbackRequested = true;
+}
+
+// The images in the order they are copied into the staging buffer, each a
+// 32 bit value per pixel
+static const int kReadbackImages = 5;
+
+void LsCanvas::RecordReadback(VkCommandBuffer commandBuffer) {
+  VkDeviceSize imageSize = VkDeviceSize(width)*height*sizeof(uint32_t);
+  if (!readbackBuffer.buffer) {
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = imageSize*kReadbackImages;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &readbackBuffer.buffer) != VK_SUCCESS) {
+      throw std::string("Could not create canvas readback buffer!");
+    }
+    VkMemoryRequirements requirements;
+    vkGetBufferMemoryRequirements(device, readbackBuffer.buffer, &requirements);
+    VkMemoryAllocateInfo allocateInfo = {};
+    allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocateInfo.allocationSize = requirements.size;
+    allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
+                                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (vkAllocateMemory(device, &allocateInfo, nullptr, &readbackBuffer.memory) != VK_SUCCESS) {
+      throw std::string("Could not allocate canvas readback buffer memory!");
+    }
+    vkBindBufferMemory(device, readbackBuffer.buffer, readbackBuffer.memory, 0);
+  }
+
+  // After the dabs wrote the attributes
+  VkMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+  const VkImage images[kReadbackImages] = { distance.image, normal.image, materialColor.image, materialSurface.image,
+                                            rigImage.image };
+  for (int i = 0; i < kReadbackImages; i++) {
+    VkBufferImageCopy region = {};
+    region.bufferOffset = imageSize*i;
+    region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.imageExtent = { width, height, 1 };
+    vkCmdCopyImageToBuffer(commandBuffer, images[i], VK_IMAGE_LAYOUT_GENERAL, readbackBuffer.buffer, 1, &region);
+  }
+  // Read on the host once the frame's fence has been waited on, and later
+  // shader writes wait for the copies
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+  readbackRequested = false;
+  readbackRecorded = true;
+  readbackFrame = renderer->frameNumber;
+}
+
+bool LsCanvas::TakeAttributes(LsCanvasAttributes& attributes) {
+  // The frame the copies were recorded into must have finished
+  if (!readbackRecorded || renderer->frameNumber <= readbackFrame) {
+    return false;
+  }
+  readbackRecorded = false;
+  size_t pixels = size_t(width)*height;
+  attributes.width = width;
+  attributes.height = height;
+  void* data = nullptr;
+  vkMapMemory(device, readbackBuffer.memory, 0, VK_WHOLE_SIZE, 0, &data);
+  const uint8_t* mapped = static_cast<const uint8_t*>(data);
+  auto copy = [&](auto& target, int image) {
+    target.resize(pixels);
+    std::memcpy(target.data(), mapped + pixels*sizeof(uint32_t)*image, pixels*sizeof(uint32_t));
+  };
+  copy(attributes.distance, 0);
+  copy(attributes.normal, 1);
+  copy(attributes.materialColor, 2);
+  copy(attributes.materialSurface, 3);
+  copy(attributes.rig, 4);
+  vkUnmapMemory(device, readbackBuffer.memory);
+  // Large at large canvas sizes and rarely needed, so not kept around
+  DestroyReadbackBuffer();
+  return true;
+}
+
+void LsCanvas::SetAttributes(const LsCanvasAttributes& attributes) {
+  if (attributes.width != width || attributes.height != height) {
+    return;
+  }
+  // A frame still holding the previous upload has finished, Render waited on it
+  vkDeviceWaitIdle(device);
+  DestroyUploadBuffer();
+  VkDeviceSize imageSize = VkDeviceSize(width)*height*sizeof(uint32_t);
+  VkBufferCreateInfo bufferInfo = {};
+  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  bufferInfo.size = imageSize*kReadbackImages;
+  bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  if (vkCreateBuffer(device, &bufferInfo, nullptr, &uploadBuffer.buffer) != VK_SUCCESS) {
+    throw std::string("Could not create canvas upload buffer!");
+  }
+  VkMemoryRequirements requirements;
+  vkGetBufferMemoryRequirements(device, uploadBuffer.buffer, &requirements);
+  VkMemoryAllocateInfo allocateInfo = {};
+  allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocateInfo.allocationSize = requirements.size;
+  allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  if (vkAllocateMemory(device, &allocateInfo, nullptr, &uploadBuffer.memory) != VK_SUCCESS) {
+    throw std::string("Could not allocate canvas upload buffer memory!");
+  }
+  vkBindBufferMemory(device, uploadBuffer.buffer, uploadBuffer.memory, 0);
+  void* data = nullptr;
+  vkMapMemory(device, uploadBuffer.memory, 0, VK_WHOLE_SIZE, 0, &data);
+  uint8_t* mapped = static_cast<uint8_t*>(data);
+  // In the order RecordReadback copies them
+  const void* images[kReadbackImages] = { attributes.distance.data(), attributes.normal.data(),
+                                          attributes.materialColor.data(), attributes.materialSurface.data(),
+                                          attributes.rig.data() };
+  for (int i = 0; i < kReadbackImages; i++) {
+    std::memcpy(mapped + imageSize*i, images[i], static_cast<size_t>(imageSize));
+  }
+  vkUnmapMemory(device, uploadBuffer.memory);
+  uploadPending = true;
+  uploadRecorded = false;
+}
+
+void LsCanvas::RecordUpload(VkCommandBuffer commandBuffer) {
+  VkDeviceSize imageSize = VkDeviceSize(width)*height*sizeof(uint32_t);
+  // After whatever last read or wrote the attributes
+  VkMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+  const VkImage images[kReadbackImages] = { distance.image, normal.image, materialColor.image, materialSurface.image,
+                                            rigImage.image };
+  for (int i = 0; i < kReadbackImages; i++) {
+    VkBufferImageCopy region = {};
+    region.bufferOffset = imageSize*i;
+    region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.imageExtent = { width, height, 1 };
+    vkCmdCopyBufferToImage(commandBuffer, uploadBuffer.buffer, images[i], VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+  }
+  // Before the dabs, the rendering and the resolve read them
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+  uploadPending = false;
+  uploadRecorded = true;
+  uploadFrame = renderer->frameNumber;
+  // Everything shown and rendered starts over from the new attributes
+  radianceStale = true;
+  resolveNeeded = true;
+  rigCountRequested = true;
+}
+
+void LsCanvas::DestroyUploadBuffer() {
+  if (uploadBuffer.buffer) {
+    vkDestroyBuffer(device, uploadBuffer.buffer, nullptr);
+  }
+  if (uploadBuffer.memory) {
+    vkFreeMemory(device, uploadBuffer.memory, nullptr);
+  }
+  uploadBuffer = {};
+}
+
+void LsCanvas::ClearLighting() {
+  localLightSlots = 0;
+  occluderSlots = 0;
+  rigUsed.fill(false);
+  rigUsed[0] = true;
+  radianceStale = true;
+}
+
+void LsCanvas::SetLocalLightAt(uint32_t slot, const LsLocalLight& light) {
+  if (slot < kLsMaxLocalLights) {
+    localLights[slot] = light;
+    localLightSlots |= 1u << slot;
+    radianceStale = true;
+  }
+}
+
+void LsCanvas::SetOccluderAt(uint32_t slot, const LsOccluder& occluder) {
+  if (slot < kLsMaxOccluders) {
+    occluders[slot] = occluder;
+    occluderSlots |= 1u << slot;
+    radianceStale = true;
+  }
+}
+
+void LsCanvas::SetRigAt(uint32_t slot, const LsLightRig& rig) {
+  if (slot > 0 && slot < kLsMaxRigs) {
+    rigs[slot] = rig;
+    rigUsed[slot] = true;
+    radianceStale = true;
+  }
+}
+
+void LsCanvas::DestroyReadbackBuffer() {
+  if (readbackBuffer.buffer) {
+    vkDestroyBuffer(device, readbackBuffer.buffer, nullptr);
+  }
+  if (readbackBuffer.memory) {
+    vkFreeMemory(device, readbackBuffer.memory, nullptr);
+  }
+  readbackBuffer = {};
+}
+
 void LsCanvas::CollectRigCounts() {
   // The frame the count was recorded into must have finished
   if (!rigCountRecorded || renderer->frameNumber <= rigCountFrame) {
@@ -939,7 +1158,13 @@ void LsCanvas::Render() {
   if (!dabs.empty()) {
     rigCountRequested = true;
   }
-  if (attributesCleared && dabs.empty() && !resolve && !pickRequested && !rigCountRequested) {
+  // The upload is freed once the frame that copied it has finished
+  if (uploadRecorded && renderer->frameNumber > uploadFrame) {
+    DestroyUploadBuffer();
+    uploadRecorded = false;
+  }
+  if (attributesCleared && dabs.empty() && !resolve && !pickRequested && !rigCountRequested &&
+      !(readbackRequested && !readbackRecorded) && !uploadPending) {
     return;
   }
 
@@ -1036,6 +1261,11 @@ void LsCanvas::Render() {
     radianceStale = false;
   }
 
+  // After the images were first cleared, which puts them in the general layout
+  if (uploadPending) {
+    RecordUpload(commandBuffer);
+  }
+
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
   // Each dab reads and writes the attributes after the previous one, so they composite in order
@@ -1128,6 +1358,10 @@ void LsCanvas::Render() {
     pickRequested = false;
     pickRecorded = true;
     pickFrame = renderer->frameNumber;
+  }
+
+  if (readbackRequested && !readbackRecorded) {
+    RecordReadback(commandBuffer);
   }
 
   // Counts what the strokes changed, once the last count has been read back

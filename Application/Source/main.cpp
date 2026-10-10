@@ -19,6 +19,8 @@
 #include <LsSceneViewport.h>
 #include <LsCanvasNavigator.h>
 #include <LsLightingPanel.h>
+#include <LsDocument.h>
+#include <mutex>
 #include <LsConsole.h>
 #include <LsError.h>
 #include <LsImage.h>
@@ -63,6 +65,17 @@ class Application: LsFSdlEventHandler {
   bool dockLayoutBuilt = false;
   // The canvas starts in the middle of its area, once the layout has given the area a size
   bool canvasCentered = false;
+
+  // The file the painting was last saved to, empty before the first save
+  std::string documentPath;
+  // A save waiting for the canvas attributes to be read back from the GPU
+  std::string pendingSavePath;
+  // The open and save dialogs answer from another thread
+  std::mutex dialogMutex;
+  // Whether the dialog shown last opens a file rather than saves one
+  bool dialogOpens = false;
+  bool dialogAnswered = false;
+  std::string dialogPath;
 
 public:
   Application() {
@@ -151,7 +164,8 @@ public:
       idleFrames = SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST) ? 0 : idleFrames + 1;
       // Flying keeps moving while keys are held, even without new events, and the
       // rendering keeps adding samples until it is done
-      if ( sceneViewport->IsAnimating() || canvas->IsRendering() ) {
+      // A save waits a frame for the canvas attributes
+      if ( sceneViewport->IsAnimating() || canvas->IsRendering() || !pendingSavePath.empty() ) {
         idleFrames = 0;
       }
       if ( !window->ProcessMessages() ) {
@@ -160,6 +174,7 @@ public:
 
       renderer->BeginFrame();
       HandleUndoShortcuts();
+      HandleFileShortcuts();
 
       // The system cursor shows only over the UI, the brush rig is the cursor over the canvas
       bool overUi = renderer->IsUiCapturingMouse();
@@ -172,6 +187,8 @@ public:
         window->HideMouse();
       }
 
+      // Before the dock space, which fills what the menu bar leaves
+      DrawMenuBar();
       DrawDockedPanels();
       DrawToolbar();
       HandleToolShortcuts();
@@ -179,6 +196,8 @@ public:
 
       // Strokes painted since the last frame, before anything draws the canvas
       UpdateCanvas();
+      // After the canvas has rendered, so attributes a save asked for are back
+      ProcessSaving();
 
       // After laying out the UI, which decides whether the canvas or the 3D view
       // shows, and before the UI is rendered over everything at the end of the frame
@@ -187,6 +206,7 @@ public:
         renderer->DrawCanvas();
         if (!overUi && !navigating) {
           brushRig->Render();
+          DrawBrushOutline();
         }
         canvasPainter->Render();
       }
@@ -441,29 +461,9 @@ public:
     }
   }
 
-  // The canvas switches to showing what the brush now paints. Depth strokes are
-  // seen as depth or as positions, so only the normal and material displays are
-  // switched away from. Erasing removes everything and keeps whatever is shown,
-  // and the rendering shows the result of every stroke, so it is kept too.
+  // The display stays as chosen in the View panel, whatever the brush paints
   void SetBrushMode(LsCanvasDabMode mode) {
     canvasPainter->SetMode(mode);
-    LsCanvasDisplay display = canvas->GetDisplay();
-    if (display == LsCanvasDisplay::Rendering) {
-      return;
-    }
-    if (mode == LsCanvasDabMode::Depth && (display == LsCanvasDisplay::Normal || display == LsCanvasDisplay::Material ||
-                                           display == LsCanvasDisplay::Rigs)) {
-      canvas->SetDisplay(LsCanvasDisplay::Depth);
-    }
-    else if (mode == LsCanvasDabMode::Material) {
-      canvas->SetDisplay(LsCanvasDisplay::Material);
-    }
-    else if (mode == LsCanvasDabMode::Light) {
-      canvas->SetDisplay(LsCanvasDisplay::Rigs);
-    }
-    else if (mode == LsCanvasDabMode::Normal) {
-      canvas->SetDisplay(LsCanvasDisplay::Normal);
-    }
   }
 
   // B paints depth, N normals, M materials, L lights and E erases, B and E as
@@ -491,6 +491,31 @@ public:
     else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
       SetBrushMode(LsCanvasDabMode::Erase);
     }
+
+    // As in Photoshop: [ and ] change the size, with Shift the falloff, the
+    // digits set the opacity in tens with 0 for full
+    bool shift = ImGui::GetIO().KeyShift;
+    float step = 0;
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true)) {
+      step = -1.0f;
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, true)) {
+      step = 1.0f;
+    }
+    if (step != 0.0f && shift) {
+      // Shift+[ softer, Shift+] harder
+      canvasPainter->SetBrushFalloff(glm::clamp(canvasPainter->GetBrushFalloff() - step*0.1f, 0.0f, 1.0f));
+    }
+    else if (step != 0.0f) {
+      // In proportion, so small brushes change finely and large ones quickly
+      float radius = canvasPainter->GetBrushRadius()*(step > 0.0f ? 1.15f : 1.0f/1.15f);
+      canvasPainter->SetBrushRadius(glm::clamp(radius, 1.0f, 100.0f));
+    }
+    for (int digit = 0; digit <= 9; digit++) {
+      if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + digit), false)) {
+        canvasPainter->SetBrushOpacity(digit == 0 ? 1.0f : 0.1f*static_cast<float>(digit));
+      }
+    }
   }
 
   // Tab over the canvas shows or hides the scene over it, in the 3D view it goes
@@ -508,6 +533,181 @@ public:
     else {
       sceneViewport->SetSceneOverCanvas(!sceneViewport->IsSceneOverCanvas());
     }
+  }
+
+  // The circle the brush covers around the mouse, and a faint one where its
+  // falloff starts. Dark under light, so it shows over any part of the canvas.
+  void DrawBrushOutline() {
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    ImVec2 center = ImGui::GetIO().MousePos;
+    // The brush radius is in window pixels, the UI draws in points
+    float radius = canvasPainter->GetBrushRadius()/ImGui::GetIO().DisplayFramebufferScale.x;
+    drawList->AddCircle(center, radius, IM_COL32(0, 0, 0, 140), 0, 3.0f);
+    drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 220), 0, 1.0f);
+    float falloff = canvasPainter->GetBrushFalloff();
+    if (falloff > 0.02f && falloff < 0.98f) {
+      drawList->AddCircle(center, radius*(1.0f - falloff), IM_COL32(255, 255, 255, 70), 0, 1.0f);
+    }
+  }
+
+  void DrawMenuBar() {
+    if (ImGui::BeginMainMenuBar()) {
+      if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Open...", "Ctrl+O")) {
+          Open();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Save", "Ctrl+S")) {
+          Save();
+        }
+        if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S")) {
+          SaveAs();
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::EndMainMenuBar();
+    }
+  }
+
+  void HandleFileShortcuts() {
+    if (ImGui::GetIO().WantTextInput) {
+      return;
+    }
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)) {
+      SaveAs();
+    }
+    else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S)) {
+      Save();
+    }
+    else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_O)) {
+      Open();
+    }
+  }
+
+  void Open() {
+    static const SDL_DialogFileFilter filter = { "Lustrious Paint", kLsDocumentExtension };
+    dialogOpens = true;
+    SDL_ShowOpenFileDialog(&Application::OnFileDialog, this, window->GetWindowHandle(), &filter, 1,
+                           documentPath.empty() ? nullptr : documentPath.c_str(), false);
+  }
+
+  // Replaces the scene, the canvas and its lighting with the document's. The
+  // undo history starts over from it.
+  void OpenDocument(const std::string& path) {
+    LsDocument document;
+    std::string error;
+    if (!LsLoadDocument(path, document, error)) {
+      LsErrorMessage(error, "Could not open");
+      return;
+    }
+    glm::uvec2 size = canvas->GetSize();
+    if (document.attributes.width != size.x || document.attributes.height != size.y) {
+      LsErrorMessage(path + " has a " + std::to_string(document.attributes.width) + " by " +
+                     std::to_string(document.attributes.height) + " canvas, this one is " +
+                     std::to_string(size.x) + " by " + std::to_string(size.y) + ".", "Could not open");
+      return;
+    }
+    scene->Restore(document.scene);
+    history = std::make_unique<LsSceneHistory>(scene);
+    // Ids of the old scene can name other nodes now
+    sceneEditor->SetSelected(kLsInvalidNode);
+    canvas->ClearLighting();
+    for (const auto& light : document.lights) {
+      canvas->SetLocalLightAt(light.first, light.second);
+    }
+    for (const auto& occluder : document.occluders) {
+      canvas->SetOccluderAt(occluder.first, occluder.second);
+    }
+    for (const auto& rig : document.rigs) {
+      canvas->SetRigAt(rig.first, rig.second);
+    }
+    canvas->SetBrushBrdf(document.brushBrdf);
+    canvas->SetPaintedBrdfs(document.paintedBrdfs);
+    canvas->SetRenderSettings(document.renderSettings);
+    canvas->SetAttributes(document.attributes);
+    lightingPanel->SelectRig(0);
+    SetDocumentPath(path);
+  }
+
+  // The file name in the title, without its folders
+  void SetDocumentPath(const std::string& path) {
+    documentPath = path;
+    size_t slash = documentPath.find_last_of("/\\");
+    std::string title = "Lustrious Paint - " + (slash == std::string::npos ? documentPath : documentPath.substr(slash + 1));
+    SDL_SetWindowTitle(window->GetWindowHandle(), title.c_str());
+  }
+
+  // To the file saved to before, or a new one
+  void Save() {
+    if (documentPath.empty()) {
+      SaveAs();
+    }
+    else {
+      StartSave(documentPath);
+    }
+  }
+
+  void SaveAs() {
+    static const SDL_DialogFileFilter filter = { "Lustrious Paint", kLsDocumentExtension };
+    dialogOpens = false;
+    SDL_ShowSaveFileDialog(&Application::OnFileDialog, this, window->GetWindowHandle(), &filter, 1,
+                           documentPath.empty() ? nullptr : documentPath.c_str());
+  }
+
+  // Called by SDL, possibly on another thread, with no file when cancelled
+  static void SDLCALL OnFileDialog(void* userdata, const char* const* files, int) {
+    Application* application = static_cast<Application*>(userdata);
+    {
+      std::lock_guard<std::mutex> lock(application->dialogMutex);
+      application->dialogAnswered = true;
+      application->dialogPath = files && files[0] ? files[0] : "";
+    }
+    // Wakes the main loop, which may be waiting for events
+    SDL_Event event = {};
+    event.type = SDL_EVENT_USER;
+    SDL_PushEvent(&event);
+  }
+
+  // The canvas attributes are read back from the GPU first, see ProcessSaving
+  void StartSave(const std::string& path) {
+    pendingSavePath = path;
+    canvas->RequestAttributes();
+  }
+
+  // Opens the file the open dialog chose, or starts the save the save dialog
+  // chose and writes the file once the canvas attributes are back
+  void ProcessSaving() {
+    std::string chosen;
+    {
+      std::lock_guard<std::mutex> lock(dialogMutex);
+      if (dialogAnswered) {
+        chosen = dialogPath;
+        dialogAnswered = false;
+      }
+    }
+    if (!chosen.empty() && dialogOpens) {
+      OpenDocument(chosen);
+    }
+    else if (!chosen.empty()) {
+      std::string extension = std::string(".") + kLsDocumentExtension;
+      if (chosen.size() < extension.size() || chosen.compare(chosen.size() - extension.size(), extension.size(), extension) != 0) {
+        chosen += extension;
+      }
+      StartSave(chosen);
+    }
+
+    LsCanvasAttributes attributes;
+    if (pendingSavePath.empty() || !canvas->TakeAttributes(attributes)) {
+      return;
+    }
+    std::string error;
+    if (LsSaveDocument(pendingSavePath, *scene, *canvas, attributes, error)) {
+      SetDocumentPath(pendingSavePath);
+    }
+    else {
+      LsErrorMessage(error, "Could not save");
+    }
+    pendingSavePath.clear();
   }
 
   // Text fields have their own undo while they are being typed in
