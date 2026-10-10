@@ -24,6 +24,18 @@ class LsCanvasPainter: public LsFSdlEventHandler
   float brushFalloff = 0.5f;
   bool blendKeepsEdges = true;
   float blendEdgeThreshold = 0.1f;
+  bool fixedNormal = false;
+  bool rigNormal = true;
+  // Picking the normal under the brush instead of painting, while Alt is held
+  // or once after ArmPick
+  bool picking = false;
+  bool pickArmed = false;
+  // Where the normal was last picked, in canvas pixels
+  glm::vec2 pickPoint = glm::vec2(0.0f);
+  bool hasPickPoint = false;
+  void Pick(glm::vec2 canvasPoint);
+  glm::vec3 normal = glm::vec3(0.0f, 0.0f, 1.0f);
+  uint32_t rig = 0;
   LsCanvasDabMode mode = LsCanvasDabMode::Depth;
   // Taken from the brush when the stroke starts, so changing it doesn't change a
   // stroke, with the radius in canvas pixels
@@ -32,6 +44,8 @@ class LsCanvasPainter: public LsFSdlEventHandler
   glm::vec2 lastStrokeSample = glm::vec2(0.0f);
   float distanceToNextDab = 0.0f;
   float GetDabSpacing();
+  // The brush as set, for a stroke started with or without Shift held
+  LsCanvasBrush MakeBrush(bool shift) const;
   void BeginStroke(glm::vec2 canvasPoint);
   void ContinueStroke(glm::vec2 canvasPoint);
 public:
@@ -54,6 +68,26 @@ public:
   void SetBlendKeepsEdges(bool keeps) { blendKeepsEdges = keeps; }
   float GetBlendEdgeThreshold() const { return blendEdgeThreshold; }
   void SetBlendEdgeThreshold(float threshold) { blendEdgeThreshold = threshold; }
+  // Normal strokes paint this view space normal instead of the construction
+  // geometry's while fixed, see LsCanvasBrush
+  bool GetFixedNormal() const { return fixedNormal; }
+  void SetFixedNormal(bool fixed) { fixedNormal = fixed; }
+  // Where the normal was last picked, in canvas pixels, false before any pick
+  bool GetPickPoint(glm::vec2& point) const { point = pickPoint; return hasPickPoint; }
+  // Paints the whole canvas with the brush as one stroke, as if painted over
+  // everywhere. With shift in light mode it paints no rig.
+  void Fill(bool shift);
+  // The next press on the canvas picks the normal under the brush, as Alt does
+  void ArmPick() { pickArmed = true; }
+  bool IsPickArmed() const { return pickArmed; }
+  // Light strokes paint the normal with the rig while set
+  bool GetRigNormal() const { return rigNormal; }
+  void SetRigNormal(bool painted) { rigNormal = painted; }
+  glm::vec3 GetNormal() const { return normal; }
+  void SetNormal(glm::vec3 normal) { this->normal = normal; }
+  // Slot of the light rig light strokes paint, 0 for none, see LsCanvasBrush
+  uint32_t GetRig() const { return rig; }
+  void SetRig(uint32_t rig) { this->rig = rig; }
   // What the brush paints, see LsCanvasDabMode
   LsCanvasDabMode GetMode() const { return mode; }
   void SetMode(LsCanvasDabMode mode) { this->mode = mode; }

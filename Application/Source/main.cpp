@@ -18,6 +18,7 @@
 #include <LsSceneEditor.h>
 #include <LsSceneViewport.h>
 #include <LsCanvasNavigator.h>
+#include <LsLightingPanel.h>
 #include <LsConsole.h>
 #include <LsError.h>
 #include <LsImage.h>
@@ -48,6 +49,9 @@ class Application: LsFSdlEventHandler {
   std::shared_ptr<LsCanvasNavigator> canvasNavigator;
   std::shared_ptr<LsCanvas> canvas;
   std::shared_ptr<LsCanvasPainter> canvasPainter;
+  std::unique_ptr<LsLightingPanel> lightingPanel;
+  // Top left of the area the canvas and the 3D view share, for the toolbar
+  ImVec2 canvasAreaMin = ImVec2(0.0f, 0.0f);
   // Scene revision the canvas last got its primitives from
   uint64_t canvasSceneRevision = UINT64_MAX;
   std::shared_ptr<LsStuffingDemo> stuffingDemo;
@@ -69,6 +73,7 @@ public:
     // Vulkan objects must be released before the window and SDL itself
     sceneViewport.reset();
     stuffingDemo.reset();
+    lightingPanel.reset();
     canvasPainter.reset();
     canvas.reset();
     canvasNavigator.reset();
@@ -108,6 +113,7 @@ public:
 	  canvasNavigator = std::make_shared<LsCanvasNavigator>(renderer);
 	  canvas = std::make_shared<LsCanvas>(renderer);
 	  canvasPainter = std::make_shared<LsCanvasPainter>(renderer, canvasNavigator, canvas);
+    lightingPanel = std::make_unique<LsLightingPanel>(canvas, canvasPainter);
     //stuffingDemo = std::make_shared<LsStuffingDemo>(renderer);
 
     const glm::vec3 canvasBackground(0.1f, 0.0f, 0.1f);
@@ -197,15 +203,19 @@ public:
 
       if (ImGui::Begin("Brush", nullptr, ImGuiWindowFlags_NoCollapse)) {
         // What a stroke paints: depth and normals from the construction geometry,
-        // the BRDF panel's material, or erasing all of them
+        // the BRDF panel's material, the Lighting panel's light, or erasing all
+        // of them. Two rows, so they fit the panel.
         struct { const char* label; LsCanvasDabMode mode; const char* tooltip; } modes[] = {
           { "Depth", LsCanvasDabMode::Depth, "Paint positions from the construction geometry (B)" },
-          { "Normals", LsCanvasDabMode::Normal, "Paint normals from the construction geometry (N)" },
+          { "Normals", LsCanvasDabMode::Normal,
+            "Paint normals from the construction geometry, or the Lighting panel's normal (N)" },
           { "Material", LsCanvasDabMode::Material, "Paint the BRDF panel's material (M)" },
-          { "Erase", LsCanvasDabMode::Erase, "Remove painted positions and normals, back to the default material (E)" },
+          { "Light", LsCanvasDabMode::Light, "Paint the light selected in the Lighting panel (L)" },
+          { "Erase", LsCanvasDabMode::Erase,
+            "Remove painted positions, normals and lights, back to the default material (E)" },
         };
         for (const auto& mode : modes) {
-          if (&mode != modes) {
+          if (&mode != modes && &mode != modes + 3) {
             ImGui::SameLine();
           }
           if (ImGui::RadioButton(mode.label, canvasPainter->GetMode() == mode.mode)) {
@@ -227,32 +237,34 @@ public:
           canvasPainter->SetBrushFalloff(brushFalloff);
         }
         ImGui::SetItemTooltip("How much of the radius the brush fades out over, 0 for a hard edge");
-        ImGui::TextDisabled("Hold Shift to blend");
-        ImGui::SetItemTooltip("Smooths what the brush paints instead, or everything while erasing.\n"
-                              "Opacity sets how strongly each dab smooths.");
-        // Checkbox and threshold on one row, the slider only matters while it is checked
-        bool keepEdges = canvasPainter->GetBlendKeepsEdges();
-        if (ImGui::Checkbox("##KeepEdges", &keepEdges)) {
-          canvasPainter->SetBlendKeepsEdges(keepEdges);
+        if (canvasPainter->GetMode() == LsCanvasDabMode::Light) {
+          ImGui::TextDisabled("Hold Shift to paint no rig");
+          ImGui::SetItemTooltip("Leaves only the scene's lights on the pixels");
         }
-        ImGui::SetItemTooltip("Blend only with neighbours on the same surface");
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::BeginDisabled(!keepEdges);
-        float edgePercent = canvasPainter->GetBlendEdgeThreshold()*100.0f;
-        if (ImGui::SliderFloat("Keep edges", &edgePercent, 1.0f, 50.0f, "%.0f%% depth", ImGuiSliderFlags_AlwaysClamp)) {
-          canvasPainter->SetBlendEdgeThreshold(edgePercent/100.0f);
+        else {
+          ImGui::TextDisabled("Hold Shift to blend");
+          ImGui::SetItemTooltip("Smooths what the brush paints instead, or everything while erasing.\n"
+                                "Opacity sets how strongly each dab smooths.");
         }
-        ImGui::EndDisabled();
-        ImGui::SetItemTooltip("Neighbours further in front or behind than this share of the depth\n"
-                              "are on another surface and aren't blended in");
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - ImGui::CalcTextSize("Fill").x -
+                        ImGui::GetStyle().FramePadding.x*2.0f);
+        if (ImGui::Button("Fill")) {
+          canvasPainter->Fill(ImGui::GetIO().KeyShift);
+        }
+        ImGui::SetItemTooltip("Paint the whole canvas with the brush, as if painted over everywhere (F).\n"
+                              "In Light mode Shift fills with no rig.");
+        // Light strokes don't blend
+        if (canvasPainter->GetMode() != LsCanvasDabMode::Light) {
+          DrawKeepEdges();
+        }
       }
       ImGui::End();
+
 
       if (ImGui::Begin("View", nullptr, ImGuiWindowFlags_NoCollapse)) {
         // What the canvas shows of the painted attributes
         int display = static_cast<int>(canvas->GetDisplay());
-        if (ImGui::Combo("Display", &display, "Depth\0Position\0Normal\0Rendering\0Material\0")) {
+        if (ImGui::Combo("Display", &display, "Depth\0Position\0Normal\0Rendering\0Material\0Rigs\0Matcap\0")) {
           canvas->SetDisplay(static_cast<LsCanvasDisplay>(display));
         }
         ImGui::SetItemTooltip("Rendering lights the painted points with the scene's emitters, shaded with the BRDF panel");
@@ -260,19 +272,34 @@ public:
         if (rendering) {
           DrawRenderSettings();
         }
+        // The rendering and the matcap are shown without isolines
+        bool shaded = rendering || canvas->GetDisplay() == LsCanvasDisplay::Matcap;
         bool isolines = canvas->GetIsolines();
-        if (!rendering && ImGui::Checkbox("Isolines", &isolines)) {
+        if (!shaded && ImGui::Checkbox("Isolines", &isolines)) {
           canvas->SetIsolines(isolines);
         }
-        if (!rendering) {
+        if (!shaded) {
           ImGui::SetItemTooltip("Contour lines of the depth, every tenth one brighter");
         }
-        if (!rendering && isolines) {
+        if (!shaded && isolines) {
           float spacing = canvas->GetIsolineSpacing();
           if (ImGui::DragFloat("Spacing", &spacing, 0.005f, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
             canvas->SetIsolineSpacing(spacing);
           }
           ImGui::SetItemTooltip("Depth between isolines, in scene units");
+        }
+      }
+      ImGui::End();
+
+      if (ImGui::Begin("Lighting", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        LsNodeId cameraNode = scene->GetActiveCamera();
+        if (cameraNode != kLsInvalidNode) {
+          glm::vec2 size = renderer->GetCanvasSize();
+          LsCamera camera = scene->GetCamera(cameraNode, size.x/size.y);
+          lightingPanel->Draw(&camera);
+        }
+        else {
+          lightingPanel->Draw(nullptr);
         }
       }
       ImGui::End();
@@ -286,6 +313,26 @@ public:
     }
 
 
+  }
+
+  // Whether blending leaves out neighbours on other surfaces, a checkbox and the
+  // threshold on one row, the slider only matters while it is checked
+  void DrawKeepEdges() {
+    bool keepEdges = canvasPainter->GetBlendKeepsEdges();
+    if (ImGui::Checkbox("##KeepEdges", &keepEdges)) {
+      canvasPainter->SetBlendKeepsEdges(keepEdges);
+    }
+    ImGui::SetItemTooltip("Blend only with neighbours on the same surface");
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::BeginDisabled(!keepEdges);
+    float edgePercent = canvasPainter->GetBlendEdgeThreshold()*100.0f;
+    if (ImGui::SliderFloat("Keep edges", &edgePercent, 1.0f, 50.0f, "%.0f%% depth", ImGuiSliderFlags_AlwaysClamp)) {
+      canvasPainter->SetBlendEdgeThreshold(edgePercent/100.0f);
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Neighbours further in front or behind than this share of the depth\n"
+                          "are on another surface and aren't blended in");
   }
 
   // How the rendering is exposed and how fast it accumulates samples
@@ -382,6 +429,16 @@ public:
       canvas->ClearCamera();
     }
     canvas->Render();
+    // A normal picked from the canvas becomes the brush normal, and the rig
+    // under it the one light strokes paint
+    glm::vec3 picked;
+    if (canvas->TakePickedNormal(picked)) {
+      canvasPainter->SetNormal(picked);
+    }
+    uint32_t pickedRig;
+    if (canvas->TakePickedRig(pickedRig)) {
+      lightingPanel->SelectRig(pickedRig);
+    }
   }
 
   // The canvas switches to showing what the brush now paints. Depth strokes are
@@ -394,19 +451,24 @@ public:
     if (display == LsCanvasDisplay::Rendering) {
       return;
     }
-    if (mode == LsCanvasDabMode::Depth && (display == LsCanvasDisplay::Normal || display == LsCanvasDisplay::Material)) {
+    if (mode == LsCanvasDabMode::Depth && (display == LsCanvasDisplay::Normal || display == LsCanvasDisplay::Material ||
+                                           display == LsCanvasDisplay::Rigs)) {
       canvas->SetDisplay(LsCanvasDisplay::Depth);
     }
     else if (mode == LsCanvasDabMode::Material) {
       canvas->SetDisplay(LsCanvasDisplay::Material);
+    }
+    else if (mode == LsCanvasDabMode::Light) {
+      canvas->SetDisplay(LsCanvasDisplay::Rigs);
     }
     else if (mode == LsCanvasDabMode::Normal) {
       canvas->SetDisplay(LsCanvasDisplay::Normal);
     }
   }
 
-  // B paints depth, N normals, M materials and E erases, B and E as the brush
-  // and the eraser in most painting applications
+  // B paints depth, N normals, M materials, L lights and E erases, B and E as
+  // the brush and the eraser in most painting applications. F fills the canvas
+  // with the brush.
   void HandleToolShortcuts() {
     if (ImGui::GetIO().WantTextInput || sceneViewport->IsShowingScene()) {
       return;
@@ -419,6 +481,12 @@ public:
     }
     else if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
       SetBrushMode(LsCanvasDabMode::Material);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_L, false)) {
+      SetBrushMode(LsCanvasDabMode::Light);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+      canvasPainter->Fill(ImGui::GetIO().KeyShift);
     }
     else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
       SetBrushMode(LsCanvasDabMode::Erase);
@@ -511,8 +579,8 @@ public:
                              ImGuiWindowFlags_NoDocking |
                              ImGuiWindowFlags_NoSavedSettings;
 
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 12.0f, viewport->WorkPos.y + 12.0f), ImGuiCond_FirstUseEver);
+    // In the corner of the canvas area, clear of the docked panels on either side
+    ImGui::SetNextWindowPos(ImVec2(canvasAreaMin.x + 12.0f, canvasAreaMin.y + 12.0f), ImGuiCond_Always);
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::Begin("##Toolbar", nullptr, flags);
@@ -558,10 +626,13 @@ public:
       ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
 
       ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
+      // Lighting on the left, so the sphere stays in view while painting
+      ImGuiID lightingId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.2f, nullptr, nullptr);
+      ImGui::DockBuilderDockWindow("Lighting", lightingId);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.3f, nullptr, &propertiesId);
-      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.5f, nullptr, &propertiesId);
-      ImGuiID viewId = ImGui::DockBuilderSplitNode(brushId, ImGuiDir_Down, 0.55f, nullptr, &brushId);
+      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.62f, nullptr, &propertiesId);
+      ImGuiID viewId = ImGui::DockBuilderSplitNode(brushId, ImGuiDir_Down, 0.42f, nullptr, &brushId);
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       // Tabs, the scene's properties while modelling and the BRDF while painting.
       // The first docked is the one shown.
@@ -577,6 +648,7 @@ public:
     // The canvas and the 3D view take turns in the central node
     if (ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockspaceId)) {
       glm::vec2 areaMin(central->Pos.x, central->Pos.y);
+      canvasAreaMin = central->Pos;
       glm::vec2 areaSize(central->Size.x, central->Size.y);
       if (!canvasCentered && areaSize.x > 0.0f && areaSize.y > 0.0f) {
         // The canvas is placed in window pixels, the layout is in UI points

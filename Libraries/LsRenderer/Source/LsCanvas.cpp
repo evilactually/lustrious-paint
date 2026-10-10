@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <glm/gtc/constants.hpp>
 #include <LsRenderer.h>
 #include <LsVulkanCommon.h>
 
@@ -36,9 +37,39 @@ struct LsCanvasRenderParameters
   float exposure; // multiplier
   uint32_t samplesPerFrame;
   uint32_t maxSamples;
+  uint32_t localLightSlots; // bits of local light slots in use
+  uint32_t occluderSlots;
+  uint32_t pad[3];
+};
+static_assert(sizeof(LsCanvasRenderParameters) == 32, "LsCanvasRenderParameters must match canvas.slang");
+
+// Mirrors LocalLight in Shaders/canvas.slang
+struct LsCanvasLocalLight
+{
+  glm::vec4 direction; // xyz = world space towards the light, w = cosine of its angular radius
+  glm::vec4 radiance;  // rgb = radiance of its disk, w = its solid angle
+  uint32_t shadowed;
+  uint32_t pad[3];
+};
+static_assert(sizeof(LsCanvasLocalLight) == 48, "LsCanvasLocalLight must match canvas.slang");
+
+// Mirrors Occluder in Shaders/canvas.slang
+struct LsCanvasOccluder
+{
+  glm::vec4 direction; // xyz = world space towards its centre, w = cosine of its angular radius
+  glm::vec4 shape;     // x = cosine of the radius it blocks fully within, y = strength
+};
+static_assert(sizeof(LsCanvasOccluder) == 32, "LsCanvasOccluder must match canvas.slang");
+
+// Mirrors Rig in Shaders/canvas.slang
+struct LsCanvasRig
+{
+  uint32_t lights;
+  uint32_t occluders;
+  uint32_t color; // sRGB rgba8
   uint32_t pad;
 };
-static_assert(sizeof(LsCanvasRenderParameters) == 16, "LsCanvasRenderParameters must match canvas.slang");
+static_assert(sizeof(LsCanvasRig) == 16, "LsCanvasRig must match canvas.slang");
 
 // Mirror MIN_IOR and MAX_IOR in Shaders/canvas.slang
 static const float kMinIor = 1.0f;
@@ -47,6 +78,17 @@ static const float kMaxIor = 3.0f;
 // Packs the parameters the way Material::pack in Shaders/canvas.slang does: the
 // sRGB encoded base colour and metallic as 8 bit unorms, roughness and the IOR
 // as 16 bit unorms
+// Octahedral encoding of a unit normal as encodeNormal in Shaders/canvas.slang does
+static uint32_t EncodeNormal(glm::vec3 n) {
+  glm::vec2 p = glm::vec2(n.x, n.y)/(std::abs(n.x) + std::abs(n.y) + std::abs(n.z));
+  if (n.z < 0.0f) {
+    glm::vec2 sign(p.x >= 0.0f ? 1.0f : -1.0f, p.y >= 0.0f ? 1.0f : -1.0f);
+    p = (1.0f - glm::abs(glm::vec2(p.y, p.x)))*sign;
+  }
+  glm::ivec2 q = glm::ivec2(glm::round(glm::clamp(p, -1.0f, 1.0f)*32767.0f));
+  return (static_cast<uint32_t>(q.x) & 0xFFFFu) | (static_cast<uint32_t>(q.y) << 16);
+}
+
 static void PackBrdf(const LsBrdfParameters& brdf, uint32_t packed[2]) {
   auto unorm = [](float value, float scale) {
     return static_cast<uint32_t>(std::round(glm::clamp(value, 0.0f, 1.0f)*scale));
@@ -63,6 +105,10 @@ static void PackBrdf(const LsBrdfParameters& brdf, uint32_t packed[2]) {
 static const uint32_t kWorkGroupSize = 8;
 // Mirrors DAB_BLEND in Shaders/canvas.slang, set in dabMode with the mode
 static const uint32_t kDabBlend = 1u << 8;
+// Mirrors DAB_FIXED_NORMAL in Shaders/canvas.slang
+static const uint32_t kDabFixedNormal = 1u << 9;
+// Mirrors DAB_CLEAR_RIG in Shaders/canvas.slang
+static const uint32_t kDabClearRig = 1u << 10;
 // Mirrors NO_NORMAL in Shaders/canvas.slang, (-32768, -32768) as two snorms, which encoding never produces
 static const uint32_t kNoNormal = 0x80008000u;
 
@@ -71,11 +117,13 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   width(renderer->canvasState.width), height(renderer->canvasState.height) {
   paintShader = CreateShaderModule(device, "Shaders/canvas.paint.comp.spv");
   blendShader = CreateShaderModule(device, "Shaders/canvas.blend.comp.spv");
+  pickShader = CreateShaderModule(device, "Shaders/canvas.pick.comp.spv");
+  rigCountShader = CreateShaderModule(device, "Shaders/canvas.rigcount.comp.spv");
   rangeShader = CreateShaderModule(device, "Shaders/canvas.range.comp.spv");
   renderShader = CreateShaderModule(device, "Shaders/canvas.render.comp.spv");
   resolveShader = CreateShaderModule(device, "Shaders/canvas.resolve.comp.spv");
 
-  const uint32_t bindingCount = 14;
+  const uint32_t bindingCount = 20;
   VkDescriptorSetLayoutBinding bindings[bindingCount] = {};
   const VkDescriptorType types[bindingCount] = {
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // distance
@@ -92,6 +140,12 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start material colour
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start material surface
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke coverage
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // light mask
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // local lights
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // picked normal
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // occluders
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // light rigs
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // rig pixel counts
   };
   for (uint32_t i = 0; i < bindingCount; i++) {
     bindings[i].binding = i;
@@ -109,8 +163,8 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   }
 
   VkDescriptorPoolSize poolSizes[3] = {
-    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11 },
-    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 12 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7 },
     { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
   };
   VkDescriptorPoolCreateInfo poolInfo = {};
@@ -144,6 +198,8 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
 
   paintPipeline = CreatePipeline(paintShader);
   blendPipeline = CreatePipeline(blendShader);
+  pickPipeline = CreatePipeline(pickShader);
+  rigCountPipeline = CreatePipeline(rigCountShader);
   rangePipeline = CreatePipeline(rangeShader);
   renderPipeline = CreatePipeline(renderShader);
   resolvePipeline = CreatePipeline(resolveShader);
@@ -163,6 +219,22 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   strokeMaterialColor = CreateAttributeImage(VK_FORMAT_R32_UINT, "stroke material colour");
   strokeMaterialSurface = CreateAttributeImage(VK_FORMAT_R32_UINT, "stroke material surface");
   strokeCoverage = CreateAttributeImage(VK_FORMAT_R32_SFLOAT, "stroke coverage");
+  rigImage = CreateAttributeImage(VK_FORMAT_R32_UINT, "rig");
+  rigUsed[0] = true;
+  rigs[0].name = "No rig";
+  CreateHostBuffer(kLsMaxRigs*sizeof(LsCanvasRig), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "rig",
+                   rigBuffer.buffer, rigBuffer.memory, rigBuffer.mapped);
+  // Cleared with vkCmdFillBuffer before each count
+  CreateHostBuffer(kLsMaxRigs*sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                   "rig count", rigCountBuffer.buffer, rigCountBuffer.memory, rigCountBuffer.mapped);
+  CreateHostBuffer(kLsMaxOccluders*sizeof(LsCanvasOccluder), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "occluder",
+                   occluderBuffer.buffer, occluderBuffer.memory, occluderBuffer.mapped);
+  CreateHostBuffer(kLsMaxLocalLights*sizeof(LsCanvasLocalLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "light",
+                   lightBuffer.buffer, lightBuffer.memory, lightBuffer.mapped);
+  // Read by the host a frame after a pick
+  // The summed normal, then the rig under the centre
+  CreateHostBuffer(2*sizeof(glm::vec4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "pick",
+                   pickBuffer.buffer, pickBuffer.memory, pickBuffer.mapped);
   // Cleared by the first Render, which has a command buffer to do it with
   attributesCleared = false;
   UpdateDescriptors();
@@ -176,7 +248,7 @@ LsCanvas::~LsCanvas() {
   DestroyAttributeImage(normal);
   DestroyAttributeImage(radiance);
   for (AttributeImage* attribute : { &materialColor, &materialSurface, &strokeDistance, &strokeNormal,
-                                     &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage }) {
+                                     &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage, &rigImage }) {
     DestroyAttributeImage(*attribute);
   }
   vkDestroyBuffer(device, rangeBuffer.buffer, nullptr);
@@ -184,8 +256,24 @@ LsCanvas::~LsCanvas() {
   vkUnmapMemory(device, parameterBuffer.memory);
   vkDestroyBuffer(device, parameterBuffer.buffer, nullptr);
   vkFreeMemory(device, parameterBuffer.memory, nullptr);
+  vkUnmapMemory(device, lightBuffer.memory);
+  vkDestroyBuffer(device, lightBuffer.buffer, nullptr);
+  vkFreeMemory(device, lightBuffer.memory, nullptr);
+  vkUnmapMemory(device, pickBuffer.memory);
+  vkDestroyBuffer(device, pickBuffer.buffer, nullptr);
+  vkFreeMemory(device, pickBuffer.memory, nullptr);
+  auto destroyHostBuffer = [&](VkBuffer buffer, VkDeviceMemory memory) {
+    vkUnmapMemory(device, memory);
+    vkDestroyBuffer(device, buffer, nullptr);
+    vkFreeMemory(device, memory, nullptr);
+  };
+  destroyHostBuffer(occluderBuffer.buffer, occluderBuffer.memory);
+  destroyHostBuffer(rigBuffer.buffer, rigBuffer.memory);
+  destroyHostBuffer(rigCountBuffer.buffer, rigCountBuffer.memory);
   vkDestroyPipeline(device, paintPipeline, nullptr);
   vkDestroyPipeline(device, blendPipeline, nullptr);
+  vkDestroyPipeline(device, pickPipeline, nullptr);
+  vkDestroyPipeline(device, rigCountPipeline, nullptr);
   vkDestroyPipeline(device, rangePipeline, nullptr);
   vkDestroyPipeline(device, renderPipeline, nullptr);
   vkDestroyPipeline(device, resolvePipeline, nullptr);
@@ -194,6 +282,8 @@ LsCanvas::~LsCanvas() {
   vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
   vkDestroyShaderModule(device, paintShader, nullptr);
   vkDestroyShaderModule(device, blendShader, nullptr);
+  vkDestroyShaderModule(device, pickShader, nullptr);
+  vkDestroyShaderModule(device, rigCountShader, nullptr);
   vkDestroyShaderModule(device, rangeShader, nullptr);
   vkDestroyShaderModule(device, renderShader, nullptr);
   vkDestroyShaderModule(device, resolveShader, nullptr);
@@ -295,29 +385,35 @@ void LsCanvas::CreateRangeBuffer() {
   vkBindBufferMemory(device, rangeBuffer.buffer, rangeBuffer.memory, 0);
 }
 
-void LsCanvas::CreateParameterBuffer() {
+void LsCanvas::CreateHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage, const char* name,
+                                VkBuffer& buffer, VkDeviceMemory& memory, void*& mapped) {
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufferInfo.size = sizeof(LsCanvasRenderParameters);
-  bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+  bufferInfo.size = size;
+  bufferInfo.usage = usage;
   bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  if (vkCreateBuffer(device, &bufferInfo, nullptr, &parameterBuffer.buffer) != VK_SUCCESS) {
-    throw std::string("Could not create canvas parameter buffer!");
+  if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+    throw std::string("Could not create canvas ") + name + " buffer!";
   }
 
-  // Written by the host every frame, after the previous frame has finished with it
   VkMemoryRequirements requirements;
-  vkGetBufferMemoryRequirements(device, parameterBuffer.buffer, &requirements);
+  vkGetBufferMemoryRequirements(device, buffer, &requirements);
   VkMemoryAllocateInfo allocateInfo = {};
   allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocateInfo.allocationSize = requirements.size;
   allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
                                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  if (vkAllocateMemory(device, &allocateInfo, nullptr, &parameterBuffer.memory) != VK_SUCCESS) {
-    throw std::string("Could not allocate canvas parameter buffer memory!");
+  if (vkAllocateMemory(device, &allocateInfo, nullptr, &memory) != VK_SUCCESS) {
+    throw std::string("Could not allocate canvas ") + name + " buffer memory!";
   }
-  vkBindBufferMemory(device, parameterBuffer.buffer, parameterBuffer.memory, 0);
-  vkMapMemory(device, parameterBuffer.memory, 0, VK_WHOLE_SIZE, 0, &parameterBuffer.mapped);
+  vkBindBufferMemory(device, buffer, memory, 0);
+  vkMapMemory(device, memory, 0, VK_WHOLE_SIZE, 0, &mapped);
+}
+
+void LsCanvas::CreateParameterBuffer() {
+  // Written by the host every frame, after the previous frame has finished with it
+  CreateHostBuffer(sizeof(LsCanvasRenderParameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "parameter",
+                   parameterBuffer.buffer, parameterBuffer.memory, parameterBuffer.mapped);
 }
 
 void LsCanvas::CreatePrimitiveBuffer(size_t capacity) {
@@ -368,16 +464,21 @@ void LsCanvas::UpdateDescriptors() {
   VkDescriptorImageInfo radianceInfo = { VK_NULL_HANDLE, radiance.view, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorBufferInfo parameterInfo = { parameterBuffer.buffer, 0, VK_WHOLE_SIZE };
   // Bound from 7 on, in the order of the bindings in canvas.slang
-  const AttributeImage* laterImages[7] = { &materialColor, &materialSurface, &strokeDistance, &strokeNormal,
-                                           &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage };
-  VkDescriptorImageInfo laterInfos[7];
-  for (int i = 0; i < 7; i++) {
+  const AttributeImage* laterImages[8] = { &materialColor, &materialSurface, &strokeDistance, &strokeNormal,
+                                           &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage, &rigImage };
+  VkDescriptorImageInfo laterInfos[8];
+  for (int i = 0; i < 8; i++) {
     laterInfos[i] = { VK_NULL_HANDLE, laterImages[i]->view, VK_IMAGE_LAYOUT_GENERAL };
   }
   VkDescriptorBufferInfo bufferInfo = { primitiveBuffer.buffer, 0, VK_WHOLE_SIZE };
   VkDescriptorBufferInfo rangeInfo = { rangeBuffer.buffer, 0, VK_WHOLE_SIZE };
 
-  VkWriteDescriptorSet writes[14] = {};
+  VkWriteDescriptorSet writes[20] = {};
+  VkDescriptorBufferInfo occluderInfo = { occluderBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo rigInfo = { rigBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo rigCountInfo = { rigCountBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo pickInfo = { pickBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo lightInfo = { lightBuffer.buffer, 0, VK_WHOLE_SIZE };
   uint32_t writeCount = 0;
   auto write = [&](uint32_t binding, VkDescriptorType type) -> VkWriteDescriptorSet& {
     VkWriteDescriptorSet& w = writes[writeCount++];
@@ -401,7 +502,22 @@ void LsCanvas::UpdateDescriptors() {
   if (parameterBuffer.buffer) {
     write(6, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER).pBufferInfo = &parameterInfo;
   }
-  for (uint32_t i = 0; i < 7; i++) {
+  if (lightBuffer.buffer) {
+    write(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &lightInfo;
+  }
+  if (pickBuffer.buffer) {
+    write(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &pickInfo;
+  }
+  if (occluderBuffer.buffer) {
+    write(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &occluderInfo;
+  }
+  if (rigBuffer.buffer) {
+    write(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &rigInfo;
+  }
+  if (rigCountBuffer.buffer) {
+    write(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &rigCountInfo;
+  }
+  for (uint32_t i = 0; i < 8; i++) {
     if (laterImages[i]->view) {
       write(7 + i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE).pImageInfo = &laterInfos[i];
     }
@@ -471,6 +587,238 @@ void LsCanvas::Paint(const std::vector<glm::vec2>& centers, const LsCanvasBrush&
   for (const glm::vec2& center : centers) {
     dabs.push_back({ center, brush, brdf, startsStroke });
     startsStroke = false;
+  }
+}
+
+void LsCanvas::RequestNormalPick(glm::vec2 center, float radius) {
+  pickRequested = true;
+  pickCenter = center;
+  pickRadius = std::max(radius, 0.5f);
+}
+
+void LsCanvas::CollectPick() {
+  // The frame the pick was recorded into must have finished
+  if (!pickRecorded || renderer->frameNumber <= pickFrame) {
+    return;
+  }
+  pickRecorded = false;
+  const glm::vec4* results = static_cast<const glm::vec4*>(pickBuffer.mapped);
+  glm::vec4 sum = results[0];
+  pickedNormalReady = sum.w > 0.0f && glm::dot(glm::vec3(sum), glm::vec3(sum)) >= 1.0e-12f;
+  if (pickedNormalReady) {
+    glm::vec3 world = glm::normalize(glm::vec3(sum));
+    pickedNormal = glm::normalize(glm::vec3(glm::dot(world, camera.GetRight()), glm::dot(world, camera.GetUp()),
+                                            -glm::dot(world, camera.GetForward())));
+  }
+  std::memcpy(&pickedRig, &results[1].x, sizeof(pickedRig));
+  pickedRigReady = true;
+}
+
+bool LsCanvas::TakePickedNormal(glm::vec3& normal) {
+  CollectPick();
+  if (!pickedNormalReady) {
+    return false;
+  }
+  pickedNormalReady = false;
+  normal = pickedNormal;
+  return true;
+}
+
+bool LsCanvas::TakePickedRig(uint32_t& rig) {
+  CollectPick();
+  if (!pickedRigReady) {
+    return false;
+  }
+  pickedRigReady = false;
+  rig = GetRig(pickedRig) ? pickedRig : 0u;
+  return true;
+}
+
+int LsCanvas::AddRig(const LsLightRig& rig) {
+  for (uint32_t slot = 1; slot < kLsMaxRigs; slot++) {
+    if (!rigUsed[slot]) {
+      // Removing a rig took it off every pixel, so the slot starts unpainted
+      rigs[slot] = rig;
+      rigUsed[slot] = true;
+      return static_cast<int>(slot);
+    }
+  }
+  return -1;
+}
+
+void LsCanvas::RemoveRig(uint32_t slot) {
+  if (!GetRig(slot)) {
+    return;
+  }
+  rigUsed[slot] = false;
+  radianceStale = true;
+  // A light stroke over the whole canvas takes it off every pixel
+  LsCanvasBrush brush;
+  brush.radius = static_cast<float>(width + height);
+  brush.opacity = 1.0f;
+  brush.falloff = 0.0f;
+  brush.mode = LsCanvasDabMode::Light;
+  brush.rig = slot;
+  brush.clearRig = true;
+  Paint({ glm::vec2(width, height)*0.5f }, brush, true);
+}
+
+const LsLightRig* LsCanvas::GetRig(uint32_t slot) const {
+  if (slot == 0 || slot >= kLsMaxRigs || !rigUsed[slot]) {
+    return nullptr;
+  }
+  return &rigs[slot];
+}
+
+void LsCanvas::SetRig(uint32_t slot, const LsLightRig& rig) {
+  if (GetRig(slot)) {
+    // Only the colour and name change nothing rendered
+    if (rig.lights != rigs[slot].lights || rig.occluders != rigs[slot].occluders) {
+      radianceStale = true;
+    }
+    else {
+      resolveNeeded = true;
+    }
+    rigs[slot] = rig;
+  }
+}
+
+void LsCanvas::CollectRigCounts() {
+  // The frame the count was recorded into must have finished
+  if (!rigCountRecorded || renderer->frameNumber <= rigCountFrame) {
+    return;
+  }
+  rigCountRecorded = false;
+  std::memcpy(rigPixelCounts.data(), rigCountBuffer.mapped, sizeof(uint32_t)*kLsMaxRigs);
+  paintedPixelCount = 0;
+  for (uint32_t count : rigPixelCounts) {
+    paintedPixelCount += count;
+  }
+}
+
+int LsCanvas::AddLocalLight(const LsLocalLight& light) {
+  for (uint32_t slot = 0; slot < kLsMaxLocalLights; slot++) {
+    if ((localLightSlots & (1u << slot)) == 0) {
+      // Removing a light took it out of every rig, so the slot starts in none
+      localLights[slot] = light;
+      localLightSlots |= 1u << slot;
+      radianceStale = true;
+      return static_cast<int>(slot);
+    }
+  }
+  return -1;
+}
+
+void LsCanvas::RemoveLocalLight(uint32_t slot) {
+  if (slot >= kLsMaxLocalLights || (localLightSlots & (1u << slot)) == 0) {
+    return;
+  }
+  localLightSlots &= ~(1u << slot);
+  radianceStale = true;
+  // Out of every rig, so a light later added to the slot isn't in them
+  for (LsLightRig& rig : rigs) {
+    rig.lights &= ~(1u << slot);
+  }
+}
+
+const LsLocalLight* LsCanvas::GetLocalLight(uint32_t slot) const {
+  if (slot >= kLsMaxLocalLights || (localLightSlots & (1u << slot)) == 0) {
+    return nullptr;
+  }
+  return &localLights[slot];
+}
+
+void LsCanvas::SetLocalLight(uint32_t slot, const LsLocalLight& light) {
+  if (GetLocalLight(slot)) {
+    localLights[slot] = light;
+    radianceStale = true;
+  }
+}
+
+int LsCanvas::AddOccluder(const LsOccluder& occluder) {
+  for (uint32_t slot = 0; slot < kLsMaxOccluders; slot++) {
+    if ((occluderSlots & (1u << slot)) == 0) {
+      // Removing an occluder took it out of every rig, so the slot starts in none
+      occluders[slot] = occluder;
+      occluderSlots |= 1u << slot;
+      radianceStale = true;
+      return static_cast<int>(slot);
+    }
+  }
+  return -1;
+}
+
+void LsCanvas::RemoveOccluder(uint32_t slot) {
+  if (!GetOccluder(slot)) {
+    return;
+  }
+  occluderSlots &= ~(1u << slot);
+  radianceStale = true;
+  // Out of every rig, so an occluder later added to the slot isn't in them
+  for (LsLightRig& rig : rigs) {
+    rig.occluders &= ~(1u << slot);
+  }
+}
+
+const LsOccluder* LsCanvas::GetOccluder(uint32_t slot) const {
+  if (slot >= kLsMaxOccluders || (occluderSlots & (1u << slot)) == 0) {
+    return nullptr;
+  }
+  return &occluders[slot];
+}
+
+void LsCanvas::SetOccluder(uint32_t slot, const LsOccluder& occluder) {
+  if (GetOccluder(slot)) {
+    occluders[slot] = occluder;
+    radianceStale = true;
+  }
+}
+
+glm::vec3 LsCanvas::ViewToWorld(glm::vec3 direction) const {
+  return glm::normalize(camera.GetRight()*direction.x + camera.GetUp()*direction.y - camera.GetForward()*direction.z);
+}
+
+// Directions follow the camera, so this is rewritten every Render
+void LsCanvas::UpdateLightBuffer() {
+  LsCanvasLocalLight* mapped = static_cast<LsCanvasLocalLight*>(lightBuffer.mapped);
+  for (uint32_t slot = 0; slot < kLsMaxLocalLights; slot++) {
+    LsCanvasLocalLight gpu = {};
+    if (localLightSlots & (1u << slot)) {
+      const LsLocalLight& light = localLights[slot];
+      float radius = glm::radians(glm::clamp(light.size, 0.1f, 45.0f));
+      float sinRadius = std::sin(radius);
+      float solidAngle = 2.0f*glm::pi<float>()*(1.0f - std::cos(radius));
+      // A disk of radiance L and angular radius r gives irradiance L pi sin^2 r on a surface facing it
+      glm::vec3 radiance = light.color*light.intensity/(glm::pi<float>()*sinRadius*sinRadius);
+      gpu.direction = glm::vec4(hasCamera ? ViewToWorld(light.direction) : light.direction, std::cos(radius));
+      gpu.radiance = glm::vec4(radiance, solidAngle);
+      gpu.shadowed = light.shadows ? 1u : 0u;
+    }
+    mapped[slot] = gpu;
+  }
+  LsCanvasOccluder* mappedOccluders = static_cast<LsCanvasOccluder*>(occluderBuffer.mapped);
+  for (uint32_t slot = 0; slot < kLsMaxOccluders; slot++) {
+    LsCanvasOccluder gpu = {};
+    if (occluderSlots & (1u << slot)) {
+      const LsOccluder& occluder = occluders[slot];
+      float radius = glm::radians(glm::clamp(occluder.size, 0.5f, 90.0f));
+      float inner = radius*(1.0f - glm::clamp(occluder.softness, 0.0f, 1.0f));
+      gpu.direction = glm::vec4(hasCamera ? ViewToWorld(occluder.direction) : occluder.direction, std::cos(radius));
+      gpu.shape = glm::vec4(std::cos(inner), glm::clamp(occluder.strength, 0.0f, 1.0f), 0.0f, 0.0f);
+    }
+    mappedOccluders[slot] = gpu;
+  }
+  LsCanvasRig* mappedRigs = static_cast<LsCanvasRig*>(rigBuffer.mapped);
+  for (uint32_t slot = 0; slot < kLsMaxRigs; slot++) {
+    LsCanvasRig gpu = {};
+    if (slot != 0 && rigUsed[slot]) {
+      const LsLightRig& rig = rigs[slot];
+      glm::uvec3 color = glm::uvec3(glm::round(glm::clamp(rig.color, 0.0f, 1.0f)*255.0f));
+      gpu.lights = rig.lights & localLightSlots;
+      gpu.occluders = rig.occluders & occluderSlots;
+      gpu.color = color.r | (color.g << 8) | (color.b << 16) | (255u << 24);
+    }
+    mappedRigs[slot] = gpu;
   }
 }
 
@@ -583,7 +931,15 @@ void LsCanvas::Render() {
   }
   bool render = hasCamera && display == LsCanvasDisplay::Rendering && renderedSamples < renderSettings.maxSamples;
   bool resolve = hasCamera && (resolveNeeded || !dabs.empty() || render);
-  if (attributesCleared && dabs.empty() && !resolve) {
+  if (!hasCamera) {
+    // Nothing to reconstruct normals with
+    pickRequested = false;
+  }
+  CollectRigCounts();
+  if (!dabs.empty()) {
+    rigCountRequested = true;
+  }
+  if (attributesCleared && dabs.empty() && !resolve && !pickRequested && !rigCountRequested) {
     return;
   }
 
@@ -591,6 +947,9 @@ void LsCanvas::Render() {
   parameters.exposure = std::exp2(renderSettings.exposure);
   parameters.samplesPerFrame = renderSettings.samplesPerFrame;
   parameters.maxSamples = renderSettings.maxSamples;
+  parameters.localLightSlots = localLightSlots;
+  parameters.occluderSlots = occluderSlots;
+  UpdateLightBuffer();
   // The previous frame has finished reading it, the frame fence was waited on
   std::memcpy(parameterBuffer.mapped, &parameters, sizeof(parameters));
 
@@ -627,7 +986,7 @@ void LsCanvas::Render() {
       { distance.image, zero }, { renderer->canvasState.image, black }, { normal.image, noNormal },
       { radiance.image, zero }, { materialColor.image, defaultColor }, { materialSurface.image, defaultSurface },
       { strokeDistance.image, zero }, { strokeNormal.image, noNormal }, { strokeMaterialColor.image, defaultColor },
-      { strokeMaterialSurface.image, defaultSurface }, { strokeCoverage.image, zero },
+      { strokeMaterialSurface.image, defaultSurface }, { strokeCoverage.image, zero }, { rigImage.image, zero },
     };
     const uint32_t clearCount = sizeof(clears)/sizeof(clears[0]);
     VkImageMemoryBarrier clearBarriers[clearCount];
@@ -712,6 +1071,20 @@ void LsCanvas::Render() {
     constants.dabRadius = radius;
     constants.dabMode = static_cast<uint32_t>(dab.brush.mode) | (dab.brush.blend ? kDabBlend : 0u);
     PackBrdf(dab.brdf, constants.dabMaterial);
+    if (dab.brush.mode == LsCanvasDabMode::Light) {
+      constants.dabMaterial[0] = dab.brush.rig;
+      constants.dabMode |= dab.brush.clearRig ? kDabClearRig : 0u;
+      if (dab.brush.fixedNormal && !dab.brush.clearRig) {
+        // The rig's normal in world space for the camera as the dab is painted
+        constants.dabMode |= kDabFixedNormal;
+        constants.dabMaterial[1] = EncodeNormal(ViewToWorld(dab.brush.normal));
+      }
+    }
+    else if (dab.brush.mode == LsCanvasDabMode::Normal && dab.brush.fixedNormal && !dab.brush.blend) {
+      // The normal in world space for the camera as the dab is painted
+      constants.dabMode |= kDabFixedNormal;
+      constants.dabMaterial[0] = EncodeNormal(ViewToWorld(dab.brush.normal));
+    }
     if (dab.brush.blend) {
       // Blend dabs paint no material, the shader reads the threshold from its place
       float threshold = std::max(dab.brush.blendEdgeThreshold, 0.0f);
@@ -735,6 +1108,57 @@ void LsCanvas::Render() {
     }
   }
   dabs.clear();
+
+  if (pickRequested) {
+    // After the dabs, so it sees this frame's strokes
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &computeBarrier, 0, nullptr, 0, nullptr);
+    constants.dabCenter = pickCenter;
+    constants.dabRadius = pickRadius;
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pickPipeline);
+    vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+    vkCmdDispatch(commandBuffer, 1, 1, 1);
+    // Read on the host once the frame's fence has been waited on
+    VkMemoryBarrier hostBarrier = {};
+    hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    hostBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    hostBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                         0, 1, &hostBarrier, 0, nullptr, 0, nullptr);
+    pickRequested = false;
+    pickRecorded = true;
+    pickFrame = renderer->frameNumber;
+  }
+
+  // Counts what the strokes changed, once the last count has been read back
+  if (rigCountRequested && !rigCountRecorded) {
+    VkMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 1, &barrier, 0, nullptr, 0, nullptr);
+    vkCmdFillBuffer(commandBuffer, rigCountBuffer.buffer, 0, VK_WHOLE_SIZE, 0u);
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &barrier, 0, nullptr, 0, nullptr);
+    // After the dabs, which wrote the rigs and positions it counts
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &computeBarrier, 0, nullptr, 0, nullptr);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, rigCountPipeline);
+    vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+    vkCmdDispatch(commandBuffer, (width + kWorkGroupSize - 1)/kWorkGroupSize, (height + kWorkGroupSize - 1)/kWorkGroupSize, 1);
+    VkMemoryBarrier hostBarrier = {};
+    hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    hostBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    hostBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                         0, 1, &hostBarrier, 0, nullptr, 0, nullptr);
+    rigCountRequested = false;
+    rigCountRecorded = true;
+    rigCountFrame = renderer->frameNumber;
+  }
 
   if (resolve) {
     // After the dabs, and after the canvas image was last drawn

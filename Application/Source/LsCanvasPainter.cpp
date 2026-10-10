@@ -38,14 +38,49 @@ float LsCanvasPainter::GetDabSpacing() {
   return glm::max(0.25f*brushRadius/navigator->GetZoom(), 0.5f);
 }
 
+void LsCanvasPainter::Pick(glm::vec2 canvasPoint) {
+  canvas->RequestNormalPick(canvasPoint, brushRadius/navigator->GetZoom());
+  pickPoint = canvasPoint;
+  hasPickPoint = true;
+}
+
+LsCanvasBrush LsCanvasPainter::MakeBrush(bool shift) const {
+  LsCanvasBrush brush;
+  brush.radius = brushRadius/navigator->GetZoom();
+  brush.opacity = brushOpacity;
+  brush.falloff = brushFalloff;
+  brush.mode = mode;
+  // Shift blends instead, as smoothing does in sculpting applications. Lights
+  // are on or off, so for light strokes it paints an empty rig instead, which
+  // leaves only the scene's emitters, and the normals as they are.
+  brush.blend = shift && mode != LsCanvasDabMode::Light;
+  brush.rig = shift ? 0u : rig;
+  brush.fixedNormal = mode == LsCanvasDabMode::Light ? rigNormal && !shift : fixedNormal;
+  brush.normal = normal;
+  brush.blendEdgeThreshold = blendKeepsEdges ? blendEdgeThreshold : 0.0f;
+  return brush;
+}
+
+void LsCanvasPainter::Fill(bool shift) {
+  // One dab over the whole canvas, evenly at the brush opacity. Blending isn't
+  // a fill, its smoothing reaches with the dab, so Shift only empties the rig.
+  LsCanvasBrush brush = MakeBrush(shift && mode == LsCanvasDabMode::Light);
+  glm::vec2 size(canvas->GetSize());
+  brush.radius = glm::length(size);
+  brush.falloff = 0.0f;
+  canvas->Paint({ size*0.5f }, brush, true);
+}
+
 void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
-  strokeBrush.radius = brushRadius/navigator->GetZoom();
-  strokeBrush.opacity = brushOpacity;
-  strokeBrush.falloff = brushFalloff;
-  strokeBrush.mode = mode;
-  // Shift blends instead, as smoothing does in sculpting applications
-  strokeBrush.blend = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
-  strokeBrush.blendEdgeThreshold = blendKeepsEdges ? blendEdgeThreshold : 0.0f;
+  // Alt picks the normal under the brush instead, as the eyedropper does in
+  // painting applications, averaged over the brush
+  picking = pickArmed || (SDL_GetModState() & SDL_KMOD_ALT) != 0;
+  pickArmed = false;
+  if (picking) {
+    Pick(canvasPoint);
+    return;
+  }
+  strokeBrush = MakeBrush((SDL_GetModState() & SDL_KMOD_SHIFT) != 0);
   canvas->Paint({ canvasPoint }, strokeBrush, true);
   lastStrokeSample = canvasPoint;
   distanceToNextDab = GetDabSpacing();
@@ -54,6 +89,10 @@ void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
 // Fills the gap between the previous input sample and this one with dabs, the leftover
 // distance carries over to the next segment so spacing stays even across samples
 void LsCanvasPainter::ContinueStroke(glm::vec2 canvasPoint) {
+  if (picking) {
+    Pick(canvasPoint);
+    return;
+  }
   glm::vec2 delta = canvasPoint - lastStrokeSample;
   float length = glm::length(delta);
   float spacing = GetDabSpacing();

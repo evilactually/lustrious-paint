@@ -4,7 +4,8 @@
 // NO_NORMAL while it has none.
 //
 // Each pixel also stores the parameters of its BRDF, the default material until
-// one is painted, so materials blend like any other attribute.
+// one is painted, so materials blend like any other attribute, and a mask of
+// the light rig painted on it, see Rig.
 //
 // paintMain transfers positions or normals from the construction geometry for
 // one dab of a stroke, paints a material or erases all of them, blending from
@@ -23,14 +24,25 @@ static const uint DISPLAY_POSITION = 1;
 static const uint DISPLAY_NORMAL   = 2;
 static const uint DISPLAY_RENDERING = 3;
 static const uint DISPLAY_MATERIAL  = 4;
+static const uint DISPLAY_RIGS      = 5;
+static const uint DISPLAY_MATCAP    = 6;
 
 static const uint DAB_DEPTH  = 0;
 static const uint DAB_NORMAL = 1;
 static const uint DAB_ERASE  = 2;
 static const uint DAB_MATERIAL = 3;
+// Paints the light rig, see paintMain
+static const uint DAB_LIGHT = 4;
 // Set with a mode for a blend dab, which smooths what the mode paints, or
 // everything for DAB_ERASE
 static const uint DAB_BLEND = 1u << 8;
+// Set with DAB_NORMAL to paint the normal in dabMaterialColor instead of the
+// construction geometry's, and with DAB_LIGHT to paint the one in
+// dabMaterialSurface with the rig
+static const uint DAB_FIXED_NORMAL = 1u << 9;
+// Set with DAB_LIGHT to take the rig in dabMaterialColor off the pixels that
+// have it, for removing a rig from every pixel
+static const uint DAB_CLEAR_RIG = 1u << 10;
 
 struct CanvasPushConstants
 {
@@ -93,7 +105,11 @@ struct RenderParameters
   float exposure;      // multiplier of the rendered radiance
   uint samplesPerFrame;
   uint maxSamples;     // per pixel, rendering stops there
+  uint localLightSlots;  // slots of localLights in use
+  uint occluderSlots;    // slots of occluders in use
   uint pad0;
+  uint pad1;
+  uint pad2;
 };
 
 [[vk::binding(6)]]
@@ -132,6 +148,69 @@ RWTexture2D<uint> strokeMaterialSurfaceImage;
 [[vk::binding(13)]]
 [format("r32f")]
 RWTexture2D<float> strokeCoverageImage;
+
+// Local lights, which the artist places around the painting rather than in the
+// scene: each lights from a direction at infinity, a small disk of sky of
+// uniform radiance. A pixel is lit by the scene's emitters and the local lights
+// of the light rig painted on it by light strokes, and shadowed by the rig's
+// occluders. Each pixel has the index of its rig in rigs, 0 for none.
+[[vk::binding(14)]]
+[format("r32ui")]
+RWTexture2D<uint> rigImage;
+
+// Mirrors LsCanvasLocalLight in LsCanvas.cpp, one for each of 32 slots
+struct LocalLight
+{
+  float4 direction; // xyz = world space unit vector towards the light, w = cosine of its angular radius
+  float4 radiance;  // rgb = radiance of the disk, w = its solid angle
+  uint shadowed;    // 0 when the scene's shadow casters don't block it
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
+[[vk::binding(15)]]
+StructuredBuffer<LocalLight> localLights;
+
+// Occluders shadow a pixel from a cap of directions, as if something the scene
+// doesn't have were in the way there, when they are in its rig. Mirrors
+// LsCanvasOccluder in LsCanvas.cpp, one for each of 32 slots.
+struct Occluder
+{
+  float4 direction; // xyz = world space unit vector towards its centre, w = cosine of its angular radius
+  float4 shape;     // x = cosine of the radius it blocks fully within, y = strength
+};
+
+[[vk::binding(17)]]
+StructuredBuffer<Occluder> occluders;
+
+// A light rig: local lights and occluders, as bits of their slots. Mirrors
+// LsCanvasRig in LsCanvas.cpp, rig 0 has nothing.
+struct Rig
+{
+  uint lights;
+  uint occluders;
+  uint color; // for showing where it is painted, sRGB rgba8
+  uint pad;
+};
+
+static const uint MAX_RIGS = 256;
+
+[[vk::binding(18)]]
+StructuredBuffer<Rig> rigs;
+
+Rig pixelRig(int2 pixel)
+{
+  return rigs[min(rigImage[pixel], MAX_RIGS - 1)];
+}
+
+// How many painted pixels have each rig, gathered by rigCountMain
+[[vk::binding(19)]]
+RWStructuredBuffer<uint> rigCounts;
+
+// Written by pickMain and read back by the host: xyz = sum of the normals, w = their count
+[[vk::binding(16)]]
+RWStructuredBuffer<float4> pickResult;
 
 // The IOR range a material can store, mirrors LsCanvas.cpp
 static const float MIN_IOR = 1.0;
@@ -343,8 +422,38 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
       distanceImage[pixel] = 0.0;
       normalImage[pixel] = NO_NORMAL;
       writeMaterial(pixel, dabMaterial());
+      rigImage[pixel] = 0;
       radianceImage[pixel] = float4(0.0);
     }
+    return;
+  }
+  // The pixel takes the rig in dabMaterialColor, which can't be partly there,
+  // so soft edges are dithered like erasing. With DAB_CLEAR_RIG the pixels
+  // that have that rig go back to none instead, for removing a rig from every
+  // pixel. With DAB_FIXED_NORMAL the rig also carries the normal in
+  // dabMaterialSurface, which blends like a normal stroke.
+  if ((canvas.dabMode & 0xFFu) == DAB_LIGHT) {
+    strokeCoverageImage[pixel] = coverage;
+    if (coverage > ditherThreshold(pixel)) {
+      uint before = rigImage[pixel];
+      uint after = canvas.dabMaterialColor;
+      if ((canvas.dabMode & DAB_CLEAR_RIG) != 0) {
+        after = before == canvas.dabMaterialColor ? 0u : before;
+      }
+      if (after != before) {
+        rigImage[pixel] = after;
+        radianceImage[pixel] = float4(0.0);
+      }
+    }
+    if ((canvas.dabMode & DAB_FIXED_NORMAL) != 0) {
+      paintNormal(pixel, decodeNormal(canvas.dabMaterialSurface), coverage);
+    }
+    return;
+  }
+  // A normal chosen by the artist, also where there is no position yet
+  if (canvas.dabMode == (DAB_NORMAL | DAB_FIXED_NORMAL)) {
+    strokeCoverageImage[pixel] = coverage;
+    paintNormal(pixel, decodeNormal(canvas.dabMaterialColor), coverage);
     return;
   }
   // Also where there is no position yet, so materials can be painted first
@@ -364,20 +473,31 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
   }
   strokeCoverageImage[pixel] = coverage;
   if (canvas.dabMode == DAB_NORMAL) {
-    // Blended and normalised, a pixel without a normal takes the new one
-    float3 n = constructionNormal(canvas.origin.xyz, direction, t);
-    uint before = strokeNormalImage[pixel];
-    if (before != NO_NORMAL) {
-      float3 blended = lerp(decodeNormal(before), n, coverage);
-      n = dot(blended, blended) > 1.0e-8 ? normalize(blended) : n;
-    }
-    normalImage[pixel] = encodeNormal(n);
+    paintNormal(pixel, constructionNormal(canvas.origin.xyz, direction, t), coverage);
+    return;
   }
-  else {
-    // Blended along the ray, a pixel without a position takes the new one
-    float before = strokeDistanceImage[pixel];
-    distanceImage[pixel] = before > 0.0 ? lerp(before, t, coverage) : t;
+  // Blended along the ray, a pixel without a position takes the new one
+  float before = strokeDistanceImage[pixel];
+  distanceImage[pixel] = before > 0.0 ? lerp(before, t, coverage) : t;
+  radianceImage[pixel] = float4(0.0);
+}
+
+// Blended from the normal at the start of the stroke and normalised. A pixel
+// without a painted normal blends from the one its position and its
+// neighbours' imply, as it is rendered with, so soft edges stay soft. Without a
+// position either it takes the new one.
+void paintNormal(int2 pixel, float3 n, float coverage)
+{
+  uint before = strokeNormalImage[pixel];
+  float t = distanceImage[pixel];
+  bool blend = before != NO_NORMAL || t > 0.0;
+  if (blend) {
+    float3 direction = pixelRay(uint2(pixel));
+    float3 from = before != NO_NORMAL ? decodeNormal(before) : positionNormal(pixel, canvas.origin.xyz + direction*t, direction);
+    float3 blended = lerp(from, n, coverage);
+    n = dot(blended, blended) > 1.0e-8 ? normalize(blended) : n;
   }
+  normalImage[pixel] = encodeNormal(n);
   radianceImage[pixel] = float4(0.0);
 }
 
@@ -693,13 +813,61 @@ bool isContaining(uint2 mask, uint i)
   return i < 64 && (mask[i/32] & (1u << (i%32))) != 0;
 }
 
-// Emitted radiance arriving at origin from direction w: the emission of the
-// first shadow caster or emitter along the ray, if that is an emitter, leaving
-// out those that contain the origin. An emitter that is also a shadow caster
-// still emits. Rays that leave the scene, or run out of steps grazing along a
-// surface, bring no light.
-float3 incidentRadiance(float3 origin, float3 w, uint2 containing)
+// What lights a pixel: the scene's emitters and its local lights
+struct Lighting
 {
+  uint emitterCount;    // scene emitters that can be sampled
+  uint localMask;       // local lights, as bits of their slots
+  uint localCount;
+  uint occluderMask;    // occluders, as bits of their slots
+  uint2 containing;     // see containingPrimitives
+
+  uint count() { return emitterCount + localCount; }
+};
+
+// Emitted radiance arriving at origin from direction w. From the scene, the
+// emission of the first shadow caster or emitter along the ray, if that is an
+// emitter, leaving out those that contain the origin. An emitter that is also a
+// shadow caster still emits. Rays that run out of steps grazing along a surface
+// bring no light from the scene. Then the local lights whose disk w points
+// into, if the ray leaves the scene or they aren't shadowed. All of it is
+// dimmed by the occluders w points into.
+float3 incidentRadiance(float3 origin, float3 w, Lighting lighting)
+{
+  float visibility = occluderVisibility(w, lighting.occluderMask);
+  if (visibility <= 0.0) {
+    return float3(0.0);
+  }
+  float3 radiance = float3(0.0);
+  bool escaped = false;
+  float3 sceneRadiance = traceEmission(origin, w, lighting.containing, escaped);
+  for (uint mask = lighting.localMask; mask != 0; mask &= mask - 1) {
+    LocalLight light = localLights[firstbitlow(mask)];
+    if (dot(w, light.direction.xyz) >= light.direction.w && (escaped || light.shadowed == 0)) {
+      radiance += light.radiance.rgb;
+    }
+  }
+  return (radiance + sceneRadiance)*visibility;
+}
+
+// How much light from direction w the occluders let through: each blocks its
+// strength within its inner radius, fading out towards its outer one
+float occluderVisibility(float3 w, uint mask)
+{
+  float visibility = 1.0;
+  for (; mask != 0; mask &= mask - 1) {
+    Occluder occluder = occluders[firstbitlow(mask)];
+    float cosine = dot(w, occluder.direction.xyz);
+    float inside = occluder.shape.x > occluder.direction.w ?
+                   smoothstep(occluder.direction.w, occluder.shape.x, cosine) : (cosine >= occluder.direction.w ? 1.0 : 0.0);
+    visibility *= 1.0 - occluder.shape.y*inside;
+  }
+  return visibility;
+}
+
+float3 traceEmission(float3 origin, float3 w, uint2 containing, out bool escaped)
+{
+  escaped = false;
   float t = 0.0;
   for (int step = 0; step < MAX_STEPS && t < MAX_DISTANCE; step++) {
     float3 p = origin + w*t;
@@ -716,7 +884,8 @@ float3 incidentRadiance(float3 origin, float3 w, uint2 containing)
       }
     }
     if (closest == ~0u) {
-      break;
+      escaped = true;
+      return float3(0.0);
     }
     if (distance < 1.0e-4*max(t, 1.0)) {
       ScenePrimitive primitive = primitives[closest];
@@ -724,6 +893,7 @@ float3 incidentRadiance(float3 origin, float3 w, uint2 containing)
     }
     t += distance;
   }
+  escaped = t >= MAX_DISTANCE;
   return float3(0.0);
 }
 
@@ -759,6 +929,13 @@ struct EmitterCone
     solidAngle = 2.0*PI*sin2Max/(1.0 + cosMax);
   }
 
+  __init(LocalLight light)
+  {
+    axis = light.direction.xyz;
+    cosMax = light.direction.w;
+    solidAngle = light.radiance.w;
+  }
+
   bool contains(float3 w)
   {
     return solidAngle > 0.0 && dot(w, axis) >= cosMax;
@@ -791,11 +968,11 @@ uint sampledEmitterCount()
   return count;
 }
 
-// Density over directions from p of picking an emitter uniformly and then a
-// direction uniformly in its cone
-float emitterPdf(float3 p, float3 w, uint emitterCount)
+// Density over directions from p of picking an emitter or a local light
+// uniformly and then a direction uniformly in its cone
+float emitterPdf(float3 p, float3 w, Lighting lighting)
 {
-  if (emitterCount == 0) {
+  if (lighting.count() == 0) {
     return 0.0;
   }
   float pdf = 0.0;
@@ -808,13 +985,27 @@ float emitterPdf(float3 p, float3 w, uint emitterCount)
       pdf += 1.0/cone.solidAngle;
     }
   }
-  return pdf/float(emitterCount);
+  for (uint mask = lighting.localMask; mask != 0; mask &= mask - 1) {
+    EmitterCone cone = EmitterCone(localLights[firstbitlow(mask)]);
+    if (cone.contains(w)) {
+      pdf += 1.0/cone.solidAngle;
+    }
+  }
+  return pdf/float(lighting.count());
 }
 
-// u.z picks the emitter
-float3 sampleEmitters(float3 p, uint emitterCount, float3 u)
+// u.z picks the emitter or local light
+float3 sampleEmitters(float3 p, Lighting lighting, float3 u)
 {
-  uint picked = min(uint(u.z*float(emitterCount)), emitterCount - 1);
+  uint count = lighting.count();
+  uint picked = min(uint(u.z*float(count)), count - 1);
+  if (picked >= lighting.emitterCount) {
+    uint mask = lighting.localMask;
+    for (uint skipped = picked - lighting.emitterCount; skipped > 0; skipped--) {
+      mask &= mask - 1;
+    }
+    return EmitterCone(localLights[firstbitlow(mask)]).sample(u.xy);
+  }
   for (uint i = 0; i < canvas.primitiveCount; i++) {
     if (!isSampledEmitter(primitives[i])) {
       continue;
@@ -837,7 +1028,7 @@ float3 sampleEmitters(float3 p, uint emitterCount, float3 u)
 // contribution is f Le cos/(pdfEmitters + pdfBrdf), whichever strategy drew it.
 // Sampling emitters finds small lights, sampling the BRDF finds glossy
 // reflections of large ones.
-float3 renderSample(float3 p, float3 origin, uint2 containing, ShadingFrame frame, float3 wo, Brdf brdf, uint emitterCount,
+float3 renderSample(float3 p, float3 origin, Lighting lighting, ShadingFrame frame, float3 wo, Brdf brdf,
                     inout Random random)
 {
   float3 radiance = float3(0.0);
@@ -847,10 +1038,10 @@ float3 renderSample(float3 p, float3 origin, uint2 containing, ShadingFrame fram
     float3 u = float3(random.next(), random.next(), random.next());
     float3 wi;
     if (strategy == 0) {
-      if (emitterCount == 0) {
+      if (lighting.count() == 0) {
         continue;
       }
-      wi = sampleEmitters(p, emitterCount, u);
+      wi = sampleEmitters(p, lighting, u);
     }
     else {
       wi = normalize(frame.toWorld(sampleBrdf(brdf, woLocal, u)));
@@ -860,9 +1051,9 @@ float3 renderSample(float3 p, float3 origin, uint2 containing, ShadingFrame fram
       continue;
     }
     float3 f = evaluateBrdf(brdf, woLocal, wiLocal);
-    float pdf = emitterPdf(p, wi, emitterCount) + brdfPdf(brdf, woLocal, wiLocal);
+    float pdf = emitterPdf(p, wi, lighting) + brdfPdf(brdf, woLocal, wiLocal);
     if (any(f > 0.0) && pdf > 0.0) {
-      radiance += f*incidentRadiance(origin, wi, containing)*(wiLocal.z/pdf);
+      radiance += f*incidentRadiance(origin, wi, lighting)*(wiLocal.z/pdf);
     }
   }
   return radiance;
@@ -888,27 +1079,114 @@ void renderMain(uint3 globalId : SV_DispatchThreadID)
   uint bits = normalImage[pixel];
   float3 n = bits != NO_NORMAL ? decodeNormal(bits) : positionNormal(pixel, p, direction);
   // A painted normal can face away from the camera, but the point is seen from
-  // the camera anyway, so it is shaded as two sided
+  // the camera anyway. It is turned just far enough to face it rather than
+  // flipped, so a normal field that passes edge on, as blended normals on a
+  // wall seen at a grazing angle do, stays continuous instead of flipping from
+  // pixel to pixel.
   float3 wo = -direction;
-  if (dot(n, wo) < 0.0) {
-    n = -n;
+  float facing = dot(n, wo);
+  if (facing < 0.02) {
+    n = normalize(n + wo*(0.02 - facing));
   }
   ShadingFrame frame = ShadingFrame(n);
 
   Brdf brdf = pixelMaterial(pixel).brdf();
 
-  // Rays leave from just above the surface, so they don't find it again
-  float3 origin = p + n*(1.0e-3*max(t, 1.0));
-  uint emitterCount = sampledEmitterCount();
-  uint2 containing = containingPrimitives(origin);
+  // Rays leave from just above the surface, so they don't find it again. Above
+  // the surface the positions form rather than along the painted normal, which
+  // can lie almost along the surface, where rays would start on it and every
+  // one of them would be shadowed.
+  float3 origin = p + positionNormal(pixel, p, direction)*(1.0e-3*max(t, 1.0));
+  Lighting lighting;
+  lighting.emitterCount = sampledEmitterCount();
+  Rig rig = pixelRig(pixel);
+  lighting.localMask = rig.lights & rendering.localLightSlots;
+  lighting.localCount = countbits(lighting.localMask);
+  lighting.occluderMask = rig.occluders & rendering.occluderSlots;
+  lighting.containing = containingPrimitives(origin);
   uint first = uint(accumulated.a);
   uint count = min(rendering.samplesPerFrame, rendering.maxSamples - first);
   float3 sum = float3(0.0);
   for (uint i = 0; i < count; i++) {
     Random random = Random(globalId.xy, first + i);
-    sum += renderSample(p, origin, containing, frame, wo, brdf, emitterCount, random);
+    sum += renderSample(p, origin, lighting, frame, wo, brdf, random);
   }
   radianceImage[pixel] = accumulated + float4(sum, float(count));
+}
+
+// The normal a pixel is rendered with: the painted one, or the one its
+// position and its neighbours' imply, facing the camera. False without a position.
+bool shadingNormal(int2 pixel, out float3 n)
+{
+  n = float3(0.0, 0.0, 1.0);
+  float t = distanceImage[pixel];
+  if (t <= 0.0) {
+    return false;
+  }
+  float3 direction = pixelRay(uint2(pixel));
+  uint bits = normalImage[pixel];
+  n = bits != NO_NORMAL ? decodeNormal(bits) : positionNormal(pixel, canvas.origin.xyz + direction*t, direction);
+  if (dot(n, direction) > 0.0) {
+    n = -n;
+  }
+  return true;
+}
+
+static const uint PICK_GROUP_SIZE = 16;
+groupshared float4 pickSums[PICK_GROUP_SIZE*PICK_GROUP_SIZE];
+
+// Sums the normals the pixels within dabRadius of dabCenter are rendered with,
+// for picking the normal under the brush. One group strides over the disk and
+// adds up its threads' sums.
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void pickMain(uint3 threadId : SV_GroupThreadID)
+{
+  uint index = threadId.y*PICK_GROUP_SIZE + threadId.x;
+  int2 first = int2(floor(canvas.dabCenter - canvas.dabRadius));
+  int2 last = int2(ceil(canvas.dabCenter + canvas.dabRadius));
+  float4 sum = float4(0.0);
+  for (int y = first.y + int(threadId.y); y <= last.y; y += int(PICK_GROUP_SIZE)) {
+    for (int x = first.x + int(threadId.x); x <= last.x; x += int(PICK_GROUP_SIZE)) {
+      int2 pixel = int2(x, y);
+      if (any(pixel < 0) || any(pixel >= int2(canvas.size))) {
+        continue;
+      }
+      float2 delta = float2(pixel) + 0.5 - canvas.dabCenter;
+      float3 n;
+      if (dot(delta, delta) <= canvas.dabRadius*canvas.dabRadius && shadingNormal(pixel, n)) {
+        sum += float4(n, 1.0);
+      }
+    }
+  }
+  pickSums[index] = sum;
+  GroupMemoryBarrierWithGroupSync();
+  for (uint stride = PICK_GROUP_SIZE*PICK_GROUP_SIZE/2; stride > 0; stride /= 2) {
+    if (index < stride) {
+      pickSums[index] += pickSums[index + stride];
+    }
+    GroupMemoryBarrierWithGroupSync();
+  }
+  if (index == 0) {
+    pickResult[0] = pickSums[0];
+    // And the rig of the pixel under the centre, to select it
+    int2 center = clamp(int2(floor(canvas.dabCenter)), int2(0), int2(canvas.size) - 1);
+    pickResult[1] = float4(asfloat(rigImage[center]), 0.0, 0.0, 0.0);
+  }
+}
+
+// Counts the painted pixels of each rig into rigCounts, reset to 0 before
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void rigCountMain(uint3 globalId : SV_DispatchThreadID)
+{
+  if (any(globalId.xy >= canvas.size)) {
+    return;
+  }
+  int2 pixel = int2(globalId.xy);
+  if (distanceImage[pixel] > 0.0) {
+    InterlockedAdd(rigCounts[min(rigImage[pixel], MAX_RIGS - 1)], 1u);
+  }
 }
 
 float3 linearToSrgb(float3 c)
@@ -996,10 +1274,39 @@ float isolineCoverage(int2 pixel, float z, out bool major)
 // dark grey at the furthest, so it stays readable at any scene scale. Position
 // shows the absolute world coordinates in RGB, clamped to [0, 1] by the image
 // format. Normal shows the world space normal mapped to [0, 1]. Material shows
-// the base colour of each pixel, also where there is no position. Rendering shows
+// the base colour of each pixel, also where there is no position. Rigs shows
+// the colour of the light rig painted on each pixel. Matcap shades the
+// normals each pixel is rendered with as red wax, see redWax. Rendering shows
 // the mean of the rendered samples, exposed and sRGB encoded. Isolines are drawn
-// over any of them but the rendering where there is a position. Pixels without
+// over any of them but the rendering and the matcap where there is a position. Pixels without
 // the shown attribute are black.
+// A world space normal in the canvas camera's view space: x right, y up and z
+// towards the viewer, along the view axis, without the lens shift
+float3 toViewSpace(float3 n)
+{
+  float3 right = normalize(canvas.right.xyz);
+  float3 up = normalize(canvas.up.xyz);
+  float3 back = normalize(cross(right, up));
+  return float3(dot(n, right), dot(n, up), dot(n, back));
+}
+
+// Shades a view space normal like ZBrush's default material, MatCap Red Wax,
+// for judging the form of a surface without lights or materials: a key light
+// close to the viewer, up and to the left, takes a saturated red from a deep
+// red shadow to a warmer lit red, under a broad waxy sheen with a softer core
+// and a warm rim at grazing angles. In display values, like a matcap image.
+float3 redWax(float3 n)
+{
+  float3 key = normalize(float3(-0.35, 0.45, 0.82));
+  float d = saturate((dot(n, key) + 0.15)/1.15);
+  float3 color = lerp(float3(0.16, 0.022, 0.016), float3(0.62, 0.08, 0.05), smoothstep(0.0, 0.55, d));
+  color = lerp(color, float3(0.90, 0.24, 0.14), smoothstep(0.45, 1.0, d));
+  float specular = saturate(dot(n, normalize(key + float3(0.0, 0.0, 1.0))));
+  color += float3(1.0, 0.86, 0.74)*(0.38*pow(specular, 10.0) + 0.22*pow(specular, 60.0));
+  color += float3(0.60, 0.18, 0.10)*0.7*pow(saturate(1.0 - n.z), 4.0);
+  return saturate(color);
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void resolveMain(uint3 globalId : SV_DispatchThreadID)
@@ -1018,8 +1325,27 @@ void resolveMain(uint3 globalId : SV_DispatchThreadID)
     displayImage[globalId.xy] = float4(color, 1.0);
     return;
   }
+  if (canvas.display == DISPLAY_MATCAP) {
+    float3 n;
+    if (shadingNormal(pixel, n)) {
+      color = redWax(toViewSpace(n));
+    }
+    displayImage[globalId.xy] = float4(color, 1.0);
+    return;
+  }
   if (canvas.display == DISPLAY_MATERIAL) {
     color = pixelMaterial(pixel).baseColor;
+  }
+  else if (canvas.display == DISPLAY_RIGS) {
+    // Dark grey where a position has no rig
+    uint index = rigImage[pixel];
+    if (index != 0) {
+      uint packed = pixelRig(pixel).color;
+      color = float3(packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu)/255.0;
+    }
+    else if (t > 0.0) {
+      color = float3(0.12);
+    }
   }
   else if (canvas.display == DISPLAY_NORMAL) {
     uint bits = normalImage[pixel];

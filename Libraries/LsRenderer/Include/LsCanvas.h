@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 #include <vulkan_dynamic.hpp>
 #include <glm/glm.hpp>
@@ -18,7 +20,59 @@ enum class LsCanvasDisplay : uint32_t
   Normal = 2,   // world space normal in RGB, mapped from [-1, 1] to [0, 1]
   Rendering = 3, // the light reflected towards the camera, see LsCanvas
   Material = 4,  // base colour of each pixel's material
+  Rigs = 5,      // colour of the light rig painted on each pixel
+  Matcap = 6,    // the shading normals in red wax, like ZBrush's default MatCap Red Wax
 };
+
+// A light the artist places around the painting rather than in the scene, for
+// lighting a region the way a painter would. It lights from a direction at
+// infinity, a small disk of sky, so it gives soft shadows and highlights. The
+// direction is in the canvas camera's view space, x right, y up and z towards
+// the viewer, so it stays where it is relative to the painting as the camera
+// moves, like the painted positions do.
+struct LsLocalLight
+{
+  std::string name;
+  glm::vec3 direction = glm::normalize(glm::vec3(-0.5f, 0.6f, 0.6f)); // towards the light
+  glm::vec3 color = glm::vec3(1.0f); // linear
+  // Irradiance on a surface facing the light, times the colour
+  float intensity = 3.0f;
+  float size = 3.0f; // angular radius in degrees
+  // Blocked by the scene's shadow casters
+  bool shadows = true;
+};
+
+// Local lights are kept in this many slots, a pixel has a bit for each
+const uint32_t kLsMaxLocalLights = 32;
+
+// Shadows a pixel from a cap of directions, as if something the scene doesn't
+// have were in the way there, painted with the light rig like a local light.
+// The direction is in the canvas camera's view space, like a local light's.
+struct LsOccluder
+{
+  std::string name;
+  glm::vec3 direction = glm::normalize(glm::vec3(0.6f, 0.4f, 0.5f)); // towards its centre
+  float size = 30.0f;    // angular radius in degrees
+  float softness = 0.3f; // fraction of the radius over which it fades out towards its edge
+  float strength = 1.0f; // how much of the light within it is blocked
+};
+
+// Occluders are kept in this many slots, a rig has a bit for each
+const uint32_t kLsMaxOccluders = 32;
+
+// A light rig: the local lights that light the pixels it is painted on, on top
+// of the scene's emitters, and the occluders that shadow them. Pixels refer to
+// their rig by index, so changing a rig changes every pixel it is painted on.
+struct LsLightRig
+{
+  std::string name;
+  uint32_t lights = 0;    // bits of local light slots
+  uint32_t occluders = 0; // bits of occluder slots
+  glm::vec3 color = glm::vec3(1.0f); // sRGB, for showing where it is painted
+};
+
+// Rigs are kept in this many slots, slot 0 is no rig: only the scene's emitters
+const uint32_t kLsMaxRigs = 256;
 
 // Reflectance of a painted point, the metallic-roughness model of glTF 2.0 with
 // pbrt-v4's Trowbridge-Reitz microfacets, see Shaders/brdf.slang
@@ -50,6 +104,7 @@ enum class LsCanvasDabMode : uint32_t
   Normal = 1, // normals from the construction geometry
   Erase = 2,  // back to no position, no normal and the default material
   Material = 3, // the brush BRDF, see LsCanvas::SetBrushBrdf
+  Light = 4,    // a light rig, see LsCanvasBrush::rig
 };
 
 // How a stroke paints
@@ -67,6 +122,15 @@ struct LsCanvasBrush
   // more than this fraction of it, so the edge of an object in front isn't
   // blended with what is behind it. 0 blends across everything.
   float blendEdgeThreshold = 0.1f;
+  // Normal strokes paint this view space normal instead of the construction
+  // geometry's when set, and light strokes paint it with the rig, see
+  // LsLocalLight for the view space
+  bool fixedNormal = false;
+  glm::vec3 normal = glm::vec3(0.0f, 0.0f, 1.0f);
+  // The slot of the light rig a light stroke paints, 0 for none. With clearRig
+  // the pixels it covers that have this rig go back to none instead.
+  uint32_t rig = 0;
+  bool clearRig = false;
 };
 
 //-------------------------------------------------------------------------------
@@ -109,6 +173,13 @@ struct LsCanvasBrush
 // them. A dab starts the pixels it changes over, and a change to the camera or
 // the scene starts every pixel over.
 //
+// Every pixel is lit by the scene's emitters, and by the local lights of the
+// light rig painted on it, shadowed by the rig's occluders: each pixel has the
+// index of its rig, which a light stroke sets, and the rigs, lights and
+// occluders are kept in buffers, so changing any of them changes every pixel
+// they reach. Soft edges of light strokes are dithered like erasing. After any
+// stroke the painted pixels of each rig are counted, see GetRigPixelCount.
+//
 // Dabs are queued and recorded into the frame by Render, with the scene and
 // camera as they are then.
 //-------------------------------------------------------------------------------
@@ -120,6 +191,8 @@ class LsCanvas
 
   VkShaderModule paintShader = VK_NULL_HANDLE;
   VkShaderModule blendShader = VK_NULL_HANDLE;
+  VkShaderModule pickShader = VK_NULL_HANDLE;
+  VkShaderModule rigCountShader = VK_NULL_HANDLE;
   VkShaderModule rangeShader = VK_NULL_HANDLE;
   VkShaderModule renderShader = VK_NULL_HANDLE;
   VkShaderModule resolveShader = VK_NULL_HANDLE;
@@ -129,6 +202,8 @@ class LsCanvas
   VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
   VkPipeline paintPipeline = VK_NULL_HANDLE;
   VkPipeline blendPipeline = VK_NULL_HANDLE;
+  VkPipeline pickPipeline = VK_NULL_HANDLE;
+  VkPipeline rigCountPipeline = VK_NULL_HANDLE;
   VkPipeline rangePipeline = VK_NULL_HANDLE;
   VkPipeline renderPipeline = VK_NULL_HANDLE;
   VkPipeline resolvePipeline = VK_NULL_HANDLE;
@@ -162,6 +237,65 @@ class LsCanvas
   AttributeImage strokeMaterialColor;
   AttributeImage strokeMaterialSurface;
   AttributeImage strokeCoverage;
+  // Index of the light rig painted on each pixel
+  AttributeImage rigImage;
+  // Slots of rigs, those in use are set in rigUsed, slot 0 is always no rig
+  std::array<LsLightRig, kLsMaxRigs> rigs;
+  std::array<bool, kLsMaxRigs> rigUsed = {};
+  // Mirrors Rig in canvas.slang, rewritten every Render
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  } rigBuffer;
+  // Painted pixels of each rig, counted on the GPU after strokes and read back
+  // once that frame has finished
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  } rigCountBuffer;
+  std::array<uint32_t, kLsMaxRigs> rigPixelCounts = {};
+  uint32_t paintedPixelCount = 0;
+  bool rigCountRequested = true;
+  bool rigCountRecorded = false;
+  uint64_t rigCountFrame = 0;
+  void CollectRigCounts();
+  std::array<LsOccluder, kLsMaxOccluders> occluders;
+  uint32_t occluderSlots = 0;
+  // Mirrors Occluder in canvas.slang, in world space for the camera, rewritten every Render
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  } occluderBuffer;
+  // Slots of local lights, those in use have their bit set in localLightSlots
+  std::array<LsLocalLight, kLsMaxLocalLights> localLights;
+  uint32_t localLightSlots = 0;
+  // Mirrors LocalLight in canvas.slang, in world space for the camera, rewritten every Render
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  } lightBuffer;
+  // Picking the normal under the brush: requested, recorded into a frame, then
+  // read back once that frame has finished
+  struct {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void* mapped = nullptr;
+  } pickBuffer;
+  bool pickRequested = false;
+  glm::vec2 pickCenter = glm::vec2(0.0f);
+  float pickRadius = 1.0f;
+  bool pickRecorded = false;
+  uint64_t pickFrame = 0;
+  // Read back from the pick buffer, taken by TakePickedNormal and TakePickedRig
+  bool pickedNormalReady = false;
+  glm::vec3 pickedNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+  bool pickedRigReady = false;
+  uint32_t pickedRig = 0;
+  void CollectPick();
   // Distinct BRDFs painted so far, for picking them again
   std::vector<LsBrdfParameters> paintedBrdfs;
   LsBrdfParameters brushBrdf;
@@ -213,6 +347,11 @@ class LsCanvas
   void DestroyAttributeImage(AttributeImage& attribute);
   void CreateRangeBuffer();
   void CreateParameterBuffer();
+  void CreateHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage, const char* name,
+                        VkBuffer& buffer, VkDeviceMemory& memory, void*& mapped);
+  // View space of the canvas camera to world space
+  glm::vec3 ViewToWorld(glm::vec3 direction) const;
+  void UpdateLightBuffer();
   // Copies the attributes for the stroke to blend from and clears its coverage
   void RecordStrokeStart(VkCommandBuffer commandBuffer);
   // Copies a blend dab's result from the stroke images back to the attributes
@@ -233,6 +372,8 @@ public:
   void SetCamera(const LsCamera& camera);
   // Without a canvas camera strokes paint nothing
   void ClearCamera() { hasCamera = false; }
+  // In pixels
+  glm::uvec2 GetSize() const { return glm::uvec2(width, height); }
   LsCanvasDisplay GetDisplay() const { return display; }
   void SetDisplay(LsCanvasDisplay display);
   // Contour lines where the view depth crosses a multiple of the spacing
@@ -243,6 +384,42 @@ public:
   // What material strokes paint. Changing it changes no pixel until it is painted.
   const LsBrdfParameters& GetBrushBrdf() const { return brushBrdf; }
   void SetBrushBrdf(const LsBrdfParameters& brdf) { brushBrdf = brdf; }
+  // Returns the slot of the new light, or -1 when every slot is in use
+  int AddLocalLight(const LsLocalLight& light);
+  // Also takes the light out of every rig
+  void RemoveLocalLight(uint32_t slot);
+  // Null for slots not in use
+  const LsLocalLight* GetLocalLight(uint32_t slot) const;
+  void SetLocalLight(uint32_t slot, const LsLocalLight& light);
+  // Bits of the slots in use
+  uint32_t GetLocalLightSlots() const { return localLightSlots; }
+  // Occluders, kept like the local lights
+  int AddOccluder(const LsOccluder& occluder);
+  void RemoveOccluder(uint32_t slot);
+  const LsOccluder* GetOccluder(uint32_t slot) const;
+  void SetOccluder(uint32_t slot, const LsOccluder& occluder);
+  uint32_t GetOccluderSlots() const { return occluderSlots; }
+  // Light rigs: returns the slot of the new rig, or -1 when every slot is in use
+  int AddRig(const LsLightRig& rig);
+  // Also takes the rig off every pixel it was painted on
+  void RemoveRig(uint32_t slot);
+  // Null for slot 0 and slots not in use
+  const LsLightRig* GetRig(uint32_t slot) const;
+  void SetRig(uint32_t slot, const LsLightRig& rig);
+  // Painted pixels with this rig, slot 0 for those with none, as counted after
+  // the last stroke
+  uint32_t GetRigPixelCount(uint32_t slot) const { return slot < kLsMaxRigs ? rigPixelCounts[slot] : 0; }
+  // Pixels with a position, as counted after the last stroke
+  uint32_t GetPaintedPixelCount() const { return paintedPixelCount; }
+  // Picks the normal the canvas is rendered with, averaged over the pixels with
+  // a position within radius of center, in canvas pixels. Only the latest
+  // request is picked.
+  void RequestNormalPick(glm::vec2 center, float radius);
+  // The picked normal in the canvas camera's view space, see LsLocalLight, true
+  // once when a pick has finished and found any normal
+  bool TakePickedNormal(glm::vec3& normal);
+  // The rig of the pixel under the centre of the latest pick, 0 for none, true once when it has finished
+  bool TakePickedRig(uint32_t& rig);
   // Every distinct BRDF painted so far, in the order they were first painted
   const std::vector<LsBrdfParameters>& GetPaintedBrdfs() const { return paintedBrdfs; }
   const LsCanvasRenderSettings& GetRenderSettings() const { return renderSettings; }
