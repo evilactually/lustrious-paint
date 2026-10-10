@@ -16,6 +16,9 @@ static const uint VIEW_LIT  = 1u << 0;
 static const uint VIEW_OUTLINES = 1u << 1;
 // Only the outlines, everything else transparent, for drawing over the canvas
 static const uint VIEW_OUTLINES_ONLY = 1u << 2;
+// Debug views: the node picking finds at each pixel, or the depth it finds
+static const uint VIEW_DEBUG_PICK  = 1u << 3;
+static const uint VIEW_DEBUG_DEPTH = 1u << 4;
 
 static const uint SURFACE_ROLES = ROLE_CONSTRUCTION | ROLE_SHADOW_CASTER | ROLE_LIGHT_EMITTER | PRIMITIVE_UNASSIGNED;
 
@@ -29,9 +32,20 @@ struct ViewportPushConstants
   uint primitiveCount;
   uint flags;
   float pixelAngle; // tan(fov/2)*2/height, footprint of a pixel one unit away
-  float pad0;
-  float pad1;
-  float pad2;
+  uint pickCount;   // how many of pickPixels are used
+  float debugDepthRange; // depth shown black in the depth debug view
+  uint pad1;
+  uint4 pickPixels; // xy and zw, whose hits go to pickResults
+};
+
+// What is under a pick pixel, read back by the editor
+struct PickResult
+{
+  float4 position; // w = distance along the ray
+  uint nodeId;
+  uint hit;        // 0 when the ray hit nothing
+  uint pad0;
+  uint pad1;
 };
 
 [[vk::push_constant]]
@@ -49,6 +63,9 @@ StructuredBuffer<ScenePrimitive> primitives;
 [[vk::binding(2)]]
 [format("r32f")]
 RWTexture2D<float> depthImage;
+
+[[vk::binding(3)]]
+RWStructuredBuffer<PickResult> pickResults;
 
 static const float MAX_DISTANCE = 500.0;
 static const int MAX_STEPS = 256;
@@ -185,21 +202,6 @@ float3 primitiveNormal(ScenePrimitive primitive, float3 p, float h)
                    k.xxx*primitiveDistance(primitive, p + k.xxx*h));
 }
 
-// World position of the primitive's object space origin
-float3 primitiveCenter(ScenePrimitive primitive)
-{
-  float3 r0 = primitive.worldToObject[0].xyz;
-  float3 r1 = primitive.worldToObject[1].xyz;
-  float3 r2 = primitive.worldToObject[2].xyz;
-  float3 b = float3(primitive.worldToObject[0].w, primitive.worldToObject[1].w, primitive.worldToObject[2].w);
-  // Columns of the inverse are cross products of the rows over the determinant
-  float3 c0 = cross(r1, r2);
-  float3 c1 = cross(r2, r0);
-  float3 c2 = cross(r0, r1);
-  float determinant = dot(r0, c0);
-  return -(c0*b.x + c1*b.y + c2*b.z)/determinant;
-}
-
 // Shadow casters between p and the light, with a soft penumbra
 float shadow(float3 p, float3 direction, float maxT, uint light)
 {
@@ -277,6 +279,34 @@ float3 background(float3 direction)
   return lerp(float3(0.025, 0.026, 0.03), float3(0.075, 0.08, 0.095), h);
 }
 
+// A distinct colour for each node, already in display values
+float3 idColor(uint id)
+{
+  uint h = id*2654435761u;
+  h ^= h >> 15;
+  h *= 2246822519u;
+  h ^= h >> 13;
+  return float3(h & 255u, (h >> 8) & 255u, (h >> 16) & 255u)/255.0*0.75 + 0.25;
+}
+
+// Picking reads what this pixel's ray hit first, a surface or a medium
+void recordPick(uint2 pixel, float3 origin, float3 direction, Hit hit)
+{
+  for (uint i = 0; i < view.pickCount; i++) {
+    uint2 pickPixel = i == 0 ? view.pickPixels.xy : view.pickPixels.zw;
+    if (any(pixel != pickPixel)) {
+      continue;
+    }
+    PickResult result = (PickResult)0;
+    if (hit.index != ~0u) {
+      result.position = float4(origin + direction*hit.t, hit.t);
+      result.nodeId = primitives[hit.index].nodeId;
+      result.hit = 1;
+    }
+    pickResults[i] = result;
+  }
+}
+
 float3 linearToSrgb(float3 c)
 {
   c = saturate(c);
@@ -314,6 +344,7 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
       line = lerp(line, float4(1.0, 0.55, 0.15, 1.0), selection);
     }
     outputImage[globalId.xy] = line;
+    recordPick(globalId.xy, origin, direction, hit);
     float3 viewAxis = normalize(cross(view.up.xyz, view.right.xyz));
     depthImage[globalId.xy] = hit.index != ~0u ? hit.t*dot(direction, viewAxis) : 1.0e30;
     return;
@@ -355,6 +386,25 @@ void computeMain(uint3 globalId : SV_DispatchThreadID)
   float mediaPixels;
   NearMisses mediaMisses;
   Hit media = trace(origin, direction, ROLE_PARTICIPATING_MEDIA, mediaPixels, mediaMisses);
+  Hit picked = media.index != ~0u && media.t < hit.t ? media : hit;
+  recordPick(globalId.xy, origin, direction, picked);
+
+  // Debug views of what picking sees: the node at each pixel, or its depth
+  if ((view.flags & (VIEW_DEBUG_PICK | VIEW_DEBUG_DEPTH)) != 0) {
+    float3 viewAxis = normalize(cross(view.up.xyz, view.right.xyz));
+    float depth = picked.t*dot(direction, viewAxis);
+    float3 debugColor = float3(0.0);
+    if (picked.index != ~0u && (view.flags & VIEW_DEBUG_PICK) != 0) {
+      debugColor = idColor(primitives[picked.index].nodeId);
+    }
+    else if (picked.index != ~0u) {
+      // White at the eye fading to black at the far end of the depth range
+      debugColor = float3(1.0 - saturate(depth/max(view.debugDepthRange, 1.0e-3)));
+    }
+    outputImage[globalId.xy] = float4(debugColor, 1.0);
+    depthImage[globalId.xy] = picked.index != ~0u ? depth : 1.0e30;
+    return;
+  }
   if (media.index != ~0u && media.t < hit.t) {
     ScenePrimitive medium = primitives[media.index];
     // Thickness of the medium in front of the surface, by fixed steps through it

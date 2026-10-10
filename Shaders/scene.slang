@@ -19,7 +19,8 @@ struct ScenePrimitive
   // Rows of the 3x4 affine world-to-object matrix
   float4 worldToObject[3];
   float4 shapeParams;
-  // rgb = emitted radiance
+  // rgb = emitted radiance, a = radius of a sphere around primitiveCenter
+  // enclosing the shape in world space
   float4 emission;
   // rgb = albedo, a = density
   float4 medium;
@@ -145,6 +146,21 @@ float3 worldToObjectPoint(ScenePrimitive primitive, float3 p)
   return float3(dot(primitive.worldToObject[0], h),
                 dot(primitive.worldToObject[1], h),
                 dot(primitive.worldToObject[2], h));
+}
+
+// World position of the primitive's object space origin
+float3 primitiveCenter(ScenePrimitive primitive)
+{
+  float3 r0 = primitive.worldToObject[0].xyz;
+  float3 r1 = primitive.worldToObject[1].xyz;
+  float3 r2 = primitive.worldToObject[2].xyz;
+  float3 b = float3(primitive.worldToObject[0].w, primitive.worldToObject[1].w, primitive.worldToObject[2].w);
+  // Columns of the inverse are cross products of the rows over the determinant
+  float3 c0 = cross(r1, r2);
+  float3 c1 = cross(r2, r0);
+  float3 c2 = cross(r0, r1);
+  float determinant = dot(r0, c0);
+  return -(c0*b.x + c1*b.y + c2*b.z)/determinant;
 }
 
 // Conservative world space distance to a single primitive

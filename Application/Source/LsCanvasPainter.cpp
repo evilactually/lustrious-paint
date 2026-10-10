@@ -39,7 +39,7 @@ float LsCanvasPainter::GetDabSpacing() {
 }
 
 void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
-  strokeMode = tool == LsPaintTool::Eraser ? LsCanvasDabMode::Erase : LsCanvasDabMode::Transfer;
+  strokeMode = mode;
   canvas->Paint({ canvasPoint }, brushRadius/navigator->GetZoom(), strokeMode);
   lastStrokeSample = canvasPoint;
   distanceToNextDab = GetDabSpacing();

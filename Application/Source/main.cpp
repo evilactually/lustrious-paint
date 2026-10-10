@@ -23,6 +23,7 @@
 #include <LsImage.h>
 #include <imgui.h>
 #include <imgui_internal.h> // DockBuilder API
+#include <cmath>
 // #include <Test.h>
 
 #include <LsIsosphere.h>
@@ -30,6 +31,15 @@
 #include <LsIsosurfaceStuffer.h>
 
 using namespace lslib;
+
+// Colour pickers show sRGB values, the renderer works in linear ones
+static float SrgbToLinear(float c) {
+  return c <= 0.04045f ? c/12.92f : std::pow((c + 0.055f)/1.055f, 2.4f);
+}
+
+static float LinearToSrgb(float c) {
+  return c <= 0.0031308f ? c*12.92f : 1.055f*std::pow(c, 1.0f/2.4f) - 0.055f;
+}
 
 class Application: LsFSdlEventHandler {
   LsSdlMainWindow* window = nullptr;
@@ -133,8 +143,9 @@ public:
       }
       SDL_PumpEvents();
       idleFrames = SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST) ? 0 : idleFrames + 1;
-      // Flying keeps moving while keys are held, even without new events
-      if ( sceneViewport->IsAnimating() ) {
+      // Flying keeps moving while keys are held, even without new events, and the
+      // rendering keeps adding samples until it is done
+      if ( sceneViewport->IsAnimating() || canvas->IsRendering() ) {
         idleFrames = 0;
       }
       if ( !window->ProcessMessages() ) {
@@ -185,21 +196,49 @@ public:
       history->Update(ImGui::IsAnyItemActive() || sceneViewport->IsEditing());
 
       if (ImGui::Begin("Brush", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        // What a stroke paints: depth and normals from the construction geometry,
+        // the BRDF panel's material, or erasing all of them
+        struct { const char* label; LsCanvasDabMode mode; const char* tooltip; } modes[] = {
+          { "Depth", LsCanvasDabMode::Depth, "Paint positions from the construction geometry (B)" },
+          { "Normals", LsCanvasDabMode::Normal, "Paint normals from the construction geometry (N)" },
+          { "Material", LsCanvasDabMode::Material, "Paint the BRDF panel's material (M)" },
+          { "Erase", LsCanvasDabMode::Erase, "Remove painted positions, normals and materials (E)" },
+        };
+        for (const auto& mode : modes) {
+          if (&mode != modes) {
+            ImGui::SameLine();
+          }
+          if (ImGui::RadioButton(mode.label, canvasPainter->GetMode() == mode.mode)) {
+            SetBrushMode(mode.mode);
+          }
+          ImGui::SetItemTooltip("%s", mode.tooltip);
+        }
         float brushRadius = canvasPainter->GetBrushRadius();
         if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px")) {
           canvasPainter->SetBrushRadius(brushRadius);
         }
-        // What the canvas shows of the painted positions
+      }
+      ImGui::End();
+
+      if (ImGui::Begin("View", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        // What the canvas shows of the painted attributes
         int display = static_cast<int>(canvas->GetDisplay());
-        if (ImGui::Combo("Display", &display, "Depth\0Position\0")) {
+        if (ImGui::Combo("Display", &display, "Depth\0Position\0Normal\0Rendering\0Material\0")) {
           canvas->SetDisplay(static_cast<LsCanvasDisplay>(display));
         }
+        ImGui::SetItemTooltip("Rendering lights the painted points with the scene's emitters, shaded with the BRDF panel");
+        bool rendering = canvas->GetDisplay() == LsCanvasDisplay::Rendering;
+        if (rendering) {
+          DrawRenderSettings();
+        }
         bool isolines = canvas->GetIsolines();
-        if (ImGui::Checkbox("Isolines", &isolines)) {
+        if (!rendering && ImGui::Checkbox("Isolines", &isolines)) {
           canvas->SetIsolines(isolines);
         }
-        ImGui::SetItemTooltip("Contour lines of the depth, every tenth one brighter");
-        if (isolines) {
+        if (!rendering) {
+          ImGui::SetItemTooltip("Contour lines of the depth, every tenth one brighter");
+        }
+        if (!rendering && isolines) {
           float spacing = canvas->GetIsolineSpacing();
           if (ImGui::DragFloat("Spacing", &spacing, 0.005f, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
             canvas->SetIsolineSpacing(spacing);
@@ -209,10 +248,95 @@ public:
       }
       ImGui::End();
 
+      if (ImGui::Begin("BRDF", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        DrawBrdf();
+      }
+      ImGui::End();
+
       renderer->EndFrame();
     }
 
 
+  }
+
+  // How the rendering is exposed and how fast it accumulates samples
+  void DrawRenderSettings() {
+    LsCanvasRenderSettings settings = canvas->GetRenderSettings();
+    bool changed = ImGui::SliderFloat("Exposure", &settings.exposure, -10.0f, 10.0f, "%.1f stops");
+    int samplesPerFrame = static_cast<int>(settings.samplesPerFrame);
+    if (ImGui::SliderInt("Samples/frame", &samplesPerFrame, 1, 64, "%d", ImGuiSliderFlags_Logarithmic)) {
+      settings.samplesPerFrame = static_cast<uint32_t>(samplesPerFrame);
+      changed = true;
+    }
+    ImGui::SetItemTooltip("Samples added to each pixel every frame, fewer keep the application responsive");
+    int maxSamples = static_cast<int>(settings.maxSamples);
+    if (ImGui::SliderInt("Max samples", &maxSamples, 1, 16384, "%d", ImGuiSliderFlags_Logarithmic)) {
+      settings.maxSamples = static_cast<uint32_t>(maxSamples);
+      changed = true;
+    }
+    ImGui::SetItemTooltip("Samples per pixel after which the rendering stops");
+    if (changed) {
+      canvas->SetRenderSettings(settings);
+    }
+    float progress = static_cast<float>(canvas->GetRenderedSamples())/static_cast<float>(settings.maxSamples);
+    char label[64];
+    snprintf(label, sizeof(label), "%u / %u samples", canvas->GetRenderedSamples(), settings.maxSamples);
+    ImGui::ProgressBar(progress, ImVec2(-FLT_MIN, 0.0f), label);
+  }
+
+  // The material strokes paint, and every material painted so far to pick it from
+  void DrawBrdf() {
+    LsBrdfParameters brdf = canvas->GetBrushBrdf();
+    bool changed = false;
+    float color[3] = { LinearToSrgb(brdf.baseColor.r), LinearToSrgb(brdf.baseColor.g), LinearToSrgb(brdf.baseColor.b) };
+    if (ImGui::ColorEdit3("Base color", color, ImGuiColorEditFlags_Float)) {
+      brdf.baseColor = glm::vec3(SrgbToLinear(color[0]), SrgbToLinear(color[1]), SrgbToLinear(color[2]));
+      changed = true;
+    }
+    ImGui::SetItemTooltip("Diffuse colour of dielectrics, reflectance at normal incidence of metals");
+    changed |= ImGui::SliderFloat("Metallic", &brdf.metallic, 0.0f, 1.0f, "%.2f");
+    ImGui::SetItemTooltip("Blends from a dielectric coat over a diffuse base to a bare metal");
+    changed |= ImGui::SliderFloat("Roughness", &brdf.roughness, 0.0f, 1.0f, "%.2f");
+    ImGui::SetItemTooltip("Perceptual roughness of the microfacets, alpha is its square");
+    changed |= ImGui::SliderFloat("IOR", &brdf.ior, 1.0f, 3.0f, "%.2f");
+    ImGui::SetItemTooltip("Index of refraction of the dielectric coat, sets how strongly it reflects");
+    if (changed) {
+      canvas->SetBrushBrdf(brdf);
+    }
+    if (canvasPainter->GetMode() != LsCanvasDabMode::Material && ImGui::Button("Paint material")) {
+      SetBrushMode(LsCanvasDabMode::Material);
+    }
+
+    // Each swatch is one entry of the canvas material table, pixels refer to it by index
+    const std::vector<LsBrdfParameters>& materials = canvas->GetMaterials();
+    ImGui::SeparatorText("Materials");
+    float swatchSize = ImGui::GetFrameHeight();
+    float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    for (size_t i = 0; i < materials.size(); i++) {
+      const LsBrdfParameters& material = materials[i];
+      ImVec4 color(LinearToSrgb(material.baseColor.r), LinearToSrgb(material.baseColor.g), LinearToSrgb(material.baseColor.b), 1.0f);
+      ImGui::PushID(static_cast<int>(i));
+      bool current = material == canvas->GetBrushBrdf();
+      if (current) {
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 0.55f, 0.15f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 2.0f);
+      }
+      if (ImGui::ColorButton("##material", color, ImGuiColorEditFlags_NoTooltip, ImVec2(swatchSize, swatchSize))) {
+        canvas->SetBrushBrdf(material);
+      }
+      if (current) {
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+      }
+      ImGui::SetItemTooltip("Material %zu%s\nMetallic %.2f, roughness %.2f, IOR %.2f", i,
+                            i == 0 ? " (unpainted pixels)" : "", material.metallic, material.roughness, material.ior);
+      ImGui::PopID();
+      // Wrap the swatches to the panel width
+      float next = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + swatchSize;
+      if (i + 1 < materials.size() && next < right) {
+        ImGui::SameLine();
+      }
+    }
   }
 
   // Strokes transfer positions from the scene as it is now, through the canvas camera
@@ -232,16 +356,44 @@ public:
     canvas->Render();
   }
 
-  // B and E pick the brush and the eraser, as in most painting applications
+  // The canvas switches to showing what the brush now paints. Depth strokes are
+  // seen as depth or as positions, so only the normal and material displays are
+  // switched away from. Erasing removes everything and keeps whatever is shown,
+  // and the rendering shows the result of every stroke, so it is kept too.
+  void SetBrushMode(LsCanvasDabMode mode) {
+    canvasPainter->SetMode(mode);
+    LsCanvasDisplay display = canvas->GetDisplay();
+    if (display == LsCanvasDisplay::Rendering) {
+      return;
+    }
+    if (mode == LsCanvasDabMode::Depth && (display == LsCanvasDisplay::Normal || display == LsCanvasDisplay::Material)) {
+      canvas->SetDisplay(LsCanvasDisplay::Depth);
+    }
+    else if (mode == LsCanvasDabMode::Material) {
+      canvas->SetDisplay(LsCanvasDisplay::Material);
+    }
+    else if (mode == LsCanvasDabMode::Normal) {
+      canvas->SetDisplay(LsCanvasDisplay::Normal);
+    }
+  }
+
+  // B paints depth, N normals, M materials and E erases, B and E as the brush
+  // and the eraser in most painting applications
   void HandleToolShortcuts() {
     if (ImGui::GetIO().WantTextInput || sceneViewport->IsShowingScene()) {
       return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_B, false)) {
-      canvasPainter->SetTool(LsPaintTool::Brush);
+      SetBrushMode(LsCanvasDabMode::Depth);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+      SetBrushMode(LsCanvasDabMode::Normal);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
+      SetBrushMode(LsCanvasDabMode::Material);
     }
     else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
-      canvasPainter->SetTool(LsPaintTool::Eraser);
+      SetBrushMode(LsCanvasDabMode::Erase);
     }
   }
 
@@ -337,11 +489,6 @@ public:
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::Begin("##Toolbar", nullptr, flags);
 
-    struct { const char* label; LsPaintTool tool; const char* tooltip; } buttons[] = {
-      { "Brush", LsPaintTool::Brush, "Paint positions from the construction geometry (B)" },
-      { "Eraser", LsPaintTool::Eraser, "Remove painted positions (E)" },
-    };
-
     const ImVec2 buttonSize(ImGui::GetFontSize()*5.0f, 0.0f);
     if (ImGui::Button("3D View", buttonSize)) {
       sceneViewport->ToggleSceneView();
@@ -366,29 +513,12 @@ public:
       ImGui::SetItemTooltip("Opacity of the scene over the canvas");
     }
 
-    ImGui::Spacing();
-    for (const auto& button : buttons) {
-      // The selected tool is drawn in the accent colour
-      bool selected = canvasPainter->GetTool() == button.tool;
-      if (selected) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive));
-      }
-      if (ImGui::Button(button.label, buttonSize)) {
-        canvasPainter->SetTool(button.tool);
-      }
-      if (selected) {
-        ImGui::PopStyleColor(2);
-      }
-      ImGui::SetItemTooltip("%s", button.tooltip);
-    }
-
     ImGui::End();
     ImGui::PopStyleVar();
   }
 
   // Fills the window with a dock space whose centre lets input through to the canvas
-  // or holds the 3D view, and keeps the Scene, Properties and Brush panels docked to its right side
+  // or holds the 3D view, and keeps the Scene, Properties, Brush, View and BRDF panels docked to its right side
   void DrawDockedPanels() {
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
@@ -401,11 +531,15 @@ public:
 
       ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
       ImGuiID propertiesId;
-      ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.4f, nullptr, &propertiesId);
-      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.25f, nullptr, &propertiesId);
+      ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.3f, nullptr, &propertiesId);
+      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.65f, nullptr, &propertiesId);
+      ImGuiID viewId = ImGui::DockBuilderSplitNode(brushId, ImGuiDir_Down, 0.76f, nullptr, &brushId);
+      ImGuiID brdfId = ImGui::DockBuilderSplitNode(viewId, ImGuiDir_Down, 0.5f, nullptr, &viewId);
       ImGui::DockBuilderDockWindow("Scene", sceneId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
       ImGui::DockBuilderDockWindow("Brush", brushId);
+      ImGui::DockBuilderDockWindow("View", viewId);
+      ImGui::DockBuilderDockWindow("BRDF", brdfId);
       ImGui::DockBuilderFinish(dockspaceId);
       dockLayoutBuilt = true;
     }

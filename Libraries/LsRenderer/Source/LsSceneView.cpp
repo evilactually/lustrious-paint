@@ -19,9 +19,25 @@ struct LsViewportPushConstants
   uint32_t primitiveCount;
   uint32_t flags;
   float pixelAngle;
-  float pad[3];
+  uint32_t pickCount;
+  float debugDepthRange;
+  uint32_t pad;
+  uint32_t pickPixels[4]; // xy and zw
 };
-static_assert(sizeof(LsViewportPushConstants) == 96, "LsViewportPushConstants must match viewport.slang");
+static_assert(sizeof(LsViewportPushConstants) == 112, "LsViewportPushConstants must match viewport.slang");
+
+// Mirrors PickResult in Shaders/viewport.slang
+struct LsPickResult
+{
+  glm::vec4 position; // w = distance along the ray
+  uint32_t nodeId;
+  uint32_t hit;
+  uint32_t pad[2];
+};
+static_assert(sizeof(LsPickResult) == 32, "LsPickResult must match viewport.slang");
+
+// Pixels whose hits one Render reads back, others wait for the next one
+static const uint32_t kMaxPickPixels = 2;
 
 // Mirrors SceneLinePushConstants in Shaders/sceneline.slang
 struct LsSceneLinePushConstants
@@ -33,41 +49,11 @@ struct LsSceneLinePushConstants
 };
 static_assert(sizeof(LsSceneLinePushConstants) == 64, "LsSceneLinePushConstants must match sceneline.slang");
 
-// Mirror PickPushConstants, PickRay and PickHit in Shaders/pick.slang
-struct LsPickPushConstants
-{
-  uint32_t primitiveCount;
-  uint32_t rayCount;
-  uint32_t pad[2];
-};
-static_assert(sizeof(LsPickPushConstants) == 16, "LsPickPushConstants must match pick.slang");
-
-struct LsPickRay
-{
-  glm::vec4 origin;    // w = max distance
-  glm::vec4 direction; // unit length
-  uint32_t roleMask;
-  uint32_t pad[3];
-};
-static_assert(sizeof(LsPickRay) == 48, "LsPickRay must match pick.slang");
-
-struct LsPickHit
-{
-  glm::vec4 position; // w = distance along the ray
-  glm::vec4 normal;
-  uint32_t nodeId;
-  uint32_t hit;
-  uint32_t pad[2];
-};
-static_assert(sizeof(LsPickHit) == 48, "LsPickHit must match pick.slang");
-
-// More than the editor asks for in a frame, the rest wait for the next one
-static const uint32_t kMaxRaysPerFrame = 64;
-static const uint32_t kPickWorkGroupSize = 64;
-
 static const uint32_t kViewLit = 1u << 0;
 static const uint32_t kViewOutlines = 1u << 1;
 static const uint32_t kViewOutlinesOnly = 1u << 2;
+static const uint32_t kViewDebugPick = 1u << 3;
+static const uint32_t kViewDebugDepth = 1u << 4;
 static const uint32_t kWorkGroupSize = 8;
 // Lines nearer than this are cut off, in world units
 static const float kLineNearDepth = 0.01f;
@@ -75,38 +61,34 @@ static const float kLineNearDepth = 0.01f;
 LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(renderer), device(renderer->device) {
   shader = CreateShaderModule(device, "Shaders/viewport.comp.spv");
 
-  VkDescriptorSetLayoutBinding bindings[3] = {};
-  bindings[0].binding = 0;
-  bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  bindings[0].descriptorCount = 1;
-  bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  bindings[1].binding = 1;
-  bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  bindings[1].descriptorCount = 1;
-  bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  bindings[2].binding = 2;
-  bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  bindings[2].descriptorCount = 1;
-  bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  // Colour image, primitives, depth image, pick results
+  VkDescriptorType types[4] = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+  VkDescriptorSetLayoutBinding bindings[4] = {};
+  for (uint32_t i = 0; i < 4; i++) {
+    bindings[i].binding = i;
+    bindings[i].descriptorType = types[i];
+    bindings[i].descriptorCount = 1;
+    bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  }
 
   VkDescriptorSetLayoutCreateInfo layoutInfo = {};
   layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  layoutInfo.bindingCount = 3;
+  layoutInfo.bindingCount = 4;
   layoutInfo.pBindings = bindings;
   if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
     throw std::string("Could not create scene view descriptor set layout!");
   }
 
-  // The tracer's set writes the colour and depth images, the line set reads the
-  // depth, the pick set reads the primitives and rays and writes the hits
+  // The tracer's set writes the colour and depth images, the line set reads the depth
   VkDescriptorPoolSize poolSizes[3] = {
     { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 },
-    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
     { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1 },
   };
   VkDescriptorPoolCreateInfo poolInfo = {};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.maxSets = 3;
+  poolInfo.maxSets = 2;
   poolInfo.poolSizeCount = 3;
   poolInfo.pPoolSizes = poolSizes;
   if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
@@ -160,7 +142,7 @@ LsSceneView::LsSceneView(std::shared_ptr<LsRenderer> renderer) : renderer(render
   }
 
   CreateLinePipeline();
-  CreatePickPipeline();
+  CreatePickBuffer();
   CreatePrimitiveBuffer(64);
 }
 
@@ -168,12 +150,7 @@ LsSceneView::~LsSceneView() {
   vkDeviceWaitIdle(device);
   DestroyTarget();
   DestroyPrimitiveBuffer();
-  DestroyHostBuffer(rayBuffer);
-  DestroyHostBuffer(hitBuffer);
-  vkDestroyPipeline(device, pickPipeline, nullptr);
-  vkDestroyPipelineLayout(device, pickPipelineLayout, nullptr);
-  vkDestroyDescriptorSetLayout(device, pickDescriptorSetLayout, nullptr);
-  vkDestroyShaderModule(device, pickShader, nullptr);
+  DestroyPickBuffer();
   vkDestroyPipeline(device, linePipeline, nullptr);
   vkDestroyPipelineLayout(device, linePipelineLayout, nullptr);
   vkDestroyRenderPass(device, lineRenderPass, nullptr);
@@ -414,93 +391,42 @@ void LsSceneView::CreateLinePipeline() {
   }
 }
 
-void LsSceneView::CreatePickPipeline() {
-  pickShader = CreateShaderModule(device, "Shaders/pick.comp.spv");
-
-  // Primitives, rays and hits
-  VkDescriptorSetLayoutBinding bindings[3] = {};
-  for (uint32_t i = 0; i < 3; i++) {
-    bindings[i].binding = i;
-    bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[i].descriptorCount = 1;
-    bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  }
-  VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-  layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  layoutInfo.bindingCount = 3;
-  layoutInfo.pBindings = bindings;
-  if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &pickDescriptorSetLayout) != VK_SUCCESS) {
-    throw std::string("Could not create scene pick descriptor set layout!");
-  }
-  VkDescriptorSetAllocateInfo allocateInfo = {};
-  allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  allocateInfo.descriptorPool = descriptorPool;
-  allocateInfo.descriptorSetCount = 1;
-  allocateInfo.pSetLayouts = &pickDescriptorSetLayout;
-  if (vkAllocateDescriptorSets(device, &allocateInfo, &pickDescriptorSet) != VK_SUCCESS) {
-    throw std::string("Could not allocate scene pick descriptor set!");
-  }
-
-  VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(LsPickPushConstants) };
-  VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-  pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutInfo.setLayoutCount = 1;
-  pipelineLayoutInfo.pSetLayouts = &pickDescriptorSetLayout;
-  pipelineLayoutInfo.pushConstantRangeCount = 1;
-  pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-  if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pickPipelineLayout) != VK_SUCCESS) {
-    throw std::string("Could not create scene pick pipeline layout!");
-  }
-
-  VkComputePipelineCreateInfo pipelineInfo = {};
-  pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipelineInfo.layout = pickPipelineLayout;
-  pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  pipelineInfo.stage.module = pickShader;
-  pipelineInfo.stage.pName = "main";
-  if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pickPipeline) != VK_SUCCESS) {
-    throw std::string("Could not create scene pick pipeline!");
-  }
-
-  CreateHostBuffer(kMaxRaysPerFrame*sizeof(LsPickRay), rayBuffer);
-  CreateHostBuffer(kMaxRaysPerFrame*sizeof(LsPickHit), hitBuffer);
-}
-
-void LsSceneView::CreateHostBuffer(VkDeviceSize size, HostBuffer& buffer) {
+void LsSceneView::CreatePickBuffer() {
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufferInfo.size = size;
+  bufferInfo.size = kMaxPickPixels*sizeof(LsPickResult);
   bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
-    throw std::string("Could not create scene view host buffer!");
+  if (vkCreateBuffer(device, &bufferInfo, nullptr, &pickBuffer.buffer) != VK_SUCCESS) {
+    throw std::string("Could not create scene view pick buffer!");
   }
+
+  // Read by the host every frame something is picked
   VkMemoryRequirements requirements;
-  vkGetBufferMemoryRequirements(device, buffer.buffer, &requirements);
+  vkGetBufferMemoryRequirements(device, pickBuffer.buffer, &requirements);
   VkMemoryAllocateInfo allocateInfo = {};
   allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocateInfo.allocationSize = requirements.size;
   allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
                                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  if (vkAllocateMemory(device, &allocateInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
-    throw std::string("Could not allocate scene view host buffer memory!");
+  if (vkAllocateMemory(device, &allocateInfo, nullptr, &pickBuffer.memory) != VK_SUCCESS) {
+    throw std::string("Could not allocate scene view pick buffer memory!");
   }
-  vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
-  vkMapMemory(device, buffer.memory, 0, VK_WHOLE_SIZE, 0, &buffer.mapped);
+  vkBindBufferMemory(device, pickBuffer.buffer, pickBuffer.memory, 0);
+  vkMapMemory(device, pickBuffer.memory, 0, VK_WHOLE_SIZE, 0, &pickBuffer.mapped);
 }
 
-void LsSceneView::DestroyHostBuffer(HostBuffer& buffer) {
-  if (buffer.mapped) {
-    vkUnmapMemory(device, buffer.memory);
+void LsSceneView::DestroyPickBuffer() {
+  if (pickBuffer.mapped) {
+    vkUnmapMemory(device, pickBuffer.memory);
   }
-  if (buffer.buffer) {
-    vkDestroyBuffer(device, buffer.buffer, nullptr);
+  if (pickBuffer.buffer) {
+    vkDestroyBuffer(device, pickBuffer.buffer, nullptr);
   }
-  if (buffer.memory) {
-    vkFreeMemory(device, buffer.memory, nullptr);
+  if (pickBuffer.memory) {
+    vkFreeMemory(device, pickBuffer.memory, nullptr);
   }
-  buffer = {};
+  pickBuffer = {};
 }
 
 void LsSceneView::CreatePrimitiveBuffer(size_t capacity) {
@@ -548,10 +474,9 @@ void LsSceneView::UpdateDescriptors() {
   VkDescriptorImageInfo imageInfo = { VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorImageInfo depthInfo = { VK_NULL_HANDLE, target.depthView, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorBufferInfo bufferInfo = { primitiveBuffer.buffer, 0, VK_WHOLE_SIZE };
-  VkDescriptorBufferInfo rayInfo = { rayBuffer.buffer, 0, VK_WHOLE_SIZE };
-  VkDescriptorBufferInfo hitInfo = { hitBuffer.buffer, 0, VK_WHOLE_SIZE };
+  VkDescriptorBufferInfo pickInfo = { pickBuffer.buffer, 0, VK_WHOLE_SIZE };
 
-  VkWriteDescriptorSet writes[7] = {};
+  VkWriteDescriptorSet writes[5] = {};
   uint32_t writeCount = 0;
   auto writeImage = [&](VkDescriptorSet set, uint32_t binding, const VkDescriptorImageInfo* info,
                         VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
@@ -568,9 +493,9 @@ void LsSceneView::UpdateDescriptors() {
     writeImage(descriptorSet, 2, &depthInfo);
     writeImage(lineDescriptorSet, 0, &depthInfo, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
   }
-  auto writeBuffer = [&](VkDescriptorSet set, uint32_t binding, const VkDescriptorBufferInfo* info) {
+  auto writeBuffer = [&](uint32_t binding, const VkDescriptorBufferInfo* info) {
     writes[writeCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[writeCount].dstSet = set;
+    writes[writeCount].dstSet = descriptorSet;
     writes[writeCount].dstBinding = binding;
     writes[writeCount].descriptorCount = 1;
     writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -578,12 +503,10 @@ void LsSceneView::UpdateDescriptors() {
     writeCount++;
   };
   if (primitiveBuffer.buffer) {
-    writeBuffer(descriptorSet, 1, &bufferInfo);
-    writeBuffer(pickDescriptorSet, 0, &bufferInfo);
+    writeBuffer(1, &bufferInfo);
   }
-  if (rayBuffer.buffer && hitBuffer.buffer) {
-    writeBuffer(pickDescriptorSet, 1, &rayInfo);
-    writeBuffer(pickDescriptorSet, 2, &hitInfo);
+  if (pickBuffer.buffer) {
+    writeBuffer(3, &pickInfo);
   }
   vkUpdateDescriptorSets(device, writeCount, writes, 0, nullptr);
 }
@@ -597,83 +520,45 @@ ImTextureID LsSceneView::GetTexture() const {
   return reinterpret_cast<ImTextureID>(target.texture);
 }
 
-LsRaycastTicket LsSceneView::QueueRaycast(const LsRay& ray, LsSceneRoles roleMask, float maxDistance) {
-  LsRaycastTicket ticket = nextTicket++;
-  queuedRays.push_back({ ticket, ray, roleMask, maxDistance });
+LsPickTicket LsSceneView::RequestPick(glm::uvec2 pixel) {
+  LsPickTicket ticket = nextTicket++;
+  requestedPicks.push_back({ ticket, pixel });
   return ticket;
 }
 
-LsRaycastStatus LsSceneView::GetRaycast(LsRaycastTicket ticket, LsSceneHit& hit) {
-  CollectRaycasts();
+LsPickStatus LsSceneView::GetPick(LsPickTicket ticket, LsSceneHit& hit) {
+  CollectPicks();
   auto found = completed.find(ticket);
   if (found != completed.end()) {
     if (!found->second.hit) {
-      return LsRaycastStatus::Miss;
+      return LsPickStatus::Miss;
     }
     hit = found->second.sceneHit;
-    return LsRaycastStatus::Hit;
+    return LsPickStatus::Hit;
   }
-  bool queued = std::any_of(queuedRays.begin(), queuedRays.end(), [&](const QueuedRay& r) { return r.ticket == ticket; });
-  bool traced = std::find(tracedTickets.begin(), tracedTickets.end(), ticket) != tracedTickets.end();
-  return queued || traced ? LsRaycastStatus::Pending : LsRaycastStatus::Unknown;
+  bool requested = std::any_of(requestedPicks.begin(), requestedPicks.end(), [&](const PickRequest& r) { return r.ticket == ticket; });
+  bool rendered = std::any_of(renderedPicks.begin(), renderedPicks.end(), [&](const auto& r) { return r.first == ticket; });
+  return requested || rendered ? LsPickStatus::Pending : LsPickStatus::Unknown;
 }
 
-void LsSceneView::CollectRaycasts() {
-  if (tracedTickets.empty() || renderer->frameNumber <= tracedFrame) {
+void LsSceneView::CollectPicks() {
+  if (renderedPicks.empty() || renderer->frameNumber <= renderedFrame) {
     return;
   }
   completed.clear();
-  const LsPickHit* hits = static_cast<const LsPickHit*>(hitBuffer.mapped);
-  for (size_t i = 0; i < tracedTickets.size(); i++) {
+  const LsPickResult* results = static_cast<const LsPickResult*>(pickBuffer.mapped);
+  for (const auto& rendered : renderedPicks) {
+    uint32_t slot = rendered.second;
     Completed result = {};
-    result.hit = hits[i].hit != 0;
+    result.hit = results[slot].hit != 0;
     if (result.hit) {
-      result.sceneHit.node = hits[i].nodeId;
-      result.sceneHit.position = glm::vec3(hits[i].position);
-      result.sceneHit.distance = hits[i].position.w;
-      result.sceneHit.normal = glm::vec3(hits[i].normal);
+      result.sceneHit.node = results[slot].nodeId;
+      result.sceneHit.position = glm::vec3(results[slot].position);
+      result.sceneHit.distance = results[slot].position.w;
     }
-    completed[tracedTickets[i]] = result;
+    completed[rendered.first] = result;
   }
-  tracedTickets.clear();
-}
-
-void LsSceneView::TraceQueuedRays(VkCommandBuffer commandBuffer) {
-  // The last rays' hits are read before they are overwritten, and rays recorded
-  // earlier in this frame still own the buffers
-  CollectRaycasts();
-  if (queuedRays.empty() || !tracedTickets.empty()) {
-    return;
-  }
-
-  uint32_t count = static_cast<uint32_t>(std::min<size_t>(queuedRays.size(), kMaxRaysPerFrame));
-  LsPickRay* rays = static_cast<LsPickRay*>(rayBuffer.mapped);
-  for (uint32_t i = 0; i < count; i++) {
-    const QueuedRay& queued = queuedRays[i];
-    rays[i] = {};
-    rays[i].origin = glm::vec4(queued.ray.origin, queued.maxDistance);
-    rays[i].direction = glm::vec4(glm::normalize(queued.ray.direction), 0.0f);
-    rays[i].roleMask = queued.roleMask;
-    tracedTickets.push_back(queued.ticket);
-  }
-  queuedRays.erase(queuedRays.begin(), queuedRays.begin() + count);
-  tracedFrame = renderer->frameNumber;
-
-  LsPickPushConstants constants = {};
-  constants.primitiveCount = static_cast<uint32_t>(primitives.size());
-  constants.rayCount = count;
-  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pickPipeline);
-  vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pickPipelineLayout, 0, 1, &pickDescriptorSet, 0, nullptr);
-  vkCmdPushConstants(commandBuffer, pickPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-  vkCmdDispatch(commandBuffer, (count + kPickWorkGroupSize - 1)/kPickWorkGroupSize, 1, 1);
-
-  // Read on the host once the frame's fence has been waited on
-  VkMemoryBarrier barrier = {};
-  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+  renderedPicks.clear();
 }
 
 void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera, const LsSceneViewSettings& settings) {
@@ -705,8 +590,6 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
     renderer->EndDrawing();
   }
   VkCommandBuffer commandBuffer = renderer->commandBuffer;
-
-  TraceQueuedRays(commandBuffer);
 
   VkImageMemoryBarrier barriers[2] = {};
   for (int i = 0; i < 2; i++) {
@@ -740,13 +623,53 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
   constants.primitiveCount = static_cast<uint32_t>(primitives.size());
   constants.flags = (settings.lit ? kViewLit : 0) |
                     (settings.outlines || settings.outlinesOnly ? kViewOutlines : 0) |
-                    (settings.outlinesOnly ? kViewOutlinesOnly : 0);
+                    (settings.outlinesOnly ? kViewOutlinesOnly : 0) |
+                    (settings.debug == LsSceneViewDebug::Pick ? kViewDebugPick : 0) |
+                    (settings.debug == LsSceneViewDebug::Depth ? kViewDebugDepth : 0);
   constants.pixelAngle = 2.0f*tanHalfFov/static_cast<float>(height);
+  constants.debugDepthRange = settings.debugDepthRange;
+
+  // The last picks are read before this frame overwrites them, and picks
+  // rendered earlier in this frame still own the buffer
+  CollectPicks();
+  if (renderedPicks.empty()) {
+    glm::uvec2 slots[kMaxPickPixels];
+    for (auto request = requestedPicks.begin(); request != requestedPicks.end();) {
+      // Requests for the same pixel share its slot
+      glm::uvec2 pixel = glm::min(request->pixel, glm::uvec2(width - 1, height - 1));
+      uint32_t slot = 0;
+      while (slot < constants.pickCount && slots[slot] != pixel) {
+        slot++;
+      }
+      if (slot == kMaxPickPixels) {
+        ++request;
+        continue;
+      }
+      if (slot == constants.pickCount) {
+        slots[constants.pickCount++] = pixel;
+        constants.pickPixels[slot*2] = pixel.x;
+        constants.pickPixels[slot*2 + 1] = pixel.y;
+      }
+      renderedPicks.push_back({ request->ticket, slot });
+      request = requestedPicks.erase(request);
+    }
+    renderedFrame = renderer->frameNumber;
+  }
 
   vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
   vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
   vkCmdDispatch(commandBuffer, (width + kWorkGroupSize - 1)/kWorkGroupSize, (height + kWorkGroupSize - 1)/kWorkGroupSize, 1);
+
+  if (constants.pickCount > 0) {
+    // Read on the host once the frame's fence has been waited on
+    VkMemoryBarrier pickBarrier = {};
+    pickBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    pickBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    pickBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                         0, 1, &pickBarrier, 0, nullptr, 0, nullptr);
+  }
 
   // Lines draw over the colour and read the depth
   barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -760,7 +683,7 @@ void LsSceneView::Render(uint32_t width, uint32_t height, const LsCamera& camera
                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                        0, 0, nullptr, 0, nullptr, 2, barriers);
 
-  if (settings.grid && !settings.outlinesOnly) {
+  if (settings.grid && !settings.outlinesOnly && settings.debug == LsSceneViewDebug::None) {
     AppendGrid(camera);
   }
   DrawLines(commandBuffer, camera);

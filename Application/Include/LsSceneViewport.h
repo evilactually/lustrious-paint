@@ -91,14 +91,17 @@ class LsSceneViewport
   LsNodeId drawnHover = kLsInvalidNode;
   LsNodeId hovered = kLsInvalidNode;
 
-  // Surfaces are picked by rays traced on the GPU with the view, their results
-  // arrive a frame later. 0 when nothing is waiting.
-  LsRaycastTicket hoverTicket = 0;
+  // Surfaces are picked by reading back what the view rendered at a pixel, the
+  // results arrive a frame later. 0 when nothing is waiting.
+  LsPickTicket hoverTicket = 0;
   LsNodeId hoveredSurface = kLsInvalidNode;
-  LsRaycastTicket selectTicket = 0;
-  LsRaycastTicket cursorTicket = 0;
+  // The last hover pick, for the debug readout
+  LsSceneHit hoverHit;
+  bool hoverHitValid = false;
+  LsPickTicket selectTicket = 0;
+  LsPickTicket cursorTicket = 0;
   LsRay cursorRay = {};
-  LsRaycastTicket orbitTicket = 0;
+  LsPickTicket orbitTicket = 0;
 
   LsViewportProjection projection;
   bool viewHovered = false;
@@ -143,10 +146,14 @@ class LsSceneViewport
   // Camera nodes that are not hidden, apart from the one being looked through
   std::vector<LsNodeId> GetDrawnCameras() const;
   LsNodeId PickCamera(glm::vec2 mouse) const;
-  // Applies the results of the rays that have come back from the GPU
+  // Pixel of the view's image under a point in UI points
+  glm::uvec2 ToViewPixel(glm::vec2 point) const;
+  // Applies the picks that have come back from the GPU
   void UpdatePicks();
-  // Forgets the rays still being traced, their results no longer apply
+  // Forgets the picks still waiting, their results no longer apply
   void CancelPicks();
+  // With a debug view on, marks the picked pixels and prints the hover pick
+  void DrawPickDebug(ImDrawList* drawList) const;
 
   void DrawToolbar();
   void DrawAddMenu();

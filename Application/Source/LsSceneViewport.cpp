@@ -142,9 +142,10 @@ void LsSceneViewport::SyncOrbitToCamera() {
   }
   LsCamera camera = scene->GetCamera(active, GetCanvasAspect());
   // Orbiting a locked camera should turn it about its subject, not a point behind
-  // it. The distance to that comes a frame later, see UpdatePicks.
+  // it. Looking through, the camera's axis goes through the middle of the view,
+  // so the subject is what the view shows there, a frame later (see UpdatePicks).
   if (!orbitTicket) {
-    orbitTicket = view->QueueRaycast({ camera.GetPosition(), camera.GetForward() }, kLsAllRoles, kMaxDistance);
+    orbitTicket = view->RequestPick(ToViewPixel(projection.origin + projection.size*0.5f));
   }
   SetOrbitFromCamera(camera);
 }
@@ -243,37 +244,46 @@ void LsSceneViewport::ViewAlongAxis(int axis, bool negative) {
 }
 
 void LsSceneViewport::PlaceCursor(glm::vec2 mouse) {
-  // Moves when the ray comes back, see UpdatePicks
+  // Moves when the pick comes back, see UpdatePicks
   cursorRay = projection.GetRay(mouse);
-  cursorTicket = view->QueueRaycast(cursorRay, kLsAllRoles, kMaxDistance);
+  cursorTicket = view->RequestPick(ToViewPixel(mouse));
+}
+
+glm::uvec2 LsSceneViewport::ToViewPixel(glm::vec2 point) const {
+  // The view renders at the display's pixel density, see Draw
+  glm::vec2 scale = LsToVec2(ImGui::GetIO().DisplayFramebufferScale);
+  glm::vec2 pixels = glm::max(glm::floor(projection.size*scale), glm::vec2(1.0f));
+  return glm::uvec2(glm::clamp(glm::floor((point - projection.origin)*scale), glm::vec2(0.0f), pixels - 1.0f));
 }
 
 void LsSceneViewport::UpdatePicks() {
   // Clears the ticket once its result is in
-  auto resolve = [this](LsRaycastTicket& ticket, LsSceneHit& hit) {
-    LsRaycastStatus status = ticket ? view->GetRaycast(ticket, hit) : LsRaycastStatus::Unknown;
-    if (status != LsRaycastStatus::Pending) {
+  auto resolve = [this](LsPickTicket& ticket, LsSceneHit& hit) {
+    LsPickStatus status = ticket ? view->GetPick(ticket, hit) : LsPickStatus::Unknown;
+    if (status != LsPickStatus::Pending) {
       ticket = 0;
     }
     return status;
   };
   LsSceneHit hit;
 
-  LsRaycastStatus status = resolve(hoverTicket, hit);
-  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
-    hoveredSurface = status == LsRaycastStatus::Hit ? hit.node : kLsInvalidNode;
+  LsPickStatus status = resolve(hoverTicket, hit);
+  if (status == LsPickStatus::Hit || status == LsPickStatus::Miss) {
+    hoveredSurface = status == LsPickStatus::Hit ? hit.node : kLsInvalidNode;
+    hoverHit = hit;
+    hoverHitValid = status == LsPickStatus::Hit;
   }
 
   // Clicking empty space deselects
   status = resolve(selectTicket, hit);
-  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
-    editor->SetSelected(status == LsRaycastStatus::Hit ? hit.node : kLsInvalidNode);
+  if (status == LsPickStatus::Hit || status == LsPickStatus::Miss) {
+    editor->SetSelected(status == LsPickStatus::Hit ? hit.node : kLsInvalidNode);
   }
 
   status = resolve(cursorTicket, hit);
-  if (status == LsRaycastStatus::Hit || status == LsRaycastStatus::Miss) {
+  if (status == LsPickStatus::Hit || status == LsPickStatus::Miss) {
     const LsRay& ray = cursorRay;
-    if (status == LsRaycastStatus::Hit) {
+    if (status == LsPickStatus::Hit) {
       cursor = hit.position;
     }
     else if (std::abs(ray.direction.y) > 1.0e-4f && ray.origin.y*ray.direction.y < 0.0f) {
@@ -288,15 +298,50 @@ void LsSceneViewport::UpdatePicks() {
   // has taken over from the camera in the meantime, the old pose no longer applies.
   status = resolve(orbitTicket, hit);
   LsNodeId active = scene->GetActiveCamera();
-  if (status == LsRaycastStatus::Hit && lookThrough && navigation == Navigation::None && active != kLsInvalidNode) {
-    distance = glm::clamp(hit.distance, kMinDistance, kMaxDistance);
-    SetOrbitFromCamera(scene->GetCamera(active, GetCanvasAspect()));
+  if (status == LsPickStatus::Hit && lookThrough && navigation == Navigation::None && active != kLsInvalidNode) {
+    // Along the camera's axis, the middle pixel is up to half a pixel off it
+    LsCamera camera = scene->GetCamera(active, GetCanvasAspect());
+    distance = glm::clamp(glm::dot(hit.position - camera.GetPosition(), camera.GetForward()), kMinDistance, kMaxDistance);
+    SetOrbitFromCamera(camera);
   }
+}
+
+void LsSceneViewport::DrawPickDebug(ImDrawList* drawList) const {
+  if (settings.debug == LsSceneViewDebug::None) {
+    return;
+  }
+  // The pixels being picked: the mouse, and the middle when looking through
+  ImU32 marker = IM_COL32(255, 255, 0, 255);
+  glm::vec2 scale = LsToVec2(ImGui::GetIO().DisplayFramebufferScale);
+  auto drawPixel = [&](glm::vec2 point) {
+    glm::vec2 pixel = projection.origin + (glm::vec2(ToViewPixel(point)) + 0.5f)/scale;
+    drawList->AddRect(LsToImVec2(pixel - 4.0f), LsToImVec2(pixel + 4.0f), marker);
+  };
+  if (viewHovered && ImGui::IsMousePosValid()) {
+    drawPixel(LsToVec2(ImGui::GetIO().MousePos));
+  }
+  if (lookThrough) {
+    drawPixel(projection.origin + projection.size*0.5f);
+  }
+
+  char text[256];
+  const LsSceneNode* node = hoverHitValid ? scene->Find(hoverHit.node) : nullptr;
+  if (node) {
+    snprintf(text, sizeof(text), "Pick: %s (node %u)  distance %.3f  at (%.3f, %.3f, %.3f)",
+             node->GetProperties().name.c_str(), hoverHit.node, hoverHit.distance,
+             hoverHit.position.x, hoverHit.position.y, hoverHit.position.z);
+  }
+  else {
+    snprintf(text, sizeof(text), "Pick: nothing");
+  }
+  float y = projection.origin.y + projection.size.y - 2.0f*ImGui::GetTextLineHeight() - 10.0f;
+  AddTextWithShadow(drawList, glm::vec2(projection.origin.x + 8.0f, y), IM_COL32(255, 255, 0, 255), text);
 }
 
 void LsSceneViewport::CancelPicks() {
   hoverTicket = 0;
   hoveredSurface = kLsInvalidNode;
+  hoverHitValid = false;
   selectTicket = 0;
   cursorTicket = 0;
   orbitTicket = 0;
@@ -745,6 +790,14 @@ void LsSceneViewport::DrawViewMenu() {
   ImGui::SliderFloat("Exposure", &settings.exposure, -10.0f, 10.0f, "%+.1f EV");
   ImGui::EndDisabled();
   ImGui::Checkbox("Grid", &settings.grid);
+  int debug = static_cast<int>(settings.debug);
+  ImGui::SetNextItemWidth(ImGui::GetFontSize()*10.0f);
+  if (ImGui::Combo("Debug", &debug, "Off\0Pick\0Depth\0")) {
+    settings.debug = static_cast<LsSceneViewDebug>(debug);
+  }
+  ImGui::SetItemTooltip("Show what picking sees: a colour for each object, or the depth from white near to black\n"
+                        "at twice the orbit distance.\n"
+                        "The picked pixels are marked and the pick under the mouse is printed.");
   if (ImGui::MenuItem("Centre view on cursor", "Alt+Home")) {
     CenterViewOnCursor();
   }
@@ -1052,7 +1105,7 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
       hovered = hoveredSurface;
     }
     if (!hoverTicket) {
-      hoverTicket = view->QueueRaycast(projection.GetRay(mouse), kLsAllRoles, 1000.0f);
+      hoverTicket = view->RequestPick(ToViewPixel(mouse));
     }
   }
   else {
@@ -1063,6 +1116,8 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
   // Render at the display's pixel density rather than in UI points
   UpdatePrimitives();
   glm::vec2 pixels = glm::max(glm::floor(size*LsToVec2(io.DisplayFramebufferScale)), glm::vec2(1.0f));
+  // What is orbited around comes out mid grey in the depth debug view
+  settings.debugDepthRange = 2.0f*distance;
   view->Render(static_cast<uint32_t>(pixels.x), static_cast<uint32_t>(pixels.y), projection.camera, settings);
 
   ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1117,13 +1172,14 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
         selectTicket = 0;
       }
       else {
-        // Selects when the ray comes back, see UpdatePicks
-        selectTicket = view->QueueRaycast(projection.GetRay(mouse), kLsAllRoles, 1000.0f);
+        // Selects when the pick comes back, see UpdatePicks
+        selectTicket = view->RequestPick(ToViewPixel(mouse));
       }
     }
     DrawCursor(drawList);
 
     DrawStatus(drawList);
+    DrawPickDebug(drawList);
   }
   drawList->PopClipRect();
 

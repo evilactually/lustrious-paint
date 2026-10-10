@@ -7,12 +7,6 @@
 #include <LsCanvasNavigator.h>
 #include <LsCanvas.h>
 
-enum class LsPaintTool
-{
-  Brush,  // transfers positions from the construction geometry
-  Eraser, // removes positions
-};
-
 class LsCanvasPainter: public LsFSdlEventHandler
 {
   std::shared_ptr<LsRenderer> renderer;
@@ -26,9 +20,9 @@ class LsCanvasPainter: public LsFSdlEventHandler
   float width = 64.0f;
   float height = 64.0f;
   float brushRadius = 10.0f; // in pixels
-  LsPaintTool tool = LsPaintTool::Brush;
-  // Taken from the tool when the stroke starts, so switching tools doesn't change a stroke
-  LsCanvasDabMode strokeMode = LsCanvasDabMode::Transfer;
+  LsCanvasDabMode mode = LsCanvasDabMode::Depth;
+  // Taken from the mode when the stroke starts, so switching modes doesn't change a stroke
+  LsCanvasDabMode strokeMode = LsCanvasDabMode::Depth;
   // Stroke state in canvas pixels, dabs are spaced evenly along the path regardless of the input rate
   glm::vec2 lastStrokeSample = glm::vec2(0.0f);
   float distanceToNextDab = 0.0f;
@@ -43,7 +37,8 @@ public:
   bool HitTest(SDL_FPoint point);
   float GetBrushRadius();
   void SetBrushRadius(float radius);
-  LsPaintTool GetTool() const { return tool; }
-  void SetTool(LsPaintTool tool) { this->tool = tool; }
+  // What the brush paints, see LsCanvasDabMode
+  LsCanvasDabMode GetMode() const { return mode; }
+  void SetMode(LsCanvasDabMode mode) { this->mode = mode; }
   void OnSdlEvent(const SDL_Event& event) override;
 };

@@ -28,6 +28,13 @@ struct LsSceneLine
   float fadeDistance = 0.0f;         // fades out towards this view depth, 0 never fades
 };
 
+enum class LsSceneViewDebug
+{
+  None,
+  Pick,  // a colour for each node, the one a pick at that pixel finds
+  Depth, // view depth of what a pick finds, white near to black at debugDepthRange
+};
+
 struct LsSceneViewSettings
 {
   // Light the scene with its emitters and shadow casters instead of studio lights
@@ -41,17 +48,21 @@ struct LsSceneViewSettings
   bool outlines = false;
   // Only the outlines on a transparent image, without shading, grid or media
   bool outlinesOnly = false;
+  // Shows what picking sees instead of the shaded scene
+  LsSceneViewDebug debug = LsSceneViewDebug::None;
+  // View depth shown black in the depth debug view
+  float debugDepthRange = 20.0f;
 };
 
-// Handle to a ray queued with LsSceneView::QueueRaycast, 0 is never one
-using LsRaycastTicket = uint64_t;
+// Handle to a pixel requested with LsSceneView::RequestPick, 0 is never one
+using LsPickTicket = uint64_t;
 
-enum class LsRaycastStatus
+enum class LsPickStatus
 {
-  Pending, // not traced yet, or traced in the frame still being recorded
+  Pending, // not rendered yet, or rendered in the frame still being recorded
   Hit,
   Miss,
-  Unknown, // never queued, or its result was dropped
+  Unknown, // never requested, or its result was dropped
 };
 
 //-------------------------------------------------------------------------------
@@ -109,45 +120,33 @@ class LsSceneView
   std::vector<LsScenePrimitive> primitives;
   bool primitivesDirty = true;
 
-  // Ray queries, traced on the GPU against the same primitives as the image
-  VkShaderModule pickShader = VK_NULL_HANDLE;
-  VkDescriptorSetLayout pickDescriptorSetLayout = VK_NULL_HANDLE;
-  VkDescriptorSet pickDescriptorSet = VK_NULL_HANDLE;
-  VkPipelineLayout pickPipelineLayout = VK_NULL_HANDLE;
-  VkPipeline pickPipeline = VK_NULL_HANDLE;
-  // Rays in, hits out, both in host memory and small enough for a frame's queries
-  struct HostBuffer {
+  // Picking: the tracer writes the hits of a few pixels to a buffer the host reads
+  struct {
     VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     void* mapped = nullptr;
-  };
-  HostBuffer rayBuffer;
-  HostBuffer hitBuffer;
-  struct QueuedRay {
-    LsRaycastTicket ticket;
-    LsRay ray;
-    LsSceneRoles roleMask;
-    float maxDistance;
+  } pickBuffer;
+  struct PickRequest {
+    LsPickTicket ticket;
+    glm::uvec2 pixel;
   };
   // Waiting for the next Render
-  std::vector<QueuedRay> queuedRays;
-  // Recorded by a Render, their hits are in hitBuffer once a later frame begins
-  std::vector<LsRaycastTicket> tracedTickets;
-  uint64_t tracedFrame = 0;
-  // Read back from hitBuffer, kept until the next rays are traced
+  std::vector<PickRequest> requestedPicks;
+  // Rendered, with the slot of pickBuffer their hit goes to. Read once a later frame begins.
+  std::vector<std::pair<LsPickTicket, uint32_t>> renderedPicks;
+  uint64_t renderedFrame = 0;
+  // Read back from pickBuffer, kept until the next picks are read
   struct Completed {
     bool hit;
     LsSceneHit sceneHit;
   };
-  std::unordered_map<LsRaycastTicket, Completed> completed;
-  LsRaycastTicket nextTicket = 1;
+  std::unordered_map<LsPickTicket, Completed> completed;
+  LsPickTicket nextTicket = 1;
 
-  void CreatePickPipeline();
-  void CreateHostBuffer(VkDeviceSize size, HostBuffer& buffer);
-  void DestroyHostBuffer(HostBuffer& buffer);
-  // Moves the hits of the traced rays into the completed results once the GPU is done
-  void CollectRaycasts();
-  void TraceQueuedRays(VkCommandBuffer commandBuffer);
+  void CreatePickBuffer();
+  void DestroyPickBuffer();
+  // Moves the rendered picks into the completed results once the GPU is done
+  void CollectPicks();
 
   uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties) const;
   void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage,
@@ -176,10 +175,11 @@ public:
   // Valid after the first Render, changes when the size does
   ImTextureID GetTexture() const;
 
-  // Queues a ray to trace like LsRaycastPrimitives, against the primitives the
-  // next Render uploads. Its result is ready in the frame after that Render.
-  LsRaycastTicket QueueRaycast(const LsRay& ray, LsSceneRoles roleMask, float maxDistance);
-  // The result of a queued ray, hit is set when it hit something. Results are
-  // kept until the Render after they are ready, so read them before that.
-  LsRaycastStatus GetRaycast(LsRaycastTicket ticket, LsSceneHit& hit);
+  // Asks what the next Render sees at a pixel of its image: the first surface or
+  // medium along that pixel's ray. The result is ready in the frame after that
+  // Render. The hit has no normal.
+  LsPickTicket RequestPick(glm::uvec2 pixel);
+  // The result of a requested pixel, hit is set when it hit something. Results
+  // are kept until the Render after they are ready, so read them before that.
+  LsPickStatus GetPick(LsPickTicket ticket, LsSceneHit& hit);
 };

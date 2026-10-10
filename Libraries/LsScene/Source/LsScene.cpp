@@ -328,7 +328,20 @@ void LsScene::FlattenNode(LsNodeId id, const LsTransform& parentToWorld, std::ve
       primitive.worldToObject[row] = worldToObject[row];
     }
     primitive.shapeParams = properties.shape.params;
-    primitive.emission = glm::vec4(properties.emissionColor*properties.emissionIntensity, 0.0f);
+    // A sphere around the object origin that encloses the shape in world space,
+    // which the canvas renderer samples emitters through
+    float boundingRadius = 0.0f;
+    glm::vec3 boundsMin, boundsMax;
+    if (properties.shape.GetBounds(boundsMin, boundsMax)) {
+      glm::vec3 center = objectToWorld.ApplyToPoint(glm::vec3(0.0f));
+      for (int corner = 0; corner < 8; corner++) {
+        glm::vec3 p((corner & 1) ? boundsMax.x : boundsMin.x,
+                    (corner & 2) ? boundsMax.y : boundsMin.y,
+                    (corner & 4) ? boundsMax.z : boundsMin.z);
+        boundingRadius = std::max(boundingRadius, glm::length(objectToWorld.ApplyToPoint(p) - center));
+      }
+    }
+    primitive.emission = glm::vec4(properties.emissionColor*properties.emissionIntensity, boundingRadius);
     primitive.medium = glm::vec4(properties.mediumAlbedo, properties.mediumDensity);
     primitive.shapeType = static_cast<uint32_t>(properties.shape.type);
     primitive.roles = properties.roles;

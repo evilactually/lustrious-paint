@@ -89,7 +89,8 @@ struct LsScenePrimitive
   // Rows of the 3x4 affine world-to-object matrix
   glm::vec4 worldToObject[3];
   glm::vec4 shapeParams;
-  // rgb = emitted radiance
+  // rgb = emitted radiance, a = radius of a sphere around the object origin
+  // enclosing the shape in world space
   glm::vec4 emission;
   // rgb = albedo, a = density
   glm::vec4 medium;
