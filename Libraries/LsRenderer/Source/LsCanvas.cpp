@@ -23,9 +23,12 @@ struct LsCanvasPushConstants
   uint32_t display;
   float isolineSpacing; // 0 for none
   uint32_t dabMode;
-  uint32_t dabMaterial;
+  uint32_t dabMaterial[2]; // packed, see PackBrdf
+  float dabOpacity;
+  float dabFalloff;
 };
-static_assert(sizeof(LsCanvasPushConstants) == 116, "LsCanvasPushConstants must match canvas.slang");
+// The minimum limit for push constants, there is no room left
+static_assert(sizeof(LsCanvasPushConstants) == 128, "LsCanvasPushConstants must match canvas.slang");
 
 // Mirrors RenderParameters in Shaders/canvas.slang
 struct LsCanvasRenderParameters
@@ -37,17 +40,29 @@ struct LsCanvasRenderParameters
 };
 static_assert(sizeof(LsCanvasRenderParameters) == 16, "LsCanvasRenderParameters must match canvas.slang");
 
-// Mirrors Material in Shaders/canvas.slang
-struct LsCanvasMaterial
-{
-  glm::vec4 baseColor; // linear rgb, a = metallic
-  float roughness;
-  float ior;
-  float pad[2];
-};
-static_assert(sizeof(LsCanvasMaterial) == 32, "LsCanvasMaterial must match canvas.slang");
+// Mirror MIN_IOR and MAX_IOR in Shaders/canvas.slang
+static const float kMinIor = 1.0f;
+static const float kMaxIor = 3.0f;
+
+// Packs the parameters the way Material::pack in Shaders/canvas.slang does: the
+// sRGB encoded base colour and metallic as 8 bit unorms, roughness and the IOR
+// as 16 bit unorms
+static void PackBrdf(const LsBrdfParameters& brdf, uint32_t packed[2]) {
+  auto unorm = [](float value, float scale) {
+    return static_cast<uint32_t>(std::round(glm::clamp(value, 0.0f, 1.0f)*scale));
+  };
+  auto srgb = [](float c) {
+    c = glm::clamp(c, 0.0f, 1.0f);
+    return c <= 0.0031308f ? c*12.92f : 1.055f*std::pow(c, 1.0f/2.4f) - 0.055f;
+  };
+  packed[0] = unorm(srgb(brdf.baseColor.r), 255.0f) | (unorm(srgb(brdf.baseColor.g), 255.0f) << 8) |
+              (unorm(srgb(brdf.baseColor.b), 255.0f) << 16) | (unorm(brdf.metallic, 255.0f) << 24);
+  packed[1] = unorm(brdf.roughness, 65535.0f) | (unorm((brdf.ior - kMinIor)/(kMaxIor - kMinIor), 65535.0f) << 16);
+}
 
 static const uint32_t kWorkGroupSize = 8;
+// Mirrors DAB_BLEND in Shaders/canvas.slang, set in dabMode with the mode
+static const uint32_t kDabBlend = 1u << 8;
 // Mirrors NO_NORMAL in Shaders/canvas.slang, (-32768, -32768) as two snorms, which encoding never produces
 static const uint32_t kNoNormal = 0x80008000u;
 
@@ -55,11 +70,12 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   renderer(renderer), device(renderer->device),
   width(renderer->canvasState.width), height(renderer->canvasState.height) {
   paintShader = CreateShaderModule(device, "Shaders/canvas.paint.comp.spv");
+  blendShader = CreateShaderModule(device, "Shaders/canvas.blend.comp.spv");
   rangeShader = CreateShaderModule(device, "Shaders/canvas.range.comp.spv");
   renderShader = CreateShaderModule(device, "Shaders/canvas.render.comp.spv");
   resolveShader = CreateShaderModule(device, "Shaders/canvas.resolve.comp.spv");
 
-  const uint32_t bindingCount = 9;
+  const uint32_t bindingCount = 14;
   VkDescriptorSetLayoutBinding bindings[bindingCount] = {};
   const VkDescriptorType types[bindingCount] = {
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // distance
@@ -69,8 +85,13 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // normal
     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // rendered radiance
     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // render parameters
-    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // material table
-    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // material index
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // material colour
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // material surface
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start distance
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start normal
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start material colour
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke start material surface
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  // stroke coverage
   };
   for (uint32_t i = 0; i < bindingCount; i++) {
     bindings[i].binding = i;
@@ -88,8 +109,8 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   }
 
   VkDescriptorPoolSize poolSizes[3] = {
-    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5 },
-    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11 },
+    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
     { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
   };
   VkDescriptorPoolCreateInfo poolInfo = {};
@@ -122,6 +143,7 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   }
 
   paintPipeline = CreatePipeline(paintShader);
+  blendPipeline = CreatePipeline(blendShader);
   rangePipeline = CreatePipeline(rangeShader);
   renderPipeline = CreatePipeline(renderShader);
   resolvePipeline = CreatePipeline(resolveShader);
@@ -134,10 +156,13 @@ LsCanvas::LsCanvas(std::shared_ptr<LsRenderer> renderer) :
   normal = CreateAttributeImage(VK_FORMAT_R32_UINT, "normal");
   // Sums of many samples of unbounded radiance
   radiance = CreateAttributeImage(VK_FORMAT_R32G32B32A32_SFLOAT, "radiance");
-  material = CreateAttributeImage(VK_FORMAT_R32_UINT, "material");
-  // Unpainted pixels have the brush BRDF the canvas starts with
-  materials.push_back(brushBrdf);
-  CreateMaterialBuffer(16);
+  materialColor = CreateAttributeImage(VK_FORMAT_R32_UINT, "material colour");
+  materialSurface = CreateAttributeImage(VK_FORMAT_R32_UINT, "material surface");
+  strokeDistance = CreateAttributeImage(VK_FORMAT_R32_SFLOAT, "stroke distance");
+  strokeNormal = CreateAttributeImage(VK_FORMAT_R32_UINT, "stroke normal");
+  strokeMaterialColor = CreateAttributeImage(VK_FORMAT_R32_UINT, "stroke material colour");
+  strokeMaterialSurface = CreateAttributeImage(VK_FORMAT_R32_UINT, "stroke material surface");
+  strokeCoverage = CreateAttributeImage(VK_FORMAT_R32_SFLOAT, "stroke coverage");
   // Cleared by the first Render, which has a command buffer to do it with
   attributesCleared = false;
   UpdateDescriptors();
@@ -150,14 +175,17 @@ LsCanvas::~LsCanvas() {
   DestroyAttributeImage(distance);
   DestroyAttributeImage(normal);
   DestroyAttributeImage(radiance);
-  DestroyAttributeImage(material);
-  DestroyMaterialBuffer();
+  for (AttributeImage* attribute : { &materialColor, &materialSurface, &strokeDistance, &strokeNormal,
+                                     &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage }) {
+    DestroyAttributeImage(*attribute);
+  }
   vkDestroyBuffer(device, rangeBuffer.buffer, nullptr);
   vkFreeMemory(device, rangeBuffer.memory, nullptr);
   vkUnmapMemory(device, parameterBuffer.memory);
   vkDestroyBuffer(device, parameterBuffer.buffer, nullptr);
   vkFreeMemory(device, parameterBuffer.memory, nullptr);
   vkDestroyPipeline(device, paintPipeline, nullptr);
+  vkDestroyPipeline(device, blendPipeline, nullptr);
   vkDestroyPipeline(device, rangePipeline, nullptr);
   vkDestroyPipeline(device, renderPipeline, nullptr);
   vkDestroyPipeline(device, resolvePipeline, nullptr);
@@ -165,6 +193,7 @@ LsCanvas::~LsCanvas() {
   vkDestroyDescriptorPool(device, descriptorPool, nullptr);
   vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
   vkDestroyShaderModule(device, paintShader, nullptr);
+  vkDestroyShaderModule(device, blendShader, nullptr);
   vkDestroyShaderModule(device, rangeShader, nullptr);
   vkDestroyShaderModule(device, renderShader, nullptr);
   vkDestroyShaderModule(device, resolveShader, nullptr);
@@ -206,7 +235,8 @@ LsCanvas::AttributeImage LsCanvas::CreateAttributeImage(VkFormat format, const c
   imageInfo.arrayLayers = 1;
   imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
   imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-  imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  // Copied from at the start of a stroke and cleared by transfers
+  imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   if (vkCreateImage(device, &imageInfo, nullptr, &attribute.image) != VK_SUCCESS) {
@@ -290,57 +320,6 @@ void LsCanvas::CreateParameterBuffer() {
   vkMapMemory(device, parameterBuffer.memory, 0, VK_WHOLE_SIZE, 0, &parameterBuffer.mapped);
 }
 
-void LsCanvas::CreateMaterialBuffer(size_t capacity) {
-  VkBufferCreateInfo bufferInfo = {};
-  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufferInfo.size = capacity*sizeof(LsCanvasMaterial);
-  bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-  bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  if (vkCreateBuffer(device, &bufferInfo, nullptr, &materialBuffer.buffer) != VK_SUCCESS) {
-    throw std::string("Could not create canvas material buffer!");
-  }
-
-  // Small and only appended to, so it stays in host memory
-  VkMemoryRequirements requirements;
-  vkGetBufferMemoryRequirements(device, materialBuffer.buffer, &requirements);
-  VkMemoryAllocateInfo allocateInfo = {};
-  allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  allocateInfo.allocationSize = requirements.size;
-  allocateInfo.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits,
-                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  if (vkAllocateMemory(device, &allocateInfo, nullptr, &materialBuffer.memory) != VK_SUCCESS) {
-    throw std::string("Could not allocate canvas material buffer memory!");
-  }
-  vkBindBufferMemory(device, materialBuffer.buffer, materialBuffer.memory, 0);
-  vkMapMemory(device, materialBuffer.memory, 0, VK_WHOLE_SIZE, 0, &materialBuffer.mapped);
-  materialBuffer.capacity = capacity;
-  materialsDirty = true;
-  UpdateDescriptors();
-}
-
-void LsCanvas::DestroyMaterialBuffer() {
-  if (materialBuffer.mapped) {
-    vkUnmapMemory(device, materialBuffer.memory);
-  }
-  if (materialBuffer.buffer) {
-    vkDestroyBuffer(device, materialBuffer.buffer, nullptr);
-  }
-  if (materialBuffer.memory) {
-    vkFreeMemory(device, materialBuffer.memory, nullptr);
-  }
-  materialBuffer = {};
-}
-
-uint32_t LsCanvas::FindOrAddMaterial(const LsBrdfParameters& brdf) {
-  auto found = std::find(materials.begin(), materials.end(), brdf);
-  if (found != materials.end()) {
-    return static_cast<uint32_t>(found - materials.begin());
-  }
-  materials.push_back(brdf);
-  materialsDirty = true;
-  return static_cast<uint32_t>(materials.size() - 1);
-}
-
 void LsCanvas::CreatePrimitiveBuffer(size_t capacity) {
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -388,12 +367,17 @@ void LsCanvas::UpdateDescriptors() {
   VkDescriptorImageInfo normalInfo = { VK_NULL_HANDLE, normal.view, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorImageInfo radianceInfo = { VK_NULL_HANDLE, radiance.view, VK_IMAGE_LAYOUT_GENERAL };
   VkDescriptorBufferInfo parameterInfo = { parameterBuffer.buffer, 0, VK_WHOLE_SIZE };
-  VkDescriptorImageInfo materialInfo = { VK_NULL_HANDLE, material.view, VK_IMAGE_LAYOUT_GENERAL };
-  VkDescriptorBufferInfo materialTableInfo = { materialBuffer.buffer, 0, VK_WHOLE_SIZE };
+  // Bound from 7 on, in the order of the bindings in canvas.slang
+  const AttributeImage* laterImages[7] = { &materialColor, &materialSurface, &strokeDistance, &strokeNormal,
+                                           &strokeMaterialColor, &strokeMaterialSurface, &strokeCoverage };
+  VkDescriptorImageInfo laterInfos[7];
+  for (int i = 0; i < 7; i++) {
+    laterInfos[i] = { VK_NULL_HANDLE, laterImages[i]->view, VK_IMAGE_LAYOUT_GENERAL };
+  }
   VkDescriptorBufferInfo bufferInfo = { primitiveBuffer.buffer, 0, VK_WHOLE_SIZE };
   VkDescriptorBufferInfo rangeInfo = { rangeBuffer.buffer, 0, VK_WHOLE_SIZE };
 
-  VkWriteDescriptorSet writes[9] = {};
+  VkWriteDescriptorSet writes[14] = {};
   uint32_t writeCount = 0;
   auto write = [&](uint32_t binding, VkDescriptorType type) -> VkWriteDescriptorSet& {
     VkWriteDescriptorSet& w = writes[writeCount++];
@@ -417,11 +401,10 @@ void LsCanvas::UpdateDescriptors() {
   if (parameterBuffer.buffer) {
     write(6, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER).pBufferInfo = &parameterInfo;
   }
-  if (materialBuffer.buffer) {
-    write(7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &materialTableInfo;
-  }
-  if (material.view) {
-    write(8, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE).pImageInfo = &materialInfo;
+  for (uint32_t i = 0; i < 7; i++) {
+    if (laterImages[i]->view) {
+      write(7 + i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE).pImageInfo = &laterInfos[i];
+    }
   }
   if (primitiveBuffer.buffer) {
     write(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo = &bufferInfo;
@@ -478,12 +461,77 @@ bool LsCanvas::IsRendering() const {
   return display == LsCanvasDisplay::Rendering && hasCamera && renderedSamples < renderSettings.maxSamples;
 }
 
-void LsCanvas::Paint(const std::vector<glm::vec2>& centers, float radius, LsCanvasDabMode mode) {
-  // Added to the table as soon as it is painted, so the panel shows it
-  uint32_t index = mode == LsCanvasDabMode::Material && !centers.empty() ? FindOrAddMaterial(brushBrdf) : 0;
-  for (const glm::vec2& center : centers) {
-    dabs.push_back({ center, radius, mode, index });
+void LsCanvas::Paint(const std::vector<glm::vec2>& centers, const LsCanvasBrush& brush, bool startsStroke) {
+  // Erasing leaves the default material
+  LsBrdfParameters brdf = brush.mode == LsCanvasDabMode::Material ? brushBrdf : LsBrdfParameters();
+  if (brush.mode == LsCanvasDabMode::Material && !centers.empty() &&
+      std::find(paintedBrdfs.begin(), paintedBrdfs.end(), brdf) == paintedBrdfs.end()) {
+    paintedBrdfs.push_back(brdf);
   }
+  for (const glm::vec2& center : centers) {
+    dabs.push_back({ center, brush, brdf, startsStroke });
+    startsStroke = false;
+  }
+}
+
+void LsCanvas::RecordBlendCopy(VkCommandBuffer commandBuffer, glm::ivec2 first, glm::ivec2 last) {
+  VkMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+
+  const std::pair<const AttributeImage*, const AttributeImage*> copies[4] = {
+    { &strokeDistance, &distance }, { &strokeNormal, &normal },
+    { &strokeMaterialColor, &materialColor }, { &strokeMaterialSurface, &materialSurface },
+  };
+  VkImageCopy region = {};
+  region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+  region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+  region.srcOffset = { first.x, first.y, 0 };
+  region.dstOffset = { first.x, first.y, 0 };
+  region.extent = { static_cast<uint32_t>(last.x - first.x + 1), static_cast<uint32_t>(last.y - first.y + 1), 1 };
+  for (const auto& copy : copies) {
+    vkCmdCopyImage(commandBuffer, copy.first->image, VK_IMAGE_LAYOUT_GENERAL, copy.second->image, VK_IMAGE_LAYOUT_GENERAL,
+                   1, &region);
+  }
+
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+void LsCanvas::RecordStrokeStart(VkCommandBuffer commandBuffer) {
+  // After the previous dabs wrote the attributes, and the previous stroke read the copies
+  VkMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
+
+  const std::pair<const AttributeImage*, const AttributeImage*> copies[4] = {
+    { &distance, &strokeDistance }, { &normal, &strokeNormal },
+    { &materialColor, &strokeMaterialColor }, { &materialSurface, &strokeMaterialSurface },
+  };
+  VkImageCopy region = {};
+  region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+  region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+  region.extent = { width, height, 1 };
+  for (const auto& copy : copies) {
+    vkCmdCopyImage(commandBuffer, copy.first->image, VK_IMAGE_LAYOUT_GENERAL, copy.second->image, VK_IMAGE_LAYOUT_GENERAL,
+                   1, &region);
+  }
+  VkClearColorValue zero = {};
+  VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+  vkCmdClearColorImage(commandBuffer, strokeCoverage.image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
 void LsCanvas::Render() {
@@ -499,20 +547,6 @@ void LsCanvas::Render() {
     }
     primitivesDirty = false;
   }
-  if (materials.size() > materialBuffer.capacity) {
-    vkDeviceWaitIdle(device);
-    DestroyMaterialBuffer();
-    CreateMaterialBuffer(materials.size()*2);
-  }
-  if (materialsDirty) {
-    LsCanvasMaterial* mapped = static_cast<LsCanvasMaterial*>(materialBuffer.mapped);
-    for (size_t i = 0; i < materials.size(); i++) {
-      const LsBrdfParameters& brdf = materials[i];
-      mapped[i] = { glm::vec4(brdf.baseColor, brdf.metallic), brdf.roughness, brdf.ior, { 0.0f, 0.0f } };
-    }
-    materialsDirty = false;
-  }
-
   LsCanvasPushConstants constants = {};
   if (hasCamera) {
     float tanHalfFov = camera.GetTanHalfFovY();
@@ -574,36 +608,43 @@ void LsCanvas::Render() {
   distanceBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
   if (!attributesCleared) {
-    // No pixel has a position or a normal yet, and pixels without one show
-    // black, also without a canvas camera to resolve the canvas image with
-    VkImageMemoryBarrier clearBarriers[5] = { distanceBarrier, distanceBarrier, distanceBarrier, distanceBarrier, distanceBarrier };
-    clearBarriers[1].image = renderer->canvasState.image;
-    clearBarriers[2].image = normal.image;
-    clearBarriers[3].image = radiance.image;
-    clearBarriers[4].image = material.image;
-    for (VkImageMemoryBarrier& barrier : clearBarriers) {
-      barrier.srcAccessMask = 0;
-      barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-      barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    }
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, nullptr, 0, nullptr, 5, clearBarriers);
+    // No pixel has a position or a normal yet and has the default material.
+    // Pixels without a position show black, also without a canvas camera to
+    // resolve the canvas image with.
     VkClearColorValue zero = {};
     VkClearColorValue noNormal = {};
     noNormal.uint32[0] = kNoNormal;
     VkClearColorValue black = {};
     black.float32[3] = 1.0f;
-    vkCmdClearColorImage(commandBuffer, distance.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1,
-                         &distanceBarrier.subresourceRange);
-    vkCmdClearColorImage(commandBuffer, renderer->canvasState.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1,
-                         &distanceBarrier.subresourceRange);
-    vkCmdClearColorImage(commandBuffer, normal.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &noNormal, 1,
-                         &distanceBarrier.subresourceRange);
-    vkCmdClearColorImage(commandBuffer, radiance.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1,
-                         &distanceBarrier.subresourceRange);
-    vkCmdClearColorImage(commandBuffer, material.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1,
-                         &distanceBarrier.subresourceRange);
+    uint32_t defaultMaterial[2];
+    PackBrdf(LsBrdfParameters(), defaultMaterial);
+    VkClearColorValue defaultColor = {};
+    defaultColor.uint32[0] = defaultMaterial[0];
+    VkClearColorValue defaultSurface = {};
+    defaultSurface.uint32[0] = defaultMaterial[1];
+    // The stroke images are written at the start of each stroke
+    const std::pair<VkImage, VkClearColorValue> clears[] = {
+      { distance.image, zero }, { renderer->canvasState.image, black }, { normal.image, noNormal },
+      { radiance.image, zero }, { materialColor.image, defaultColor }, { materialSurface.image, defaultSurface },
+      { strokeDistance.image, zero }, { strokeNormal.image, noNormal }, { strokeMaterialColor.image, defaultColor },
+      { strokeMaterialSurface.image, defaultSurface }, { strokeCoverage.image, zero },
+    };
+    const uint32_t clearCount = sizeof(clears)/sizeof(clears[0]);
+    VkImageMemoryBarrier clearBarriers[clearCount];
+    for (uint32_t c = 0; c < clearCount; c++) {
+      clearBarriers[c] = distanceBarrier;
+      clearBarriers[c].image = clears[c].first;
+      clearBarriers[c].srcAccessMask = 0;
+      clearBarriers[c].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      clearBarriers[c].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      clearBarriers[c].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    }
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, clearCount, clearBarriers);
+    for (const auto& clear : clears) {
+      vkCmdClearColorImage(commandBuffer, clear.first, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear.second, 1,
+                           &distanceBarrier.subresourceRange);
+    }
     for (VkImageMemoryBarrier& barrier : clearBarriers) {
       barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
@@ -612,7 +653,7 @@ void LsCanvas::Render() {
     }
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                         0, 0, nullptr, 0, nullptr, 5, clearBarriers);
+                         0, 0, nullptr, 0, nullptr, clearCount, clearBarriers);
     attributesCleared = true;
     radianceStale = false;
   }
@@ -644,14 +685,19 @@ void LsCanvas::Render() {
   computeBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   computeBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 
-  if (!dabs.empty()) {
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, paintPipeline);
-  }
+  VkPipeline boundPipeline = VK_NULL_HANDLE;
   bool dispatched = false;
   for (const Dab& dab : dabs) {
+    // Blend strokes don't blend from the start of the stroke
+    if (dab.startsStroke && !dab.brush.blend) {
+      // Its barriers order it after the previous dabs and before the next one
+      RecordStrokeStart(commandBuffer);
+      dispatched = false;
+    }
     // Only the pixels whose centres the dab can cover
-    glm::ivec2 first = glm::max(glm::ivec2(glm::floor(dab.center - dab.radius - 0.5f)), glm::ivec2(0));
-    glm::ivec2 last = glm::min(glm::ivec2(glm::ceil(dab.center + dab.radius - 0.5f)),
+    float radius = dab.brush.radius;
+    glm::ivec2 first = glm::max(glm::ivec2(glm::floor(dab.center - radius - 0.5f)), glm::ivec2(0));
+    glm::ivec2 last = glm::min(glm::ivec2(glm::ceil(dab.center + radius - 0.5f)),
                                glm::ivec2(static_cast<int>(width) - 1, static_cast<int>(height) - 1));
     if (last.x < first.x || last.y < first.y) {
       continue;
@@ -663,13 +709,30 @@ void LsCanvas::Render() {
     constants.offset[0] = first.x;
     constants.offset[1] = first.y;
     constants.dabCenter = dab.center;
-    constants.dabRadius = dab.radius;
-    constants.dabMode = static_cast<uint32_t>(dab.mode);
-    constants.dabMaterial = dab.material;
+    constants.dabRadius = radius;
+    constants.dabMode = static_cast<uint32_t>(dab.brush.mode) | (dab.brush.blend ? kDabBlend : 0u);
+    PackBrdf(dab.brdf, constants.dabMaterial);
+    if (dab.brush.blend) {
+      // Blend dabs paint no material, the shader reads the threshold from its place
+      float threshold = std::max(dab.brush.blendEdgeThreshold, 0.0f);
+      std::memcpy(&constants.dabMaterial[0], &threshold, sizeof(threshold));
+    }
+    constants.dabOpacity = glm::clamp(dab.brush.opacity, 0.0f, 1.0f);
+    constants.dabFalloff = glm::clamp(dab.brush.falloff, 0.0f, 1.0f);
+    VkPipeline pipeline = dab.brush.blend ? blendPipeline : paintPipeline;
+    if (pipeline != boundPipeline) {
+      vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+      boundPipeline = pipeline;
+    }
     vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
     glm::uvec2 extent = glm::uvec2(last - first) + 1u;
     vkCmdDispatch(commandBuffer, (extent.x + kWorkGroupSize - 1)/kWorkGroupSize, (extent.y + kWorkGroupSize - 1)/kWorkGroupSize, 1);
     dispatched = true;
+    if (dab.brush.blend) {
+      // Its barriers order it after this dab and before the next one
+      RecordBlendCopy(commandBuffer, first, last);
+      dispatched = false;
+    }
   }
   dabs.clear();
 

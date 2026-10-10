@@ -3,11 +3,14 @@
 // ray through the pixel centre, 0 while it has none, and a world space normal,
 // NO_NORMAL while it has none.
 //
-// Each pixel also refers to its BRDF by an index into a table of materials, 0
-// (the first material) until a material is painted.
+// Each pixel also stores the parameters of its BRDF, the default material until
+// one is painted, so materials blend like any other attribute.
 //
 // paintMain transfers positions or normals from the construction geometry for
-// one dab of a stroke, paints a material or erases all of them, rangeMain finds the range of the painted distances,
+// one dab of a stroke, paints a material or erases all of them, blending from
+// the attributes as they were when the stroke started by how much the stroke
+// covers each pixel. blendMain smooths them instead for one dab of a blend
+// stroke. rangeMain finds the range of the painted distances,
 // renderMain adds samples of the light reflected towards the camera at each painted
 // pixel and resolveMain then turns the attributes into the image the canvas shows.
 // Push constants, render parameters and display modes must match LsCanvas.h and LsCanvas.cpp.
@@ -25,6 +28,9 @@ static const uint DAB_DEPTH  = 0;
 static const uint DAB_NORMAL = 1;
 static const uint DAB_ERASE  = 2;
 static const uint DAB_MATERIAL = 3;
+// Set with a mode for a blend dab, which smooths what the mode paints, or
+// everything for DAB_ERASE
+static const uint DAB_BLEND = 1u << 8;
 
 struct CanvasPushConstants
 {
@@ -41,7 +47,13 @@ struct CanvasPushConstants
   uint display;     // DISPLAY_*
   float isolineSpacing; // view depth between isolines, 0 for none
   uint dabMode;     // DAB_*
-  uint dabMaterial; // index into materials painted by DAB_MATERIAL
+  // Packed material painted by DAB_MATERIAL, or left by DAB_ERASE. Two uints
+  // rather than a uint2, which would be aligned to 8 bytes. A blend dab has the
+  // bits of its edge threshold in the first instead, see blendEdgeThreshold.
+  uint dabMaterialColor;
+  uint dabMaterialSurface;
+  float dabOpacity;  // coverage at the centre of the dab
+  float dabFalloff;  // fraction of the radius over which the dab fades out
 };
 
 [[vk::push_constant]]
@@ -87,33 +99,110 @@ struct RenderParameters
 [[vk::binding(6)]]
 ConstantBuffer<RenderParameters> rendering;
 
-// Every distinct BRDF painted so far, mirrors LsCanvasMaterial in LsCanvas.cpp
-struct Material
-{
-  float4 baseColor; // linear rgb, a = metallic
-  float roughness;  // perceptual, squared for the Trowbridge-Reitz alpha
-  float ior;        // of the dielectric coat
-  float pad0;
-  float pad1;
-};
-
+// BRDF parameters of each pixel, packed by packMaterial: the sRGB encoded base
+// colour and metallic as 8 bit unorms in the first image, roughness and the IOR
+// as 16 bit unorms in the second. Packed by hand like the normal.
 [[vk::binding(7)]]
-StructuredBuffer<Material> materials;
+[format("r32ui")]
+RWTexture2D<uint> materialColorImage;
 
-// Index into materials of each pixel
 [[vk::binding(8)]]
 [format("r32ui")]
-RWTexture2D<uint> materialImage;
+RWTexture2D<uint> materialSurfaceImage;
 
-Brdf materialBrdf(uint index)
+// The attributes as they were when the stroke started, and how much the stroke
+// covers each pixel so far. Dabs blend from these, so overlapping dabs of a
+// stroke don't add up past its opacity.
+[[vk::binding(9)]]
+[format("r32f")]
+RWTexture2D<float> strokeDistanceImage;
+
+[[vk::binding(10)]]
+[format("r32ui")]
+RWTexture2D<uint> strokeNormalImage;
+
+[[vk::binding(11)]]
+[format("r32ui")]
+RWTexture2D<uint> strokeMaterialColorImage;
+
+[[vk::binding(12)]]
+[format("r32ui")]
+RWTexture2D<uint> strokeMaterialSurfaceImage;
+
+[[vk::binding(13)]]
+[format("r32f")]
+RWTexture2D<float> strokeCoverageImage;
+
+// The IOR range a material can store, mirrors LsCanvas.cpp
+static const float MIN_IOR = 1.0;
+static const float MAX_IOR = 3.0;
+
+// BRDF parameters as stored, the base colour still sRGB encoded so that it
+// blends the way paint is mixed in a colour picker
+struct Material
 {
-  Material material = materials[index];
-  Brdf brdf;
-  brdf.baseColor = material.baseColor.rgb;
-  brdf.metallic = saturate(material.baseColor.a);
-  brdf.alpha = max(material.roughness*material.roughness, 1.0e-3);
-  brdf.ior = material.ior;
-  return brdf;
+  float3 baseColor; // sRGB encoded
+  float metallic;
+  float roughness;  // perceptual
+  float ior;
+
+  __init(uint2 packed)
+  {
+    float4 color = float4(packed.x & 0xFFu, (packed.x >> 8) & 0xFFu, (packed.x >> 16) & 0xFFu, packed.x >> 24)/255.0;
+    baseColor = color.rgb;
+    metallic = color.a;
+    roughness = float(packed.y & 0xFFFFu)/65535.0;
+    ior = lerp(MIN_IOR, MAX_IOR, float(packed.y >> 16)/65535.0);
+  }
+
+  uint2 pack()
+  {
+    uint4 color = uint4(round(saturate(float4(baseColor, metallic))*255.0));
+    uint surface = uint(round(saturate(roughness)*65535.0)) |
+                   (uint(round(saturate((ior - MIN_IOR)/(MAX_IOR - MIN_IOR))*65535.0)) << 16);
+    return uint2(color.r | (color.g << 8) | (color.b << 16) | (color.a << 24), surface);
+  }
+
+  Material blend(Material other, float weight)
+  {
+    Material result = this;
+    result.baseColor = lerp(baseColor, other.baseColor, weight);
+    result.metallic = lerp(metallic, other.metallic, weight);
+    result.roughness = lerp(roughness, other.roughness, weight);
+    result.ior = lerp(ior, other.ior, weight);
+    return result;
+  }
+
+  Brdf brdf()
+  {
+    Brdf result;
+    result.baseColor = srgbToLinear(baseColor);
+    result.metallic = metallic;
+    result.alpha = max(roughness*roughness, 1.0e-3);
+    result.ior = ior;
+    return result;
+  }
+};
+
+Material pixelMaterial(int2 pixel)
+{
+  return Material(uint2(materialColorImage[pixel], materialSurfaceImage[pixel]));
+}
+
+Material strokeMaterial(int2 pixel)
+{
+  return Material(uint2(strokeMaterialColorImage[pixel], strokeMaterialSurfaceImage[pixel]));
+}
+
+void writeMaterial(int2 pixel, uint2 packed)
+{
+  materialColorImage[pixel] = packed.x;
+  materialSurfaceImage[pixel] = packed.y;
+}
+
+float3 srgbToLinear(float3 c)
+{
+  return select(c <= 0.04045, c/12.92, pow((c + 0.055)/1.055, 2.4));
 }
 
 // -1 in both halves is never produced by encodeNormal, which rounds to +-32767
@@ -234,24 +323,36 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
     return;
   }
   float2 delta = float2(pixel) + 0.5 - canvas.dabCenter;
-  if (dot(delta, delta) >= canvas.dabRadius*canvas.dabRadius) {
+  float r = length(delta)/canvas.dabRadius;
+  if (r >= 1.0) {
+    return;
+  }
+  // The stroke covers each pixel as much as its strongest dab did, so a dab
+  // that doesn't cover a pixel more than that leaves it as it is
+  float coverage = dabCoverage(r);
+  if (coverage <= strokeCoverageImage[pixel]) {
     return;
   }
 
   // Whatever a dab changes is rendered again from the start
   if (canvas.dabMode == DAB_ERASE) {
-    distanceImage[pixel] = 0.0;
-    normalImage[pixel] = NO_NORMAL;
-    materialImage[pixel] = 0;
-    radianceImage[pixel] = float4(0.0);
+    strokeCoverageImage[pixel] = coverage;
+    // A position can't be partly there: a pixel is erased where the coverage
+    // passes its own threshold, which dithers soft edges
+    if (coverage > ditherThreshold(pixel)) {
+      distanceImage[pixel] = 0.0;
+      normalImage[pixel] = NO_NORMAL;
+      writeMaterial(pixel, dabMaterial());
+      radianceImage[pixel] = float4(0.0);
+    }
     return;
   }
   // Also where there is no position yet, so materials can be painted first
   if (canvas.dabMode == DAB_MATERIAL) {
-    if (materialImage[pixel] != canvas.dabMaterial) {
-      materialImage[pixel] = canvas.dabMaterial;
-      radianceImage[pixel] = float4(0.0);
-    }
+    strokeCoverageImage[pixel] = coverage;
+    Material target = Material(dabMaterial());
+    writeMaterial(pixel, strokeMaterial(pixel).blend(target, coverage).pack());
+    radianceImage[pixel] = float4(0.0);
     return;
   }
 
@@ -261,13 +362,214 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
   if (t <= 0.0) {
     return;
   }
+  strokeCoverageImage[pixel] = coverage;
   if (canvas.dabMode == DAB_NORMAL) {
-    normalImage[pixel] = encodeNormal(constructionNormal(canvas.origin.xyz, direction, t));
+    // Blended and normalised, a pixel without a normal takes the new one
+    float3 n = constructionNormal(canvas.origin.xyz, direction, t);
+    uint before = strokeNormalImage[pixel];
+    if (before != NO_NORMAL) {
+      float3 blended = lerp(decodeNormal(before), n, coverage);
+      n = dot(blended, blended) > 1.0e-8 ? normalize(blended) : n;
+    }
+    normalImage[pixel] = encodeNormal(n);
   }
   else {
-    distanceImage[pixel] = t;
+    // Blended along the ray, a pixel without a position takes the new one
+    float before = strokeDistanceImage[pixel];
+    distanceImage[pixel] = before > 0.0 ? lerp(before, t, coverage) : t;
   }
   radianceImage[pixel] = float4(0.0);
+}
+
+// Blends each pixel a dab covers towards a weighted average of its
+// neighbourhood, by the dab's coverage. Unlike painting, dabs compound, so
+// going over an area again smooths it further. Only attributes a pixel has are
+// blended, blending never adds a position or a normal.
+//
+// The neighbours are read while the dab blends them, so every pixel of the dab's
+// rectangle is written to the stroke images, blended or as it was, and the
+// rectangle is copied back afterwards.
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void blendMain(uint3 globalId : SV_DispatchThreadID)
+{
+  int2 pixel = canvas.offset + int2(globalId.xy);
+  if (any(pixel < 0) || any(pixel >= int2(canvas.size))) {
+    return;
+  }
+  float t = distanceImage[pixel];
+  uint normalBits = normalImage[pixel];
+  uint2 material = uint2(materialColorImage[pixel], materialSurfaceImage[pixel]);
+
+  float r = length(float2(pixel) + 0.5 - canvas.dabCenter)/canvas.dabRadius;
+  float coverage = r < 1.0 ? dabCoverage(r) : 0.0;
+  uint mode = canvas.dabMode & ~DAB_BLEND;
+  bool depth = mode == DAB_DEPTH || mode == DAB_ERASE;
+  bool normals = mode == DAB_NORMAL || mode == DAB_ERASE;
+  bool materials = mode == DAB_MATERIAL || mode == DAB_ERASE;
+  if (coverage > 0.0) {
+    // 9 by 9 taps with Gaussian weights, spread with the radius so that a large
+    // brush smooths large forms. Sparser taps alias across depth steps.
+    float spacing = max(1.0, canvas.dabRadius/16.0);
+    // Weighted least squares sums for fitting a plane to the inverse depth
+    PlaneFit plane = PlaneFit();
+    float3 normalSum = float3(0.0);
+    float normalWeight = 0.0;
+    float4 colorSum = float4(0.0);
+    float2 surfaceSum = float2(0.0);
+    float materialWeight = 0.0;
+    // Neighbours further in front or behind than this fraction of the pixel's
+    // view depth are on another surface, such as the wall behind an object's
+    // edge, and are left out, as are neighbours without a position. They fade
+    // out from half the threshold, a hard cut would flip neighbours in and out
+    // between adjacent pixels. 0 blends across everything.
+    float edgeThreshold = blendEdgeThreshold();
+    float zPixel = t > 0.0 ? viewDepth(pixel) : -1.0;
+    for (int y = -4; y <= 4; y++) {
+      for (int x = -4; x <= 4; x++) {
+        int2 tap = clamp(pixel + int2(round(float2(x, y)*spacing)), int2(0), int2(canvas.size) - 1);
+        float w = exp(-0.125*float(x*x + y*y));
+        float z = viewDepth(tap);
+        if (edgeThreshold > 0.0 && zPixel > 0.0) {
+          if (z <= 0.0) {
+            continue;
+          }
+          float difference = abs(z - zPixel)/(edgeThreshold*zPixel);
+          w *= 1.0 - smoothstep(0.5, 1.0, difference);
+          if (w <= 0.0) {
+            continue;
+          }
+        }
+        if (depth && z > 0.0) {
+          plane.add(float2(tap - pixel)/spacing, 1.0/z, w);
+        }
+        if (normals) {
+          uint bits = normalImage[tap];
+          if (bits != NO_NORMAL) {
+            normalSum += w*decodeNormal(bits);
+            normalWeight += w;
+          }
+        }
+        if (materials) {
+          Material m = pixelMaterial(tap);
+          colorSum += w*float4(m.baseColor, m.metallic);
+          surfaceSum += w*float2(m.roughness, m.ior);
+          materialWeight += w;
+        }
+      }
+    }
+
+    bool changed = false;
+    if (t > 0.0 && plane.weight > 0.0) {
+      // Inverse view depth is affine over the image for a plane, so the fitted
+      // plane through the neighbours keeps planes flat, also where neighbours
+      // on one side are left out, which would pull a plain average towards the
+      // depth of the others. Curved surfaces are smoothed as by the average.
+      float z = viewDepth(pixel);
+      float inverseDepth = lerp(1.0/z, plane.valueAtCenter(), coverage);
+      // Along the pixel's ray, so the distance scales with the view depth
+      t *= 1.0/(inverseDepth*z);
+      changed = true;
+    }
+    if (normalBits != NO_NORMAL && normalWeight > 0.0 && dot(normalSum, normalSum) > 1.0e-12) {
+      float3 blended = lerp(decodeNormal(normalBits), normalize(normalSum), coverage);
+      if (dot(blended, blended) > 1.0e-8) {
+        normalBits = encodeNormal(normalize(blended));
+        changed = true;
+      }
+    }
+    if (materialWeight > 0.0) {
+      Material average = Material(material);
+      float4 color = colorSum/materialWeight;
+      float2 surface = surfaceSum/materialWeight;
+      average.baseColor = color.rgb;
+      average.metallic = color.a;
+      average.roughness = surface.x;
+      average.ior = surface.y;
+      material = Material(material).blend(average, coverage).pack();
+      changed = true;
+    }
+    if (changed) {
+      radianceImage[pixel] = float4(0.0);
+    }
+  }
+  strokeDistanceImage[pixel] = t;
+  strokeNormalImage[pixel] = normalBits;
+  strokeMaterialColorImage[pixel] = material.x;
+  strokeMaterialSurfaceImage[pixel] = material.y;
+}
+
+// Weighted least squares fit of v = a + b x + c y to samples around a centre
+// at (0, 0). The slopes are regularised towards 0, so a fit to samples along a
+// line, such as a strip one pixel wide, falls back to their average.
+struct PlaneFit
+{
+  float weight;
+  float2 sumX;   // sum of w x and w y
+  float3 sumXX;  // sum of w x x, w x y, w y y
+  float3 sumV;   // sum of w v, w x v, w y v
+
+  __init()
+  {
+    weight = 0.0;
+    sumX = float2(0.0);
+    sumXX = float3(0.0);
+    sumV = float3(0.0);
+  }
+
+  [mutating]
+  void add(float2 x, float v, float w)
+  {
+    weight += w;
+    sumX += w*x;
+    sumXX += w*float3(x.x*x.x, x.x*x.y, x.y*x.y);
+    sumV += w*float3(v, v*x.x, v*x.y);
+  }
+
+  float valueAtCenter()
+  {
+    float ridge = 1.0e-3*weight;
+    float3x3 m = float3x3(weight, sumX.x, sumX.y,
+                          sumX.x, sumXX.x + ridge, sumXX.y,
+                          sumX.y, sumXX.y, sumXX.z + ridge);
+    float d = determinant(m);
+    if (abs(d) < 1.0e-12*weight*weight*weight) {
+      return sumV.x/weight;
+    }
+    // Cramer's rule for a alone
+    float3x3 ma = m;
+    ma[0][0] = sumV.x;
+    ma[1][0] = sumV.y;
+    ma[2][0] = sumV.z;
+    return determinant(ma)/d;
+  }
+};
+
+// Blend dabs paint no material, so the material constant carries this instead,
+// see blendMain
+float blendEdgeThreshold()
+{
+  return asfloat(canvas.dabMaterialColor);
+}
+
+uint2 dabMaterial()
+{
+  return uint2(canvas.dabMaterialColor, canvas.dabMaterialSurface);
+}
+
+// Coverage of a dab at a distance from its centre in units of its radius: the
+// opacity inside, fading to 0 at the edge over the falloff fraction of the radius
+float dabCoverage(float r)
+{
+  float falloff = canvas.dabFalloff;
+  float shape = falloff > 1.0e-4 ? 1.0 - smoothstep(1.0 - falloff, 1.0, r) : 1.0;
+  return canvas.dabOpacity*shape;
+}
+
+// Fixed for each pixel and uniform in [0, 1)
+float ditherThreshold(int2 pixel)
+{
+  return float(pcgHash(uint(pixel.x) ^ pcgHash(uint(pixel.y))) >> 8)*(1.0/16777216.0);
 }
 
 // World position of a painted pixel
@@ -370,16 +672,49 @@ struct ShadingFrame
   float3 toWorld(float3 w) { return t*w.x + b*w.y + n*w.z; }
 };
 
+// Shadow casters and emitters that contain p, as bits for the first 64
+// primitives. A painted point needn't lie on the construction geometry it came
+// from: blending a convex edge round moves points inside the shape, and a
+// caster would then shadow them completely. Like the canvas camera inside a
+// room, which sees its walls, a point inside a caster isn't shadowed by it.
+uint2 containingPrimitives(float3 p)
+{
+  uint2 mask = uint2(0);
+  for (uint i = 0; i < min(canvas.primitiveCount, 64u); i++) {
+    if ((primitives[i].roles & LIGHT_ROLES) != 0 && primitiveDistance(primitives[i], p) < 0.0) {
+      mask[i/32] |= 1u << (i%32);
+    }
+  }
+  return mask;
+}
+
+bool isContaining(uint2 mask, uint i)
+{
+  return i < 64 && (mask[i/32] & (1u << (i%32))) != 0;
+}
+
 // Emitted radiance arriving at origin from direction w: the emission of the
-// first shadow caster or emitter along the ray, if that is an emitter. An
-// emitter that is also a shadow caster still emits. Rays that leave the scene,
-// or run out of steps grazing along a surface, bring no light.
-float3 incidentRadiance(float3 origin, float3 w)
+// first shadow caster or emitter along the ray, if that is an emitter, leaving
+// out those that contain the origin. An emitter that is also a shadow caster
+// still emits. Rays that leave the scene, or run out of steps grazing along a
+// surface, bring no light.
+float3 incidentRadiance(float3 origin, float3 w, uint2 containing)
 {
   float t = 0.0;
   for (int step = 0; step < MAX_STEPS && t < MAX_DISTANCE; step++) {
-    uint closest;
-    float distance = sceneDistance(primitives, canvas.primitiveCount, origin + w*t, LIGHT_ROLES, closest);
+    float3 p = origin + w*t;
+    float distance = 1.0e30;
+    uint closest = ~0u;
+    for (uint i = 0; i < canvas.primitiveCount; i++) {
+      if ((primitives[i].roles & LIGHT_ROLES) == 0 || isContaining(containing, i)) {
+        continue;
+      }
+      float d = primitiveDistance(primitives[i], p);
+      if (d < distance) {
+        distance = d;
+        closest = i;
+      }
+    }
     if (closest == ~0u) {
       break;
     }
@@ -502,7 +837,8 @@ float3 sampleEmitters(float3 p, uint emitterCount, float3 u)
 // contribution is f Le cos/(pdfEmitters + pdfBrdf), whichever strategy drew it.
 // Sampling emitters finds small lights, sampling the BRDF finds glossy
 // reflections of large ones.
-float3 renderSample(float3 p, float3 origin, ShadingFrame frame, float3 wo, Brdf brdf, uint emitterCount, inout Random random)
+float3 renderSample(float3 p, float3 origin, uint2 containing, ShadingFrame frame, float3 wo, Brdf brdf, uint emitterCount,
+                    inout Random random)
 {
   float3 radiance = float3(0.0);
   float3 woLocal = frame.toLocal(wo);
@@ -526,7 +862,7 @@ float3 renderSample(float3 p, float3 origin, ShadingFrame frame, float3 wo, Brdf
     float3 f = evaluateBrdf(brdf, woLocal, wiLocal);
     float pdf = emitterPdf(p, wi, emitterCount) + brdfPdf(brdf, woLocal, wiLocal);
     if (any(f > 0.0) && pdf > 0.0) {
-      radiance += f*incidentRadiance(origin, wi)*(wiLocal.z/pdf);
+      radiance += f*incidentRadiance(origin, wi, containing)*(wiLocal.z/pdf);
     }
   }
   return radiance;
@@ -559,17 +895,18 @@ void renderMain(uint3 globalId : SV_DispatchThreadID)
   }
   ShadingFrame frame = ShadingFrame(n);
 
-  Brdf brdf = materialBrdf(materialImage[pixel]);
+  Brdf brdf = pixelMaterial(pixel).brdf();
 
   // Rays leave from just above the surface, so they don't find it again
   float3 origin = p + n*(1.0e-3*max(t, 1.0));
   uint emitterCount = sampledEmitterCount();
+  uint2 containing = containingPrimitives(origin);
   uint first = uint(accumulated.a);
   uint count = min(rendering.samplesPerFrame, rendering.maxSamples - first);
   float3 sum = float3(0.0);
   for (uint i = 0; i < count; i++) {
     Random random = Random(globalId.xy, first + i);
-    sum += renderSample(p, origin, frame, wo, brdf, emitterCount, random);
+    sum += renderSample(p, origin, containing, frame, wo, brdf, emitterCount, random);
   }
   radianceImage[pixel] = accumulated + float4(sum, float(count));
 }
@@ -659,7 +996,7 @@ float isolineCoverage(int2 pixel, float z, out bool major)
 // dark grey at the furthest, so it stays readable at any scene scale. Position
 // shows the absolute world coordinates in RGB, clamped to [0, 1] by the image
 // format. Normal shows the world space normal mapped to [0, 1]. Material shows
-// the base colour of each pixel's material, also where there is no position. Rendering shows
+// the base colour of each pixel, also where there is no position. Rendering shows
 // the mean of the rendered samples, exposed and sRGB encoded. Isolines are drawn
 // over any of them but the rendering where there is a position. Pixels without
 // the shown attribute are black.
@@ -682,7 +1019,7 @@ void resolveMain(uint3 globalId : SV_DispatchThreadID)
     return;
   }
   if (canvas.display == DISPLAY_MATERIAL) {
-    color = linearToSrgb(materials[materialImage[pixel]].baseColor.rgb);
+    color = pixelMaterial(pixel).baseColor;
   }
   else if (canvas.display == DISPLAY_NORMAL) {
     uint bits = normalImage[pixel];

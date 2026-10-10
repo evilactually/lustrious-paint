@@ -48,8 +48,25 @@ enum class LsCanvasDabMode : uint32_t
 {
   Depth = 0,  // positions from the construction geometry
   Normal = 1, // normals from the construction geometry
-  Erase = 2,  // back to no position, no normal and the first material
+  Erase = 2,  // back to no position, no normal and the default material
   Material = 3, // the brush BRDF, see LsCanvas::SetBrushBrdf
+};
+
+// How a stroke paints
+struct LsCanvasBrush
+{
+  float radius = 10.0f; // in canvas pixels
+  // How much the stroke covers a pixel at most, overlapping dabs don't add up past it
+  float opacity = 1.0f;
+  // Fraction of the radius over which a dab fades out towards its edge, 0 for a hard edge
+  float falloff = 0.5f;
+  LsCanvasDabMode mode = LsCanvasDabMode::Depth;
+  // Smooths what the mode paints instead of painting it, everything for Erase
+  bool blend = false;
+  // A blend leaves out neighbours whose view depth differs from the pixel's by
+  // more than this fraction of it, so the edge of an object in front isn't
+  // blended with what is behind it. 0 blends across everything.
+  float blendEdgeThreshold = 0.1f;
 };
 
 //-------------------------------------------------------------------------------
@@ -60,14 +77,23 @@ enum class LsCanvasDabMode : uint32_t
 // the pixel (see CANVAS in SPECIFICATION.md), so a point can never leave its
 // pixel. The world position is reconstructed with the current canvas camera.
 // Each pixel also stores a world space surface normal, painted separately from
-// the position, so the two can disagree, and the index of its BRDF in the
-// material table.
+// the position, so the two can disagree, and the parameters of its BRDF, which
+// start as the default LsBrdfParameters. A material stroke paints the brush BRDF.
 //
-// The material table holds every distinct BRDF painted so far. A material
-// stroke paints the brush BRDF, which is looked up in the table and added to it
-// when no material has exactly its parameters, and the pixels it covers store
-// that index. Pixels start with the first material, the brush BRDF the canvas
-// was created with. Materials are only ever added, so indices stay valid.
+// Strokes blend: each pixel is covered by a stroke as much as the strongest of
+// its dabs covered it, the brush opacity shaped by the falloff, and the pixel
+// becomes the attributes it had when the stroke started blended towards the
+// dab's by that coverage. Positions blend along the ray, normals are normalised
+// after blending and materials blend their parameters, the base colour in sRGB
+// as colours mix in a picker. A pixel without a position or normal takes the
+// new one outright, and erasing dithers since a position is there or not.
+//
+// A blend stroke smooths instead, the attribute its mode paints or all of them
+// for erasing: each dab blends the pixels it covers towards the average of their
+// neighbourhood by its coverage, and its dabs compound so that going over an
+// area again smooths it further. Positions are averaged as inverse view depth,
+// which keeps planes flat. Neighbours on another surface, too far in front or
+// behind, are left out of the average of every attribute.
 //
 // A depth stroke transfers positions and a normal stroke normals from the
 // construction geometry: every dab sphere traces the scene from the canvas
@@ -93,6 +119,7 @@ class LsCanvas
   uint32_t width = 0, height = 0;
 
   VkShaderModule paintShader = VK_NULL_HANDLE;
+  VkShaderModule blendShader = VK_NULL_HANDLE;
   VkShaderModule rangeShader = VK_NULL_HANDLE;
   VkShaderModule renderShader = VK_NULL_HANDLE;
   VkShaderModule resolveShader = VK_NULL_HANDLE;
@@ -101,6 +128,7 @@ class LsCanvas
   VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
   VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
   VkPipeline paintPipeline = VK_NULL_HANDLE;
+  VkPipeline blendPipeline = VK_NULL_HANDLE;
   VkPipeline rangePipeline = VK_NULL_HANDLE;
   VkPipeline renderPipeline = VK_NULL_HANDLE;
   VkPipeline resolvePipeline = VK_NULL_HANDLE;
@@ -124,17 +152,18 @@ class LsCanvas
   // pixels a dab started over have at most this many
   uint32_t renderedSamples = 0;
 
-  // Index into materials of each pixel
-  AttributeImage material;
-  // Distinct BRDFs painted so far, the first is what unpainted pixels have
-  std::vector<LsBrdfParameters> materials;
-  struct {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    void* mapped = nullptr;
-    size_t capacity = 0; // in materials
-  } materialBuffer;
-  bool materialsDirty = true;
+  // BRDF parameters of each pixel in two packed halves, see Material in canvas.slang
+  AttributeImage materialColor;
+  AttributeImage materialSurface;
+  // The attributes when the current stroke started, and how much it covers each
+  // pixel. Blend strokes write each dab's result to them before copying it back.
+  AttributeImage strokeDistance;
+  AttributeImage strokeNormal;
+  AttributeImage strokeMaterialColor;
+  AttributeImage strokeMaterialSurface;
+  AttributeImage strokeCoverage;
+  // Distinct BRDFs painted so far, for picking them again
+  std::vector<LsBrdfParameters> paintedBrdfs;
   LsBrdfParameters brushBrdf;
 
   LsCanvasRenderSettings renderSettings;
@@ -172,9 +201,9 @@ class LsCanvas
 
   struct Dab {
     glm::vec2 center; // in canvas pixels
-    float radius;     // in canvas pixels
-    LsCanvasDabMode mode;
-    uint32_t material; // index painted by a material dab
+    LsCanvasBrush brush;
+    LsBrdfParameters brdf; // painted by a material dab
+    bool startsStroke;
   };
   std::vector<Dab> dabs;
 
@@ -184,10 +213,10 @@ class LsCanvas
   void DestroyAttributeImage(AttributeImage& attribute);
   void CreateRangeBuffer();
   void CreateParameterBuffer();
-  void CreateMaterialBuffer(size_t capacity);
-  void DestroyMaterialBuffer();
-  // Index of the material with exactly these parameters, added when there is none
-  uint32_t FindOrAddMaterial(const LsBrdfParameters& brdf);
+  // Copies the attributes for the stroke to blend from and clears its coverage
+  void RecordStrokeStart(VkCommandBuffer commandBuffer);
+  // Copies a blend dab's result from the stroke images back to the attributes
+  void RecordBlendCopy(VkCommandBuffer commandBuffer, glm::ivec2 first, glm::ivec2 last);
   void CreatePrimitiveBuffer(size_t capacity);
   void DestroyPrimitiveBuffer();
   void UpdateDescriptors();
@@ -215,7 +244,7 @@ public:
   const LsBrdfParameters& GetBrushBrdf() const { return brushBrdf; }
   void SetBrushBrdf(const LsBrdfParameters& brdf) { brushBrdf = brdf; }
   // Every distinct BRDF painted so far, in the order they were first painted
-  const std::vector<LsBrdfParameters>& GetMaterials() const { return materials; }
+  const std::vector<LsBrdfParameters>& GetPaintedBrdfs() const { return paintedBrdfs; }
   const LsCanvasRenderSettings& GetRenderSettings() const { return renderSettings; }
   void SetRenderSettings(const LsCanvasRenderSettings& settings);
   // Samples per pixel so far while showing the rendering
@@ -223,8 +252,9 @@ public:
   // True while the rendering is shown and has samples left to render, the
   // application keeps drawing frames until it is done
   bool IsRendering() const;
-  // Queues a dab for each centre in order, positions and radius in canvas pixels
-  void Paint(const std::vector<glm::vec2>& centers, float radius, LsCanvasDabMode mode = LsCanvasDabMode::Depth);
+  // Queues a dab for each centre in order, in canvas pixels. The first one starts
+  // a new stroke when startsStroke is set, the others continue the stroke.
+  void Paint(const std::vector<glm::vec2>& centers, const LsCanvasBrush& brush, bool startsStroke);
   // Records the queued dabs and, when anything changed, the canvas image into
   // the current frame. Call between BeginFrame and EndFrame, before the canvas
   // is drawn.

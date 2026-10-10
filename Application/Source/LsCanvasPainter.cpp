@@ -39,8 +39,14 @@ float LsCanvasPainter::GetDabSpacing() {
 }
 
 void LsCanvasPainter::BeginStroke(glm::vec2 canvasPoint) {
-  strokeMode = mode;
-  canvas->Paint({ canvasPoint }, brushRadius/navigator->GetZoom(), strokeMode);
+  strokeBrush.radius = brushRadius/navigator->GetZoom();
+  strokeBrush.opacity = brushOpacity;
+  strokeBrush.falloff = brushFalloff;
+  strokeBrush.mode = mode;
+  // Shift blends instead, as smoothing does in sculpting applications
+  strokeBrush.blend = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
+  strokeBrush.blendEdgeThreshold = blendKeepsEdges ? blendEdgeThreshold : 0.0f;
+  canvas->Paint({ canvasPoint }, strokeBrush, true);
   lastStrokeSample = canvasPoint;
   distanceToNextDab = GetDabSpacing();
 }
@@ -63,7 +69,7 @@ void LsCanvasPainter::ContinueStroke(glm::vec2 canvasPoint) {
   }
   lastStrokeSample = canvasPoint;
 
-  canvas->Paint(dabs, brushRadius/navigator->GetZoom(), strokeMode);
+  canvas->Paint(dabs, strokeBrush, false);
 }
 
 void LsCanvasPainter::OnSdlEvent(const SDL_Event& event) {

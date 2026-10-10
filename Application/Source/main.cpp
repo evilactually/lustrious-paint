@@ -202,7 +202,7 @@ public:
           { "Depth", LsCanvasDabMode::Depth, "Paint positions from the construction geometry (B)" },
           { "Normals", LsCanvasDabMode::Normal, "Paint normals from the construction geometry (N)" },
           { "Material", LsCanvasDabMode::Material, "Paint the BRDF panel's material (M)" },
-          { "Erase", LsCanvasDabMode::Erase, "Remove painted positions, normals and materials (E)" },
+          { "Erase", LsCanvasDabMode::Erase, "Remove painted positions and normals, back to the default material (E)" },
         };
         for (const auto& mode : modes) {
           if (&mode != modes) {
@@ -214,9 +214,38 @@ public:
           ImGui::SetItemTooltip("%s", mode.tooltip);
         }
         float brushRadius = canvasPainter->GetBrushRadius();
-        if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px")) {
+        if (ImGui::SliderFloat("Radius", &brushRadius, 1.0f, 100.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp)) {
           canvasPainter->SetBrushRadius(brushRadius);
         }
+        float brushOpacity = canvasPainter->GetBrushOpacity();
+        if (ImGui::SliderFloat("Opacity", &brushOpacity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+          canvasPainter->SetBrushOpacity(brushOpacity);
+        }
+        ImGui::SetItemTooltip("How far a stroke blends towards what it paints, overlapping dabs don't add up past it");
+        float brushFalloff = canvasPainter->GetBrushFalloff();
+        if (ImGui::SliderFloat("Falloff", &brushFalloff, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+          canvasPainter->SetBrushFalloff(brushFalloff);
+        }
+        ImGui::SetItemTooltip("How much of the radius the brush fades out over, 0 for a hard edge");
+        ImGui::TextDisabled("Hold Shift to blend");
+        ImGui::SetItemTooltip("Smooths what the brush paints instead, or everything while erasing.\n"
+                              "Opacity sets how strongly each dab smooths.");
+        // Checkbox and threshold on one row, the slider only matters while it is checked
+        bool keepEdges = canvasPainter->GetBlendKeepsEdges();
+        if (ImGui::Checkbox("##KeepEdges", &keepEdges)) {
+          canvasPainter->SetBlendKeepsEdges(keepEdges);
+        }
+        ImGui::SetItemTooltip("Blend only with neighbours on the same surface");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::BeginDisabled(!keepEdges);
+        float edgePercent = canvasPainter->GetBlendEdgeThreshold()*100.0f;
+        if (ImGui::SliderFloat("Keep edges", &edgePercent, 1.0f, 50.0f, "%.0f%% depth", ImGuiSliderFlags_AlwaysClamp)) {
+          canvasPainter->SetBlendEdgeThreshold(edgePercent/100.0f);
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Neighbours further in front or behind than this share of the depth\n"
+                              "are on another surface and aren't blended in");
       }
       ImGui::End();
 
@@ -294,11 +323,11 @@ public:
       changed = true;
     }
     ImGui::SetItemTooltip("Diffuse colour of dielectrics, reflectance at normal incidence of metals");
-    changed |= ImGui::SliderFloat("Metallic", &brdf.metallic, 0.0f, 1.0f, "%.2f");
+    changed |= ImGui::SliderFloat("Metallic", &brdf.metallic, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SetItemTooltip("Blends from a dielectric coat over a diffuse base to a bare metal");
-    changed |= ImGui::SliderFloat("Roughness", &brdf.roughness, 0.0f, 1.0f, "%.2f");
+    changed |= ImGui::SliderFloat("Roughness", &brdf.roughness, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SetItemTooltip("Perceptual roughness of the microfacets, alpha is its square");
-    changed |= ImGui::SliderFloat("IOR", &brdf.ior, 1.0f, 3.0f, "%.2f");
+    changed |= ImGui::SliderFloat("IOR", &brdf.ior, 1.0f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SetItemTooltip("Index of refraction of the dielectric coat, sets how strongly it reflects");
     if (changed) {
       canvas->SetBrushBrdf(brdf);
@@ -307,9 +336,9 @@ public:
       SetBrushMode(LsCanvasDabMode::Material);
     }
 
-    // Each swatch is one entry of the canvas material table, pixels refer to it by index
-    const std::vector<LsBrdfParameters>& materials = canvas->GetMaterials();
-    ImGui::SeparatorText("Materials");
+    // Every BRDF painted so far, to pick it again
+    const std::vector<LsBrdfParameters>& materials = canvas->GetPaintedBrdfs();
+    ImGui::SeparatorText("Painted");
     float swatchSize = ImGui::GetFrameHeight();
     float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
     for (size_t i = 0; i < materials.size(); i++) {
@@ -328,8 +357,7 @@ public:
         ImGui::PopStyleVar();
         ImGui::PopStyleColor();
       }
-      ImGui::SetItemTooltip("Material %zu%s\nMetallic %.2f, roughness %.2f, IOR %.2f", i,
-                            i == 0 ? " (unpainted pixels)" : "", material.metallic, material.roughness, material.ior);
+      ImGui::SetItemTooltip("Metallic %.2f, roughness %.2f, IOR %.2f", material.metallic, material.roughness, material.ior);
       ImGui::PopID();
       // Wrap the swatches to the panel width
       float next = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + swatchSize;
@@ -532,14 +560,15 @@ public:
       ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.3f, nullptr, &propertiesId);
-      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.65f, nullptr, &propertiesId);
-      ImGuiID viewId = ImGui::DockBuilderSplitNode(brushId, ImGuiDir_Down, 0.76f, nullptr, &brushId);
-      ImGuiID brdfId = ImGui::DockBuilderSplitNode(viewId, ImGuiDir_Down, 0.5f, nullptr, &viewId);
+      ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.5f, nullptr, &propertiesId);
+      ImGuiID viewId = ImGui::DockBuilderSplitNode(brushId, ImGuiDir_Down, 0.55f, nullptr, &brushId);
       ImGui::DockBuilderDockWindow("Scene", sceneId);
+      // Tabs, the scene's properties while modelling and the BRDF while painting.
+      // The first docked is the one shown.
+      ImGui::DockBuilderDockWindow("BRDF", propertiesId);
       ImGui::DockBuilderDockWindow("Properties", propertiesId);
       ImGui::DockBuilderDockWindow("Brush", brushId);
       ImGui::DockBuilderDockWindow("View", viewId);
-      ImGui::DockBuilderDockWindow("BRDF", brdfId);
       ImGui::DockBuilderFinish(dockspaceId);
       dockLayoutBuilt = true;
     }
