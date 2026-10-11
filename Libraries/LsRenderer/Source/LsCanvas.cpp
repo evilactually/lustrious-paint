@@ -109,6 +109,10 @@ static const uint32_t kDabBlend = 1u << 8;
 static const uint32_t kDabFixedNormal = 1u << 9;
 // Mirrors DAB_CLEAR_RIG in Shaders/canvas.slang
 static const uint32_t kDabClearRig = 1u << 10;
+// Mirrors DAB_PUSH in Shaders/canvas.slang
+static const uint32_t kDabPush = 1u << 11;
+// Mirrors DAB_ALONG_NORMAL in Shaders/canvas.slang
+static const uint32_t kDabAlongNormal = 1u << 12;
 // Mirrors NO_NORMAL in Shaders/canvas.slang, (-32768, -32768) as two snorms, which encoding never produces
 static const uint32_t kNoNormal = 0x80008000u;
 
@@ -1299,7 +1303,9 @@ void LsCanvas::Render() {
     constants.offset[1] = first.y;
     constants.dabCenter = dab.center;
     constants.dabRadius = radius;
-    constants.dabMode = static_cast<uint32_t>(dab.brush.mode) | (dab.brush.blend ? kDabBlend : 0u);
+    constants.dabMode = static_cast<uint32_t>(dab.brush.mode) | (dab.brush.blend ? kDabBlend : 0u) |
+                        (dab.brush.mode == LsCanvasDabMode::Sculpt && dab.brush.push ? kDabPush : 0u) |
+                        (dab.brush.mode == LsCanvasDabMode::Sculpt && dab.brush.alongNormal ? kDabAlongNormal : 0u);
     PackBrdf(dab.brdf, constants.dabMaterial);
     if (dab.brush.mode == LsCanvasDabMode::Light) {
       constants.dabMaterial[0] = dab.brush.rig;

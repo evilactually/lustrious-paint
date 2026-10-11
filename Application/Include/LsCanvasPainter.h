@@ -36,6 +36,8 @@ class LsCanvasPainter: public LsFSdlEventHandler
   void Pick(glm::vec2 canvasPoint);
   glm::vec3 normal = glm::vec3(0.0f, 0.0f, 1.0f);
   uint32_t rig = 0;
+  bool sculptPush = false;
+  bool sculptAlongNormal = true;
   LsCanvasDabMode mode = LsCanvasDabMode::Depth;
   // Taken from the brush when the stroke starts, so changing it doesn't change a
   // stroke, with the radius in canvas pixels
@@ -85,6 +87,12 @@ public:
   void SetRigNormal(bool painted) { rigNormal = painted; }
   glm::vec3 GetNormal() const { return normal; }
   void SetNormal(glm::vec3 normal) { this->normal = normal; }
+  // Sculpt strokes push positions away instead of pulling them, see LsCanvasBrush
+  bool GetSculptPush() const { return sculptPush; }
+  void SetSculptPush(bool push) { sculptPush = push; }
+  // Sculpt strokes move the surface along its normal, otherwise along the camera rays
+  bool GetSculptAlongNormal() const { return sculptAlongNormal; }
+  void SetSculptAlongNormal(bool along) { sculptAlongNormal = along; }
   // Slot of the light rig light strokes paint, 0 for none, see LsCanvasBrush
   uint32_t GetRig() const { return rig; }
   void SetRig(uint32_t rig) { this->rig = rig; }

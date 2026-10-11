@@ -33,6 +33,8 @@ static const uint DAB_ERASE  = 2;
 static const uint DAB_MATERIAL = 3;
 // Paints the light rig, see paintMain
 static const uint DAB_LIGHT = 4;
+// Moves positions along their rays, towards the camera or with DAB_PUSH away
+static const uint DAB_SCULPT = 5;
 // Set with a mode for a blend dab, which smooths what the mode paints, or
 // everything for DAB_ERASE
 static const uint DAB_BLEND = 1u << 8;
@@ -43,6 +45,17 @@ static const uint DAB_FIXED_NORMAL = 1u << 9;
 // Set with DAB_LIGHT to take the rig in dabMaterialColor off the pixels that
 // have it, for removing a rig from every pixel
 static const uint DAB_CLEAR_RIG = 1u << 10;
+// Set with DAB_SCULPT to push positions away from the camera instead of pulling them
+static const uint DAB_PUSH = 1u << 11;
+// Set with DAB_SCULPT to move positions along the surface normal, see paintMain
+static const uint DAB_ALONG_NORMAL = 1u << 12;
+// Surfaces turned further from the camera than this move as if they weren't,
+// the cosine of 75 degrees
+static const float SCULPT_MIN_FACING = 0.26;
+// How far the centre of a full sculpt dab moves a position, as a fraction of
+// the dab's radius on the surface. Dabs build up, a stroke moves it further.
+// Small, sculpt dabs are spaced closely, see LsCanvasPainter::GetDabSpacing.
+static const float SCULPT_STEP = 0.02;
 
 struct CanvasPushConstants
 {
@@ -406,6 +419,38 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
   if (r >= 1.0) {
     return;
   }
+  // Sculpting builds up like blending, every dab moves the positions it covers
+  // again. Each moves along its own ray, so a point never leaves its pixel, by
+  // a step in proportion to the dab's size on the surface there, so strokes
+  // read the same at any depth. The painted normal goes, the pixel is shaded
+  // by its new form instead.
+  //
+  // With DAB_ALONG_NORMAL the surface moves along its normal instead: the pixel
+  // moves along its ray to where it meets the surface's tangent plane offset by
+  // the step, t + step/cos, the cosine between the normal and the way to the
+  // camera. Surfaces nearly edge on are capped at SCULPT_MIN_FACING, their
+  // offset lies mostly in other pixels. The normal is one for the whole dab,
+  // averaged over it as sculpting applications do, see sculptAreaNormal: each
+  // pixel's own normal would differ a little from its neighbours', which the
+  // division turns into noise that the next stroke's normals pick up.
+  if ((canvas.dabMode & 0xFFu) == DAB_SCULPT) {
+    float t = distanceImage[pixel];
+    if (t <= 0.0) {
+      return;
+    }
+    float surfaceRadius = canvas.dabRadius*canvas.pixelAngle*t;
+    float step = SCULPT_STEP*surfaceRadius*sculptProfile(r);
+    float3 ray = pixelRay(uint2(pixel));
+    if ((canvas.dabMode & DAB_ALONG_NORMAL) != 0) {
+      step /= max(abs(dot(sculptAreaNormal(), ray)), SCULPT_MIN_FACING);
+    }
+    float direction = (canvas.dabMode & DAB_PUSH) != 0 ? 1.0 : -1.0;
+    distanceImage[pixel] = max(t + direction*step, 1.0e-3*t);
+    normalImage[pixel] = NO_NORMAL;
+    radianceImage[pixel] = float4(0.0);
+    return;
+  }
+
   // The stroke covers each pixel as much as its strongest dab did, so a dab
   // that doesn't cover a pixel more than that leaves it as it is
   float coverage = dabCoverage(r);
@@ -525,7 +570,7 @@ void blendMain(uint3 globalId : SV_DispatchThreadID)
   float r = length(float2(pixel) + 0.5 - canvas.dabCenter)/canvas.dabRadius;
   float coverage = r < 1.0 ? dabCoverage(r) : 0.0;
   uint mode = canvas.dabMode & ~DAB_BLEND;
-  bool depth = mode == DAB_DEPTH || mode == DAB_ERASE;
+  bool depth = mode == DAB_DEPTH || mode == DAB_SCULPT || mode == DAB_ERASE;
   bool normals = mode == DAB_NORMAL || mode == DAB_ERASE;
   bool materials = mode == DAB_MATERIAL || mode == DAB_ERASE;
   if (coverage > 0.0) {
@@ -690,6 +735,48 @@ float dabCoverage(float r)
   return canvas.dabOpacity*shape;
 }
 
+// How much a sculpt dab moves positions at a distance from its centre in units
+// of its radius, at the opacity in the centre. A smooth bump that reaches 0 at
+// the edge without a kink, as dabs build up any kink or flat top shows as
+// ripples along strokes: soft and round with all falloff, flatter topped and
+// steeper edged with less.
+float sculptProfile(float r)
+{
+  float k = lerp(16.0, 2.0, saturate(canvas.dabFalloff));
+  float shape = 1.0 - pow(saturate(r), k);
+  return canvas.dabOpacity*shape*shape;
+}
+
+// The normal of the surface under a sculpt dab: the normals pixels had when
+// the stroke started, painted or from their positions, averaged over a grid
+// across the dab. Every pixel of the dab works it out the same way. Facing the
+// camera, along the view axis where the dab covers nothing.
+float3 sculptAreaNormal()
+{
+  float3 sum = float3(0.0);
+  float spacing = canvas.dabRadius/3.0;
+  for (int y = -2; y <= 2; y++) {
+    for (int x = -2; x <= 2; x++) {
+      int2 tap = int2(floor(canvas.dabCenter + float2(x, y)*spacing));
+      if (any(tap < 0) || any(tap >= int2(canvas.size)) || x*x + y*y > 6) {
+        continue;
+      }
+      float t = strokeDistanceImage[tap];
+      if (t <= 0.0) {
+        continue;
+      }
+      float3 ray = pixelRay(uint2(tap));
+      uint bits = strokeNormalImage[tap];
+      float3 n = bits != NO_NORMAL ? decodeNormal(bits) : positionNormal(tap, canvas.origin.xyz + ray*t, ray, true);
+      sum += dot(n, ray) > 0.0 ? -n : n;
+    }
+  }
+  if (dot(sum, sum) < 1.0e-12) {
+    return -normalize(cross(canvas.up.xyz, canvas.right.xyz));
+  }
+  return normalize(sum);
+}
+
 // Fixed for each pixel and uniform in [0, 1)
 float ditherThreshold(int2 pixel)
 {
@@ -706,7 +793,7 @@ float3 pixelPosition(int2 pixel, float t)
 // positions of the neighbouring pixels, facing the camera. Of the two neighbours
 // along each axis the nearer one is used, so the normal doesn't bend across a
 // depth step at an object edge.
-float3 positionNormal(int2 pixel, float3 p, float3 direction)
+float3 positionNormal(int2 pixel, float3 p, float3 direction, bool fromStrokeStart = false)
 {
   float3 tangents[2] = { float3(0.0), float3(0.0) };
   int2 steps[2] = { int2(1, 0), int2(0, 1) };
@@ -717,7 +804,7 @@ float3 positionNormal(int2 pixel, float3 p, float3 direction)
       if (any(neighbour < 0) || any(neighbour >= int2(canvas.size))) {
         continue;
       }
-      float t = distanceImage[neighbour];
+      float t = fromStrokeStart ? strokeDistanceImage[neighbour] : distanceImage[neighbour];
       if (t <= 0.0) {
         continue;
       }

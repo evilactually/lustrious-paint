@@ -118,6 +118,7 @@ enum class LsCanvasDabMode : uint32_t
   Erase = 2,  // back to no position, no normal and the default material
   Material = 3, // the brush BRDF, see LsCanvas::SetBrushBrdf
   Light = 4,    // a light rig, see LsCanvasBrush::rig
+  Sculpt = 5,   // positions pulled towards the camera, or pushed away, see LsCanvasBrush::push
 };
 
 // How a stroke paints
@@ -144,6 +145,12 @@ struct LsCanvasBrush
   // the pixels it covers that have this rig go back to none instead.
   uint32_t rig = 0;
   bool clearRig = false;
+  // Sculpt strokes push positions away from the camera instead of pulling them
+  // towards it. Their dabs build up like blending, by the opacity and falloff.
+  bool push = false;
+  // Sculpt strokes move the surface along its normal rather than along the
+  // camera rays, as far as a pixel's position can, see canvas.slang
+  bool alongNormal = false;
 };
 
 //-------------------------------------------------------------------------------

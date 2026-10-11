@@ -233,6 +233,8 @@ public:
           { "Light", LsCanvasDabMode::Light, "Paint the light selected in the Lighting panel (L)" },
           { "Erase", LsCanvasDabMode::Erase,
             "Remove painted positions, normals and lights, back to the default material (E)" },
+          { "Sculpt", LsCanvasDabMode::Sculpt,
+            "Pull painted positions towards the camera or push them away, dabs build up (S)" },
         };
         for (const auto& mode : modes) {
           if (&mode != modes && &mode != modes + 3) {
@@ -257,7 +259,26 @@ public:
           canvasPainter->SetBrushFalloff(brushFalloff);
         }
         ImGui::SetItemTooltip("How much of the radius the brush fades out over, 0 for a hard edge");
-        if (canvasPainter->GetMode() == LsCanvasDabMode::Light) {
+        if (canvasPainter->GetMode() == LsCanvasDabMode::Sculpt) {
+          bool push = canvasPainter->GetSculptPush();
+          if (ImGui::RadioButton("Pull", !push)) {
+            canvasPainter->SetSculptPush(false);
+          }
+          ImGui::SetItemTooltip("Raise the surface towards the camera (X switches)");
+          ImGui::SameLine();
+          if (ImGui::RadioButton("Push", push)) {
+            canvasPainter->SetSculptPush(true);
+          }
+          ImGui::SetItemTooltip("Sink the surface away from the camera (X switches)");
+          ImGui::SameLine();
+          bool alongNormal = canvasPainter->GetSculptAlongNormal();
+          if (ImGui::Checkbox("Along normal", &alongNormal)) {
+            canvasPainter->SetSculptAlongNormal(alongNormal);
+          }
+          ImGui::SetItemTooltip("Move the surface along its normal, as at the stroke's start,\n"
+                                "otherwise along the camera rays. Shift smooths.");
+        }
+        else if (canvasPainter->GetMode() == LsCanvasDabMode::Light) {
           ImGui::TextDisabled("Hold Shift to paint no rig");
           ImGui::SetItemTooltip("Leaves only the scene's lights on the pixels");
         }
@@ -490,6 +511,13 @@ public:
     }
     else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
       SetBrushMode(LsCanvasDabMode::Erase);
+    }
+    // Not with Ctrl, which saves
+    else if (ImGui::IsKeyPressed(ImGuiKey_S, false) && !ImGui::GetIO().KeyCtrl) {
+      SetBrushMode(LsCanvasDabMode::Sculpt);
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_X, false) && canvasPainter->GetMode() == LsCanvasDabMode::Sculpt) {
+      canvasPainter->SetSculptPush(!canvasPainter->GetSculptPush());
     }
 
     // As in Photoshop: [ and ] change the size, with Shift the falloff, the

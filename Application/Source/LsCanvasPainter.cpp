@@ -35,7 +35,9 @@ void LsCanvasPainter::SetBrushRadius(float radius) {
 
 // A quarter of the radius keeps the stroke edge smooth, but never less than half a canvas pixel
 float LsCanvasPainter::GetDabSpacing() {
-  return glm::max(0.25f*brushRadius/navigator->GetZoom(), 0.5f);
+  // Sculpt dabs build up, so they are closer, wider spacing leaves ripples along strokes
+  float fraction = strokeBrush.mode == LsCanvasDabMode::Sculpt ? 0.1f : 0.25f;
+  return glm::max(fraction*brushRadius/navigator->GetZoom(), 0.5f);
 }
 
 void LsCanvasPainter::Pick(glm::vec2 canvasPoint) {
@@ -55,6 +57,8 @@ LsCanvasBrush LsCanvasPainter::MakeBrush(bool shift) const {
   // leaves only the scene's emitters, and the normals as they are.
   brush.blend = shift && mode != LsCanvasDabMode::Light;
   brush.rig = shift ? 0u : rig;
+  brush.push = sculptPush;
+  brush.alongNormal = sculptAlongNormal;
   brush.fixedNormal = mode == LsCanvasDabMode::Light ? rigNormal && !shift : fixedNormal;
   brush.normal = normal;
   brush.blendEdgeThreshold = blendKeepsEdges ? blendEdgeThreshold : 0.0f;
@@ -62,6 +66,10 @@ LsCanvasBrush LsCanvasPainter::MakeBrush(bool shift) const {
 }
 
 void LsCanvasPainter::Fill(bool shift) {
+  // A dab the size of the canvas would move everything by the canvas's size
+  if (mode == LsCanvasDabMode::Sculpt) {
+    return;
+  }
   // One dab over the whole canvas, evenly at the brush opacity. Blending isn't
   // a fill, its smoothing reaches with the dab, so Shift only empties the rig.
   LsCanvasBrush brush = MakeBrush(shift && mode == LsCanvasDabMode::Light);
