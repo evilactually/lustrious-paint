@@ -13,7 +13,7 @@ set(INCLUDE_FILES
   Include/LsPushConstantTypes.h
   Include/LsVulkanCommandBuffers.h
   Include/LsVulkanCommon.h
-  Include/LSVulkanDevice.h
+  Include/LsVulkanDevice.h
   Include/LsVulkanInstance.h
   Include/LsVulkanPresentation.h
   Include/LsVulkanRendering.h)
@@ -28,7 +28,6 @@ set(SOURCE_FILES
 source_group( "Include" FILES ${INCLUDE_FILES} )
 source_group( "Source" FILES ${SOURCE_FILES} )
 
-find_package( FreeImage REQUIRED )
 find_package( VulkanSDK )
 
 add_library( LsRenderer STATIC ${INCLUDE_FILES} ${SOURCE_FILES} )
@@ -38,8 +37,7 @@ target_include_directories( LsRenderer PUBLIC Include
                                               "${CMAKE_SOURCE_DIR}/Include"
                                               "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
                                               "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
-                                              ${VULKAN_INCLUDE_DIR}
-                                              ${FREEIMAGE_INCLUDE_DIR} )
+                                              ${VULKAN_INCLUDE_DIR} )
 
 # include_directories( Include )
 
@@ -52,9 +50,11 @@ target_include_directories( LsRenderer PUBLIC Include
 target_link_libraries( LsRenderer ${VULKAN_LIBRARY}
                                   imgui
                                   LsVulkanLoader
+                                  LsUtility
                                   LsScene
                                   SDL3::SDL3 )
 
 target_compile_definitions(LsRenderer PUBLIC -DVULKAN_VALIDATION)
 
-# target_compile_definitions(LsRenderer PUBLIC -DGIF_RECORDING)
+# F12 starts and F11 stops writing every presented frame to a BMP file
+# target_compile_definitions(LsRenderer PUBLIC -DFRAME_RECORDING)

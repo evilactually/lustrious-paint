@@ -2,12 +2,10 @@
 //-- Dependencies ---------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <stdio.h>
-#include <fcntl.h>
-#include <io.h>
-#include <iostream>
-#include <fstream>
 
 //-------------------------------------------------------------------------------
 //-- Functions ------------------------------------------------------------------
@@ -16,13 +14,16 @@
 //-------------------------------------------------------------------------------
 // @ LsAttachConsole
 //-------------------------------------------------------------------------------
-// Create a console and redirect all standard IO
+// Create a console and redirect all standard IO. A Windows GUI application has
+// no console, elsewhere standard IO already goes to the terminal it started from.
 //-------------------------------------------------------------------------------
 void LsOpenConsole() {
+#ifdef _WIN32
   AllocConsole();
   freopen("CONOUT$", "w", stdout);
   freopen("CONOUT$", "w", stderr);
   freopen("CONOUT$", "r", stdin);
+#endif
 }
 
 //-------------------------------------------------------------------------------
@@ -31,8 +32,10 @@ void LsOpenConsole() {
 // Free console and close file handles
 //-------------------------------------------------------------------------------
 void LsCloseConsole() {
+#ifdef _WIN32
   fclose(stdout);
   fclose(stderr);
   fclose(stdin);
   FreeConsole();
+#endif
 }

@@ -21,6 +21,6 @@ source_group( "Source" FILES ${SOURCE_FILES} )
 
 add_library( LsUtility STATIC ${INCLUDE_FILES} ${SOURCE_FILES} )
 
-include_directories( Include )
+target_include_directories( LsUtility PUBLIC Include )
 
 target_link_libraries( LsUtility SDL3::SDL3 )

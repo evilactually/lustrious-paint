@@ -11,15 +11,12 @@
 #include <chrono>
 #include <string>
 #include <cstdint> // uint_32
-#ifdef GIF_RECORDING
-#include <windows.h> // frame capture writes frames out on a Win32 thread
-#endif
 
 typedef void (*LsFrameCaptureCallback)();
 
 class LsRenderer {
-#ifdef GIF_RECORDING
-  friend DWORD WINAPI WriteFrameThread(LPVOID lpParam);
+#ifdef FRAME_RECORDING
+  friend int SDLCALL WriteFrameThread(void* data);
 #endif
   friend class LsImage;
   friend class LsSceneView;
@@ -28,9 +25,11 @@ public:
   LsRenderer(SDL_Window* window);
   ~LsRenderer();
   //static LsRenderer* Get();
-#ifdef GIF_RECORDING
-  void StartGIFRecording(std::string filename); 
-  void StopGIFRecording();
+#ifdef FRAME_RECORDING
+  // Writes every presented frame to <basePath>-00001.bmp, <basePath>-00002.bmp and so on,
+  // skipping frames while the previous one is still being written
+  void StartFrameRecording(std::string basePath);
+  void StopFrameRecording();
 #endif
   void BeginFrame();
   void EndFrame();
@@ -82,10 +81,9 @@ private:
   void getComputeQueue();
   void BeginDrawing();
   void EndDrawing();
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   void CreateCapturedFrameImage();
   void RecordFrameCaptureCmds();
-  void OpenBufferFile();
   void BeginSavingCapturedFrame();
   bool CheckFrameSavingFinished();
 #endif
@@ -129,7 +127,7 @@ private:
     uint32_t acquiredImageIndex;
   } swapChainInfo = {};
 
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   struct {
     VkFence captureCompleteFence;          // used to wait by host for copy to complete
     VkSemaphore captureFinishedSemaphore;  // used to block presentation while copying
@@ -142,14 +140,13 @@ private:
       uint32_t rowPitch;
     } capturedFrameImage;                  // captured frame image buffer and information about it
 
-    HANDLE hCaptureBufferFile;             // temporary file to store frames before processing
-    HANDLE hSavingThread = NULL;           // handle to thread that is currently saving a frame to temporary file
+    SDL_Thread* savingThread = nullptr;    // thread that is currently writing a frame out
+    SDL_AtomicInt savingFrame = {};        // set while savingThread is writing
     uint32_t captureFrameCount;            // running count of captured frames in a recording
 
-    BOOL capturing = false;                // flag indicating whether we are currently capturing
-    std::chrono::high_resolution_clock::time_point startTime;
-    std::string filename;
-  } captureInfo;                           // time when capture was started(used to estimate framerate)
+    bool capturing = false;                // flag indicating whether we are currently capturing
+    std::string basePath;                  // frames are written to <basePath>-<frame number>.bmp
+  } captureInfo;
 #endif
 
   bool canRender = false;

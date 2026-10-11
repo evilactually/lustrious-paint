@@ -25,7 +25,7 @@ bool LsIsDialogShowing() {
   return dialogShowing;
 }
 
-void LsAbort(std::string& msg) {
+void LsAbort(const std::string& msg) {
   dialogShowing = true;
   SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", msg.c_str(), windowHandle);
   throw 1;

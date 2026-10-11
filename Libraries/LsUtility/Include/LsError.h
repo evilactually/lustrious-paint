@@ -14,7 +14,7 @@ void LsSetDialogParentWindow(SDL_Window* handle);
 
 bool LsIsDialogShowing();
 
-void LsAbort(std::string& msg);
+void LsAbort(const std::string& msg);
 
 void LsAbort(const char* msg);
 

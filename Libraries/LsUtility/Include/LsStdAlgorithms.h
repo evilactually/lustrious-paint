@@ -33,5 +33,5 @@ template< class InputIt, class T>
 LsOptional<int> find_index( InputIt first, InputIt last, const T& value) {
   return find_index_if( first, 
                         last,
-                        [&](const LsVector3& some_node) { return some_node == value; });
+                        [&](const auto& some_node) { return some_node == value; });
 }

@@ -24,13 +24,7 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 
-#ifdef GIF_RECORDING
-#include <FreeImage.h>
-#endif
-
 using namespace lslib;
-
-// TODO: GIF_RECORDING feature is leaking resources, needs to get fixed
 
 //-------------------------------------------------------------------------------
 // @ requiredInstanceExtensions
@@ -86,7 +80,7 @@ std::vector<const char*> requiredInstanceValidationLayers = {
 //  return &renderer;
 //}
 
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
 void LsRenderer::CreateCapturedFrameImage() {
   VkImageCreateInfo imageCreateInfo = {};
   imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -223,11 +217,12 @@ void LsRenderer::RecordFrameCaptureCmds() {
   vkEndCommandBuffer(captureInfo.captureFrameCmds);
 }
 
-void LsRenderer::StartGIFRecording(std::string filename) {
+void LsRenderer::StartFrameRecording(std::string basePath) {
+  if (captureInfo.capturing) {
+    return;
+  }
   std::cout << "Recording started" << std::endl;
-  OpenBufferFile();
   CreateCapturedFrameImage();
-  RecordFrameCaptureCmds();
   // frame row pitch is used for decoding frame memory
   VkImageSubresource imageSubresource = {
     VK_IMAGE_ASPECT_COLOR_BIT,
@@ -241,167 +236,82 @@ void LsRenderer::StartGIFRecording(std::string filename) {
                               &imageSubresource,
                               &subresourceLayout);
 
-  captureInfo.capturedFrameImage.rowPitch = subresourceLayout.rowPitch;
+  captureInfo.capturedFrameImage.rowPitch = static_cast<uint32_t>(subresourceLayout.rowPitch);
   // capture frame extent
   captureInfo.capturedFrameImage.extent = swapChainInfo.extent;
-  //RecordFrameCaptureCmds();
   captureInfo.capturing = true;
   captureInfo.captureFrameCount = 0;
-  captureInfo.startTime = std::chrono::high_resolution_clock::now();
-  captureInfo.filename = filename;
+  captureInfo.basePath = basePath;
 }
 
-void LsRenderer::StopGIFRecording() {
-  std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
-  BYTE* captureData = (BYTE*)malloc(captureInfo.capturedFrameImage.size);
-  DWORD bytesRead;
-  std::cout << "Recording stopped" << std::endl;
-  SetFilePointer(captureInfo.hCaptureBufferFile,// hFile
-    0,                                          // lDistanceToMove
-    0,                                          // lpDistanceToMoveHigh
-    FILE_BEGIN);                                // dwMoveMethod
-  char fileName[1024];
-  //BOOL dialogResult = ShowSaveAsDialog(fileName, sizeof(fileName), "*.gif", "gif");
-  //if (!dialogResult) {
-  //  free(captureData);
-  //  CloseHandle(captureInfo.hCaptureBufferFile);
-  //  captureInfo.capturing = false;
-  //  return;
-  //}
-  std::cout << "Saving to " << captureInfo.filename << std::endl;
-  FIMULTIBITMAP* multibitmap = FreeImage_OpenMultiBitmap(
-    FIF_GIF,
-    captureInfo.filename.c_str(),
-    TRUE,
-    FALSE);
-  if (!multibitmap)
-  {
-    throw std::string("FreeImage_OpenMultiBitmap failed to create gif file!");
+void LsRenderer::StopFrameRecording() {
+  if (!captureInfo.capturing) {
+    return;
   }
-  double captureDuration = std::chrono::duration<double, std::milli>(endTime - captureInfo.startTime).count() / 1000.0;
-  double fps = 30.0f;//((double)captureInfo.captureFrameCount)/captureDuration;
-  DWORD frameTimeMs = (DWORD)((1000.0 / fps) + 0.5);
-  //DWORD frameTimeMs = (DWORD)( ((double)captureInfo.captureFrameCount)/captureDuration + 0.5);
-  std::cout << ((double)captureInfo.captureFrameCount)/captureDuration << std::endl;
-
-  FITAG* tag = FreeImage_CreateTag();
-  FreeImage_SetTagKey(tag, "FrameTime");
-  FreeImage_SetTagType(tag, FIDT_LONG);
-  FreeImage_SetTagCount(tag, 1);
-  FreeImage_SetTagLength(tag, 4);
-  FreeImage_SetTagValue(tag, &frameTimeMs);
-  while (captureInfo.captureFrameCount) {
-    // read next captured frame
-    BOOL readResult = ReadFile(captureInfo.hCaptureBufferFile,
-      captureData,
-      captureInfo.capturedFrameImage.size,
-      &bytesRead,
-      nullptr);
-    if (!readResult || (bytesRead != captureInfo.capturedFrameImage.size)) {
-      std::cout << "ReadFile failed:" << GetLastError() << std::endl;
-      throw std::string("ReadFile failed");
-    }
-    FIBITMAP* bitmap = FreeImage_Allocate(captureInfo.capturedFrameImage.extent.width,
-      captureInfo.capturedFrameImage.extent.height,
-      24);
-    RGBQUAD color;
-    for (int y = 0; y < captureInfo.capturedFrameImage.extent.height; ++y)
-    {
-      for (int x = 0; x < captureInfo.capturedFrameImage.extent.width; ++x)
-      {
-        BYTE* pixel = captureData + captureInfo.capturedFrameImage.rowPitch*y + 4 * x;
-        color.rgbRed = *(pixel + 2);
-        color.rgbGreen = *(pixel + 1);
-        color.rgbBlue = *pixel;
-        FreeImage_SetPixelColor(bitmap, x, captureInfo.capturedFrameImage.extent.height - y, &color);
-      }
-    }
-    FIBITMAP* quantized = FreeImage_ColorQuantize(bitmap, FIQ_WUQUANT);
-    // Reset animation metadata
-    FreeImage_SetMetadata(FIMD_ANIMATION, quantized, NULL, NULL);
-    FreeImage_SetMetadata(FIMD_ANIMATION, quantized, FreeImage_GetTagKey(tag), tag);
-    //FreeImage_Save(FIF_PNG, bitmap, (std::to_string(captureInfo.captureFrameCount)+std::string(".png")).c_str(), 0);
-    FreeImage_AppendPage(multibitmap, quantized);
-    if (quantized) {
-      FreeImage_Unload(quantized);
-    }
-    FreeImage_Unload(bitmap);
-    captureInfo.captureFrameCount--;
-    //captureData += captureInfo.capturedFrameImage.size;
+  // let the frame being written finish before the image it reads goes away
+  if (captureInfo.savingThread) {
+    SDL_WaitThread(captureInfo.savingThread, nullptr);
+    captureInfo.savingThread = nullptr;
   }
-  FreeImage_CloseMultiBitmap(multibitmap);
-  free(captureData);
-  //UnmapViewOfFile(captureData);
-  //CloseHandle(hMapping);
-  CloseHandle(captureInfo.hCaptureBufferFile);
+  vkDestroyImage(device, captureInfo.capturedFrameImage.image, nullptr);
+  vkFreeMemory(device, captureInfo.capturedFrameImage.memory, nullptr);
   captureInfo.capturing = false;
-}
-
-void LsRenderer::OpenBufferFile() {
-  TCHAR tmpPath[MAX_PATH];
-  TCHAR tmpFilePath[MAX_PATH];
-  DWORD result = GetTempPath(MAX_PATH, tmpPath);
-  if ((result > MAX_PATH) || (result == 0)) {
-    throw std::string("GetTempPath failed!");
-  }
-  std::cout << "Using temporary path:" << tmpPath << std::endl;
-  result = GetTempFileName(tmpPath, TEXT("ls"), 0, tmpFilePath);
-  std::cout << "Buffer temporary file" << tmpFilePath << std::endl;
-  if (!result) {
-    throw std::string("GetTempFileName failed!");
-  }
-
-  captureInfo.hCaptureBufferFile = CreateFile(tmpFilePath,
-    GENERIC_WRITE | GENERIC_READ,
-    0,
-    NULL,
-    CREATE_ALWAYS,
-    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
-    NULL);
-  if (captureInfo.hCaptureBufferFile == INVALID_HANDLE_VALUE) {
-    throw std::string("Failed to create a file!");
-  }
+  std::cout << "Recording stopped, saved " << captureInfo.captureFrameCount << " frames to "
+            << captureInfo.basePath << "-*.bmp" << std::endl;
 }
 
 bool LsRenderer::CheckFrameSavingFinished() {
-  if (captureInfo.hSavingThread) {
-    DWORD result = WaitForSingleObject(captureInfo.hSavingThread, 0); // no wait
-    return !result; // it's 0 when finished
-  }
-  else {
+  if (!captureInfo.savingThread) {
     return true; // no thread was started
   }
+  if (SDL_GetAtomicInt(&captureInfo.savingFrame)) {
+    return false;
+  }
+  // the thread has finished, joining it doesn't block
+  SDL_WaitThread(captureInfo.savingThread, nullptr);
+  captureInfo.savingThread = nullptr;
+  return true;
 }
 
-DWORD WINAPI WriteFrameThread(LPVOID lpParam) {
-  LsRenderer* renderer = (LsRenderer*)lpParam;
-  void* data;
-  DWORD written;
-  vkMapMemory(renderer->device, renderer->captureInfo.capturedFrameImage.memory, 0, renderer->captureInfo.capturedFrameImage.size, 0, &data);
-  DWORD result = WriteFile(renderer->captureInfo.hCaptureBufferFile, data, renderer->captureInfo.capturedFrameImage.size, &written, nullptr);
-  vkUnmapMemory(renderer->device, renderer->captureInfo.capturedFrameImage.memory);
-  //TODO: What if write fails?
+int SDLCALL WriteFrameThread(void* data) {
+  LsRenderer* renderer = static_cast<LsRenderer*>(data);
+  auto& frame = renderer->captureInfo.capturedFrameImage;
+  char path[1024];
+  snprintf(path, sizeof(path), "%s-%05u.bmp", renderer->captureInfo.basePath.c_str(), renderer->captureInfo.captureFrameCount);
+
+  // the frame is a raw copy of the swap chain image, so its bytes are in the swap chain's order
+  bool rgba = renderer->swapChainInfo.format == VK_FORMAT_R8G8B8A8_UNORM ||
+              renderer->swapChainInfo.format == VK_FORMAT_R8G8B8A8_SRGB;
+  void* pixels = nullptr;
+  vkMapMemory(renderer->device, frame.memory, 0, frame.size, 0, &pixels);
+  SDL_Surface* surface = SDL_CreateSurfaceFrom(static_cast<int>(frame.extent.width),
+                                               static_cast<int>(frame.extent.height),
+                                               rgba ? SDL_PIXELFORMAT_RGBX32 : SDL_PIXELFORMAT_BGRX32,
+                                               pixels,
+                                               static_cast<int>(frame.rowPitch));
+  if (!surface || !SDL_SaveBMP(surface, path)) {
+    std::cout << "Could not save " << path << ": " << SDL_GetError() << std::endl;
+  }
+  SDL_DestroySurface(surface);
+  vkUnmapMemory(renderer->device, frame.memory);
+  SDL_SetAtomicInt(&renderer->captureInfo.savingFrame, 0);
   return 0;
 }
 
 void LsRenderer::BeginSavingCapturedFrame() {
   captureInfo.captureFrameCount++;
-  captureInfo.hSavingThread = CreateThread(NULL,
-    0,
-    WriteFrameThread,
-    this, // pass instance of LsRenderer
-    0,
-    NULL);
+  SDL_SetAtomicInt(&captureInfo.savingFrame, 1);
+  captureInfo.savingThread = SDL_CreateThread(WriteFrameThread, "LsFrameWriter", this);
+  if (!captureInfo.savingThread) {
+    std::cout << "Could not start frame writer thread: " << SDL_GetError() << std::endl;
+    SDL_SetAtomicInt(&captureInfo.savingFrame, 0);
+  }
 }
 #endif
 
 LsRenderer::LsRenderer(SDL_Window* window):window(window) {
   //LsRenderer* renderer = LsRenderer::Get();
   
-#ifdef GIF_RECORDING
-  FreeImage_Initialise();
-#endif
-
   LsLoadVulkanLibrary();
 
   LsLoadExportedEntryPoints();
@@ -431,13 +341,13 @@ LsRenderer::LsRenderer(SDL_Window* window):window(window) {
 
   commandPool = CreateCommandPool(device, graphicsQueue.familyIndex);
   commandBuffer = CreateCommandBuffer(device, commandPool);
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   captureInfo.captureFrameCmds = CreateCommandBuffer(device, commandPool);
 #endif
  
   CreateSemaphore(device, &semaphores.imageAvailable);
   CreateSemaphore(device, &semaphores.renderingFinished);
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   CreateSemaphore(device, &captureInfo.captureFinishedSemaphore);
 #endif
 
@@ -449,7 +359,7 @@ LsRenderer::LsRenderer(SDL_Window* window):window(window) {
   shaderModules.imageFragmentShader = CreateShaderModule(device, "Shaders/image.frag.spv");
   
   CreateFence(device, &submitCompleteFence, true);
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   CreateFence(device, &captureInfo.captureCompleteFence, false);
 #endif
 
@@ -838,8 +748,8 @@ void LsRenderer::BeginFrame() {
 }
 
 void LsRenderer::EndFrame() {
-#ifdef GIF_RECORDING
-  BOOL captureInitiated = false;
+#ifdef FRAME_RECORDING
+  bool captureInitiated = false;
 #endif
   RenderUi();
 
@@ -874,11 +784,12 @@ void LsRenderer::EndFrame() {
 
   VkSemaphore presentBlockingSemaphore = semaphores.renderingFinished;
 
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   if (captureInfo.capturing) {
     // capture next frame only if previous capture already finished
     if (CheckFrameSavingFinished()) {
-      std::cout << captureInfo.captureFrameCount << std::endl;
+      // the copy reads the swap chain image acquired this frame
+      RecordFrameCaptureCmds();
       // stall transfer stage until rendering is finished 
       wait_dst_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
@@ -931,7 +842,7 @@ void LsRenderer::EndFrame() {
     throw std::string("Problem occurred during image presentation!");
   }
 
-#ifdef GIF_RECORDING
+#ifdef FRAME_RECORDING
   if (captureInitiated) {
     // wait for capture submission to finish
     if (vkWaitForFences(device, 1, &captureInfo.captureCompleteFence, VK_FALSE, 1000000000) != VK_SUCCESS) {

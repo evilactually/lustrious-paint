@@ -23,7 +23,7 @@ class LsPointGrid: public LsFSdlEventHandler
   std::shared_ptr<LsRenderer> renderer;
 
 public:
-  LsPointGrid::LsPointGrid(std::shared_ptr<LsRenderer> renderer);
+  LsPointGrid(std::shared_ptr<LsRenderer> renderer);
   ~LsPointGrid();
   void SetPointColor(float r, float g, float b);
   void SetBackgroundColor(float r, float g, float b);

@@ -23,7 +23,7 @@ set( SOURCE_FILES
 )
 
 set( TEST_FILES
-  Tests/LsTetrahedronMeshTest
+  Tests/LsTetrahedronMeshTest.h
   Tests/LsBCCLatticeTests.h
   Tests/LsPatternMatchersTest.h
   Tests/LsIsosphereTests.h
@@ -40,7 +40,7 @@ target_include_directories( ${LIB_NAME} PUBLIC Include
                                                "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                "${LIBRARY_SOURCE_DIR}/LsMath/Include" )
 
-target_link_libraries( ${LIB_NAME} LsMath )
+target_link_libraries( ${LIB_NAME} LsMath LsUtility )
 
 add_executable( _Test${LIB_NAME}
   ${TEST_FILES}

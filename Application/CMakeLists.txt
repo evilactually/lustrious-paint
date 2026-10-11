@@ -22,7 +22,7 @@ set(INCLUDE_FILES
 
 set(SOURCE_FILES
   "${CMAKE_SOURCE_DIR}/Resources/Version.rc.in"
-  "Source/Main.cpp"
+  "Source/main.cpp"
   "Source/LsBrushRig.cpp"
   "Source/LsPointGrid.cpp"
   "Source/LsCanvasPainter.cpp"
@@ -34,9 +34,12 @@ set(SOURCE_FILES
   "Source/LsLightingPanel.cpp"
   "Source/LsDocument.cpp")
 
-set(RESOURCE_FILES
-  "${CMAKE_BINARY_DIR}/Resources/Version.rc"
-  "${CMAKE_SOURCE_DIR}/Resources/Icon.rc")
+# Version information and the icon are Windows resources
+if (WIN32)
+  set(RESOURCE_FILES
+    "${CMAKE_BINARY_DIR}/Resources/Version.rc"
+    "${CMAKE_SOURCE_DIR}/Resources/Icon.rc")
+endif()
 
 source_group( "Include" FILES ${INCLUDE_FILES} )
 source_group( "Source" FILES ${SOURCE_FILES} )
@@ -49,7 +52,6 @@ configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/Include/Version.h.in"
   "${CMAKE_CURRENT_BINARY_DIR}/Include/Version.h")
 
-find_package( FreeImage REQUIRED )
 find_package( VulkanSDK REQUIRED )
 
 add_executable( LustriousPaint WIN32 ${INCLUDE_FILES} ${SOURCE_FILES} ${RESOURCE_FILES} )
@@ -62,26 +64,27 @@ target_include_directories( LustriousPaint PUBLIC Include
                                                   "${LIBRARY_SOURCE_DIR}/LsUtility/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanLoader/Include"
                                                   "${LIBRARY_SOURCE_DIR}/LsVulkanSystem/Include"
-                                                  ${VULKAN_INCLUDE_DIR}
-                                                  ${FREEIMAGE_INCLUDE_DIR} ) # TODO: Don't need FreeImage here
+                                                  ${VULKAN_INCLUDE_DIR} )
 
-target_link_libraries( LustriousPaint LsMath
-                                      LsUtility
-                                      LsVulkanLoader
+target_link_libraries( LustriousPaint LsRenderer
                                       LsSdlMainWindow
-                                      LsRenderer
-                                      imgui
                                       LsStuffing
                                       LsScene
-                                      ${FREEIMAGE_LIBRARY_STATIC} )
+                                      imgui
+                                      LsVulkanLoader
+                                      LsMath
+                                      LsUtility
+                                      SDL3::SDL3 )
 
 add_dependencies( LustriousPaint Shaders )
 
-add_custom_command(TARGET LustriousPaint POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy
-    "${FREEIMAGE_LIBRARY_SHARED}"
-    "$<TARGET_FILE:SDL3::SDL3>"
-    "$<TARGET_FILE_DIR:LustriousPaint>/")
+# Windows finds DLLs next to the executable, elsewhere the build RPATH points at SDL
+if (WIN32)
+  add_custom_command(TARGET LustriousPaint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      "$<TARGET_FILE:SDL3::SDL3>"
+      "$<TARGET_FILE_DIR:LustriousPaint>/")
+endif()
 
 add_custom_command(TARGET LustriousPaint POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LustriousPaint>/Shaders/"

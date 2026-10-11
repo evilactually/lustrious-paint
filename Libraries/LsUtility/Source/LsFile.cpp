@@ -7,8 +7,8 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-
-#include <windows.h>
+#include <cerrno>
+#include <cstring>
 
 //-------------------------------------------------------------------------------
 //-- Functions ------------------------------------------------------------------
@@ -41,7 +41,7 @@ std::vector<char> GetBinaryFileContents( std::string const &filename ) {
 
 	  return result;
   }
-  catch (std::ifstream::failure e) {
+  catch (const std::ifstream::failure&) {
 	  throw std::string(strerror(errno)) + ": " + filename;
 	  //throw std::string(e.what());
   }

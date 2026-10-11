@@ -217,6 +217,16 @@ public:
         snprintf(path, sizeof(path), "Screenshot %llu.bmp", static_cast<unsigned long long>(SDL_GetTicks()));
         renderer->SaveScreenshot(path);
       }
+#ifdef FRAME_RECORDING
+      if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) {
+        char basePath[64];
+        snprintf(basePath, sizeof(basePath), "Recording %llu", static_cast<unsigned long long>(SDL_GetTicks()));
+        renderer->StartFrameRecording(basePath);
+      }
+      else if (ImGui::IsKeyPressed(ImGuiKey_F11, false)) {
+        renderer->StopFrameRecording();
+      }
+#endif
 
       // Whatever the UI changed this frame becomes an undo step once the edit is over
       history->Update(ImGui::IsAnyItemActive() || sceneViewport->IsEditing());
@@ -899,17 +909,6 @@ public:
         if (renderer) {
           renderer->RefreshSwapChain();
         }
-      break;
-      case SDL_EVENT_KEY_DOWN:
-#ifdef GIF_RECORDING
-        if (event.key.key == SDLK_F12) {
-          renderer->StartGIFRecording("C:\\Users\\Public\\Downloads\\out.gif");
-          std::cout << "PRESSED" << std::endl;
-        }
-        else if (event.key.key == SDLK_F11) {
-          renderer->StopGIFRecording();
-        }
-#endif
       break;
     }
   }

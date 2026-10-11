@@ -5,7 +5,7 @@
 //
 //===============================================================================
 
-#include "LsBccLattice.h"
+#include "LsBCCLattice.h"
 #include <tuple>
 #include <glm/glm.hpp>
 

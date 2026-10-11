@@ -58,9 +58,8 @@ The **Lighting** panel shows a surface patch with the hemisphere over it.
 Windows, with:
 
 - Visual Studio 2022
-- CMake 3.5 or newer
+- CMake 3.16 or newer
 - The [LunarG Vulkan SDK](https://vulkan.lunarg.com/) 1.3.296 or newer, which provides `slangc` for the shaders and SDL3. Set `VULKAN_SDK`.
-- [FreeImage](https://freeimage.sourceforge.io/), with `FREEIMAGE_DIR` set to its folder
 
 ```bash
 cmake -S . -B Build
@@ -71,6 +70,24 @@ cmake --build Build --config Debug
 ```
 
 The application is built to `Build/Application/Debug/LustriousPaint.exe`, with its compiled shaders next to it.
+
+Linux (Ubuntu 22.04), with GCC, CMake and the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#linux) tarball for `slangc` and the Vulkan headers. Source its `setup-env.sh` so `VULKAN_SDK` is set. Ubuntu 22.04 has no SDL3 package, so CMake fetches SDL3 and builds it, which needs Git and the X11 and Wayland development packages:
+
+```bash
+sudo apt install build-essential cmake git libvulkan-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libdbus-1-dev libudev-dev
+```
+
+```bash
+cmake -S . -B Build -DCMAKE_BUILD_TYPE=Debug
+```
+
+```bash
+cmake --build Build -j
+```
+
+The application is built to `Build/Application/LustriousPaint`. An SDL3 that is already installed is used instead when CMake finds it, for example through `CMAKE_PREFIX_PATH`.
+
+Defining `FRAME_RECORDING` (see `Libraries/LsRenderer/CMakeLists.txt`) makes F12 start and F11 stop writing every presented frame to a numbered BMP file.
 
 ## Layout
 
