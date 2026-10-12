@@ -179,6 +179,24 @@ void LsSceneViewport::SetWorldMatrix(LsNodeId id, const glm::mat4& world) {
   scene->SetPlacement(id, LsPlacement::FromMatrix(glm::inverse(parentToWorld)*world, current));
 }
 
+bool LsSceneViewport::HasTransformableSelection() const {
+  LsNodeId selected = editor->GetSelected();
+  bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
+  return scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection;
+}
+
+void LsSceneViewport::GetTransformAxes(const glm::mat4& world, glm::vec3 axes[3]) const {
+  for (int i = 0; i < 3; i++) {
+    axes[i] = glm::vec3(0.0f);
+    axes[i][i] = 1.0f;
+    glm::vec3 column(world[i]);
+    float length = glm::length(column);
+    if (gizmoLocal && length > 1.0e-8f) {
+      axes[i] = column/length;
+    }
+  }
+}
+
 void LsSceneViewport::AlignCameraToView() {
   LsNodeId active = scene->GetActiveCamera();
   if (active == kLsInvalidNode) {
@@ -375,14 +393,17 @@ bool LsSceneViewport::Navigate(bool viewHovered, glm::vec2 viewSize) {
   ImGuiIO& io = ImGui::GetIO();
 
   leftClicked = false;
-  if (navigation == Navigation::None && viewHovered && !gizmo.IsActive() && !gizmo.IsHovered()) {
+  // A left press along a locked axis transforms the selection rather than orbiting or selecting
+  bool keysTakeLeft = transformKeys.ClaimsMouse() && HasTransformableSelection();
+  if (navigation == Navigation::None && viewHovered && !gizmo.IsActive() && !gizmo.IsHovered() &&
+      !transformKeys.IsTransforming()) {
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       navigation = io.KeyAlt ? Navigation::Zoom : Navigation::Fly;
     }
     else if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
       navigation = Navigation::Pan;
     }
-    else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && viewPressed) {
+    else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && viewPressed && !keysTakeLeft) {
       // With alt it orbits right away, otherwise only once the press turns into a drag
       if (io.KeyAlt) {
         navigation = Navigation::Orbit;
@@ -490,16 +511,24 @@ void LsSceneViewport::HandleShortcuts(bool viewHovered) {
     return;
   }
 
+  // The same keys as the canvas tool's, see LsTransformKeys. Escape cancels a
+  // hold or a drag along an axis, or unlocks the axis.
+  LsNodeId selected = editor->GetSelected();
+  bool transformable = HasTransformableSelection();
+  glm::mat4 world = transformable ? scene->GetObjectToWorld(selected).GetMatrix() : glm::mat4(1.0f);
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (transformKeys.Cancel(world)) {
+      if (transformable) {
+        SetWorldMatrix(selected, world);
+      }
+    }
+    else {
+      transformKeys.SetAxisLock(-1);
+    }
+  }
+  transformKeys.HandleKeys(world, true);
+
   if (!io.KeyCtrl && !io.KeyAlt) {
-    if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
-      gizmoMode = LsGizmoMode::Translate;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
-      gizmoMode = LsGizmoMode::Rotate;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
-      gizmoMode = LsGizmoMode::Scale;
-    }
     if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
       FrameSelection();
     }
@@ -509,7 +538,6 @@ void LsSceneViewport::HandleShortcuts(bool viewHovered) {
   }
 
   // Only with focus, the outliner has the same keys and hovering here mustn't double them
-  LsNodeId selected = editor->GetSelected();
   bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
   if (windowFocused && scene->Find(selected) && selected != scene->GetRoot()) {
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
@@ -740,6 +768,13 @@ void LsSceneViewport::DrawStatus(ImDrawList* drawList) const {
   else if (gizmo.IsActive()) {
     snprintf(text, sizeof(text), "Ctrl snaps, Esc or right click cancels");
   }
+  else if (transformKeys.IsTransforming()) {
+    snprintf(text, sizeof(text), "Esc or right click cancels");
+  }
+  else if (transformKeys.GetAxisLock() >= 0) {
+    snprintf(text, sizeof(text), "Drag anywhere along the axis, %s or Esc goes back to the gizmo",
+             transformKeys.GetMode() == LsGizmoMode::Translate ? "W" : transformKeys.GetMode() == LsGizmoMode::Scale ? "E" : "R");
+  }
   else {
     return;
   }
@@ -845,13 +880,13 @@ void LsSceneViewport::DrawToolbar() {
   ImGui::SameLine(0.0f, 16.0f);
 
   struct { const char* label; LsGizmoMode mode; const char* tooltip; } tools[] = {
-    { "Move", LsGizmoMode::Translate, "Move the selection (W)" },
-    { "Rotate", LsGizmoMode::Rotate, "Rotate the selection (E)" },
-    { "Scale", LsGizmoMode::Scale, "Scale the selection along its own axes (R)" },
+    { "Move", LsGizmoMode::Translate, "Move the selection (W), hold W to move it in screen space" },
+    { "Rotate", LsGizmoMode::Rotate, "Rotate the selection (R), hold R to rotate it about the view axis" },
+    { "Scale", LsGizmoMode::Scale, "Scale the selection along its own axes (E), hold E to scale it uniformly" },
   };
   for (const auto& tool : tools) {
-    if (ToggleButton(tool.label, gizmoMode == tool.mode)) {
-      gizmoMode = tool.mode;
+    if (ToggleButton(tool.label, transformKeys.GetMode() == tool.mode)) {
+      transformKeys.SetMode(tool.mode);
     }
     ImGui::SetItemTooltip("%s", tool.tooltip);
     ImGui::SameLine(0.0f, 2.0f);
@@ -860,7 +895,7 @@ void LsSceneViewport::DrawToolbar() {
   if (ImGui::Button(gizmoLocal ? "Local" : "World")) {
     gizmoLocal = !gizmoLocal;
   }
-  ImGui::SetItemTooltip("Move and rotate along the world axes or the object's own");
+  ImGui::SetItemTooltip("Move and rotate along the world axes or the object's own, and lock X, Y and Z to them");
 
   ImGui::SameLine(0.0f, 16.0f);
   if (ImGui::Button("Add")) {
@@ -1022,10 +1057,64 @@ void LsSceneViewport::DrawSceneOverCanvas(glm::vec2 origin, glm::vec2 size) {
   drawList->PopClipRect();
 }
 
+void LsSceneViewport::UpdateOverCanvas(bool enabled, bool keysAvailable, bool mouseAvailable) {
+  transformOverCanvas = false;
+  LsNodeId selected = editor->GetSelected();
+  // Moving the canvas camera through its own view would move everything at once
+  if (!enabled || mode != Mode::Canvas || !HasTransformableSelection() || selected == scene->GetActiveCamera()) {
+    return;
+  }
+  projection.origin = canvasAreaOrigin;
+  projection.size = canvasAreaSize;
+  LsCamera camera;
+  if (!GetCanvasAlignedCamera(camera)) {
+    return;
+  }
+  projection.camera = camera;
+  transformOverCanvas = true;
+
+  glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
+  glm::vec3 axes[3];
+  GetTransformAxes(world, axes);
+  if (keysAvailable) {
+    // Escape cancels a hold or a drag, the gizmo's drag, or unlocks the axis
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+      if (transformKeys.Cancel(world)) {
+        SetWorldMatrix(selected, world);
+      }
+      else if (gizmo.IsActive()) {
+        gizmo.Cancel(world);
+        SetWorldMatrix(selected, world);
+      }
+      else {
+        transformKeys.SetAxisLock(-1);
+      }
+    }
+    transformKeys.HandleKeys(world, !gizmo.IsActive());
+  }
+  if (transformKeys.Update(projection, axes, mouseAvailable, world)) {
+    SetWorldMatrix(selected, world);
+  }
+  // Under the panels, over the canvas
+  ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+  if (transformKeys.ShowsGizmo()) {
+    if (gizmo.Manipulate(drawList, projection, transformKeys.GetMode(), gizmoLocal, mouseAvailable, world)) {
+      SetWorldMatrix(selected, world);
+    }
+    if (gizmo.IsActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      gizmo.Cancel(world);
+      SetWorldMatrix(selected, world);
+    }
+  }
+  transformKeys.DrawAxisLock(drawList, projection, world, axes);
+}
+
 void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
   if (mode == Mode::Canvas) {
     viewHovered = false;
     CancelPicks();
+    canvasAreaOrigin = origin;
+    canvasAreaSize = glm::max(size, glm::vec2(1.0f));
     if (sceneOverCanvas) {
       DrawSceneOverCanvas(origin, size);
     }
@@ -1143,16 +1232,23 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
     }
 
     LsNodeId selected = editor->GetSelected();
-    bool lookingThroughSelection = lookThrough && selected == scene->GetActiveCamera();
-    if (scene->Find(selected) && selected != scene->GetRoot() && !lookingThroughSelection) {
+    if (HasTransformableSelection()) {
       glm::mat4 world = scene->GetObjectToWorld(selected).GetMatrix();
-      if (gizmo.Manipulate(drawList, projection, gizmoMode, gizmoLocal, mouseFree, world)) {
+      glm::vec3 axes[3];
+      GetTransformAxes(world, axes);
+      if (transformKeys.Update(projection, axes, mouseFree, world)) {
         SetWorldMatrix(selected, world);
       }
-      if (gizmo.IsActive() && (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
-        gizmo.Cancel(world);
-        SetWorldMatrix(selected, world);
+      if (transformKeys.ShowsGizmo()) {
+        if (gizmo.Manipulate(drawList, projection, transformKeys.GetMode(), gizmoLocal, mouseFree, world)) {
+          SetWorldMatrix(selected, world);
+        }
+        if (gizmo.IsActive() && (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+          gizmo.Cancel(world);
+          SetWorldMatrix(selected, world);
+        }
       }
+      transformKeys.DrawAxisLock(drawList, projection, world, axes);
     }
 
     bool axisClicked = DrawAxisWidget(drawList, glm::vec2(origin.x + size.x, origin.y), viewInput);
@@ -1162,7 +1258,8 @@ void LsSceneViewport::Draw(glm::vec2 origin, glm::vec2 size) {
 
     // A double click moves the 3D cursor, a click that didn't drag selects
     // (clicking empty space deselects)
-    if (mouseFree && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked) {
+    if (mouseFree && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !gizmo.IsActive() && !axisClicked &&
+        !transformKeys.ClaimsMouse()) {
       PlaceCursor(mouse);
     }
     if (mouseFree && leftClicked && !gizmo.IsActive()) {

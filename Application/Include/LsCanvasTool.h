@@ -18,7 +18,8 @@ struct ImDrawList;
 // A temporary SDF primitive placed over the canvas for construction, see TOOL
 // in SPECIFICATION.md. It lives in world space like a scene shape, but only
 // depth and normal strokes see it: they transfer from it in a smooth union
-// with the construction geometry, or from it alone.
+// with the construction geometry, or from it alone, or carve it out of the
+// painted surface.
 //
 // Picking a primitive in the Tool panel arms placement, and the next drag on
 // the canvas places it the ZBrush way: the press is the centre, on the painted
@@ -45,6 +46,8 @@ class LsCanvasTool
   float blendRadius = 0.05f;
   // Strokes transfer from the tool alone
   bool ignoreScene = false;
+  // Strokes carve the painted surface with the tool instead of adding it
+  bool carve = false;
 
   // The next drag on the canvas places a shape of this type
   bool armed = false;
@@ -56,18 +59,23 @@ class LsCanvasTool
   bool released = false;
   glm::vec2 releasePoint = glm::vec2(0.0f);
   glm::vec3 placeCenter = glm::vec3(0.0f);
+  // While armed the painted distance under the mouse is picked every frame,
+  // for showing the tool there before the press and placing it on the press
+  bool hoverPicked = false;
+  float hoverDistance = 0.0f;
   // View depth of the last placed tool's centre, 0 before any
   float lastViewDepth = 0.0f;
 
   LsTransformGizmo gizmo;
-  LsGizmoMode gizmoMode = LsGizmoMode::Translate;
+  // W, E and R, and X, Y and Z locking the screen's horizontal, its vertical
+  // and the ray from the camera through the tool's centre
+  LsTransformKeys keys;
 
   // The canvas as it is on screen, through the canvas camera
   LsViewportProjection projection;
   bool hasProjection = false;
 
-  // Silhouette segments in UI points, recomputed when the tool or the view changes
-  std::vector<std::pair<glm::vec2, glm::vec2>> outline;
+  // Silhouette segments in UI points, recomputed when the shape or the view changes
   struct OutlineKey {
     glm::mat4 world;
     glm::mat4 cameraToWorld;
@@ -75,25 +83,39 @@ class LsCanvasTool
     glm::vec4 lens; // tan of the half field of view, aspect and lens shift
     glm::vec4 shapeParams;
     uint32_t shapeType;
-  } outlineKey = {};
-  bool outlineValid = false;
+  };
+  struct Outline {
+    std::vector<std::pair<glm::vec2, glm::vec2>> segments;
+    OutlineKey key = {};
+    bool valid = false;
+  };
+  // Of the placed tool, and of the one about to be placed under the mouse
+  Outline outline;
+  Outline previewOutline;
 
   bool UpdateProjection();
-  // Signed world space distance to the tool
-  float Distance(glm::vec3 p, const glm::mat4& worldToObject, float distanceScale) const;
-  void UpdateOutline();
-  void DrawOutline(ImDrawList* drawList) const;
+  void UpdateOutline(Outline& outline, const LsShape& shape, const glm::mat4& world) const;
+  static void DrawOutline(ImDrawList* drawList, const Outline& outline, uint32_t color);
   // Where a press on an empty pixel puts the tool's centre
   glm::vec3 GetFallbackCenter(const LsRay& ray) const;
-  // The tool at center, facing the camera, as large as the drag from the press
+  // A shape at center facing the camera, radius UI points across on screen
+  glm::mat4 GetPlacement(const LsShape& shape, glm::vec3 center, float radius) const;
+  // Where the press under the mouse would put the tool's centre, false before
+  // the hover pick has come back
+  bool GetHoverCenter(glm::vec2 mouse, glm::vec3& center) const;
+  // The tool at center, as large as the drag from the press
   void PlaceAt(glm::vec3 center, glm::vec2 dragEnd);
   void UpdatePlacing(bool mouseAvailable);
   // Moves the tool along the camera ray through its centre, positive away from the camera
   void MoveInDepth(float distance);
+  // The screen's right and up, and the way back to the camera from the tool's centre
+  void GetViewAxes(glm::vec3 axes[3]) const;
 public:
   LsCanvasTool(std::shared_ptr<LsRenderer> renderer, std::shared_ptr<LsScene> scene, std::shared_ptr<LsCanvas> canvas);
 
   bool IsPlaced() const { return placed; }
+  // A mode key is held to transform the tool, or a drag along a locked axis is going on
+  bool IsTransforming() const { return keys.IsTransforming(); }
   // The next drag on the canvas places a primitive of this type
   void Arm(LsShapeType type);
   // Removes the tool, or stops placing one
@@ -109,8 +131,9 @@ public:
   // Call every frame while the canvas shows, before LsCanvas::Render, so a
   // placement's depth pick is recorded in the same frame.
   void Update(bool mouseAvailable);
-  // W, E and R pick the gizmo mode, Up and Down move the tool in depth, Escape
-  // stops placing or a gizmo drag
+  // The transform keys, see LsTransformKeys, with X, Y and Z along the screen
+  // and towards the camera. Up and Down move the tool in depth, Escape stops
+  // placing or cancels a transform.
   void HandleShortcuts();
   // Draws the "Tool" panel's contents into the current window
   void DrawPanel();

@@ -21,7 +21,9 @@ static const float kFineDepthStep = 0.02f;
 // Cells of the silhouette grid along the longer side of the tool on screen
 static const int kOutlineCells = 96;
 static const float kMinOutlineCell = 1.5f; // in UI points
-static const int kOutlineSteps = 128;
+static const int kOutlineSteps = 256;
+// Halvings of a grid cell's edge where the outline crosses it
+static const int kOutlineBisections = 8;
 
 // Radius of the shape's object space bounding box from its centre, along its widest axis
 static float GetBoundingExtent(const LsShape& shape) {
@@ -46,14 +48,15 @@ void LsCanvasTool::Arm(LsShapeType type) {
   armed = true;
   armedType = type;
   placing = Placing::None;
+  hoverPicked = false;
 }
 
 void LsCanvasTool::Cancel() {
   placed = false;
   armed = false;
   placing = Placing::None;
-  outline.clear();
-  outlineValid = false;
+  outline = Outline();
+  previewOutline = Outline();
 }
 
 bool LsCanvasTool::GetPrimitive(LsScenePrimitive& primitive) const {
@@ -71,14 +74,15 @@ bool LsCanvasTool::GetPrimitive(LsScenePrimitive& primitive) const {
   primitive.emission = glm::vec4(0.0f, 0.0f, 0.0f, GetBoundingExtent(shape)*std::sqrt(3.0f)*GetMaxScale(world));
   primitive.medium = glm::vec4(std::max(blendRadius, 0.0f), 0.0f, 0.0f, 0.0f);
   primitive.shapeType = static_cast<uint32_t>(shape.type);
-  primitive.roles = eRoleTool | (ignoreScene ? eRoleToolOnly : 0u);
+  primitive.roles = eRoleTool | (carve ? eRoleToolCarve : ignoreScene ? eRoleToolOnly : 0u);
   primitive.distanceScale = objectToWorld.GetMinScale();
   primitive.nodeId = kLsInvalidNode;
   return true;
 }
 
 bool LsCanvasTool::WantsMouse() const {
-  return armed || placing != Placing::None || (placed && (gizmo.IsHovered() || gizmo.IsActive()));
+  return armed || placing != Placing::None ||
+         (placed && (gizmo.IsHovered() || gizmo.IsActive() || keys.ClaimsMouse()));
 }
 
 bool LsCanvasTool::UpdateProjection() {
@@ -95,10 +99,6 @@ bool LsCanvasTool::UpdateProjection() {
   return true;
 }
 
-float LsCanvasTool::Distance(glm::vec3 p, const glm::mat4& worldToObject, float distanceScale) const {
-  return shape.Distance(glm::vec3(worldToObject*glm::vec4(p, 1.0f)))*distanceScale;
-}
-
 glm::vec3 LsCanvasTool::GetFallbackCenter(const LsRay& ray) const {
   const LsCamera& camera = projection.camera;
   float along = glm::dot(ray.direction, camera.GetForward());
@@ -112,41 +112,72 @@ glm::vec3 LsCanvasTool::GetFallbackCenter(const LsRay& ray) const {
   return ray.At(kDefaultDistance);
 }
 
-void LsCanvasTool::PlaceAt(glm::vec3 center, glm::vec2 dragEnd) {
-  shape = LsShape::Default(armedType);
-  float radius = glm::length(dragEnd - pressPoint);
-  if (radius < kMinDragRadius) {
-    radius = kClickRadius;
-  }
+glm::mat4 LsCanvasTool::GetPlacement(const LsShape& shape, glm::vec3 center, float radius) const {
   float scale = radius*projection.GetPixelSize(center)/GetBoundingExtent(shape);
-
   // Facing the camera: its object +Y, the way a plane faces and a torus opens,
   // points back at the camera, and its X runs along the camera's right
   const LsCamera& camera = projection.camera;
-  glm::mat4 rotation(1.0f);
-  rotation[0] = glm::vec4(camera.GetRight(), 0.0f);
-  rotation[1] = glm::vec4(-camera.GetForward(), 0.0f);
-  rotation[2] = glm::vec4(-camera.GetUp(), 0.0f);
-  world = rotation;
-  for (int axis = 0; axis < 3; axis++) {
-    world[axis] *= scale;
+  glm::mat4 placement(1.0f);
+  placement[0] = glm::vec4(camera.GetRight()*scale, 0.0f);
+  placement[1] = glm::vec4(-camera.GetForward()*scale, 0.0f);
+  placement[2] = glm::vec4(-camera.GetUp()*scale, 0.0f);
+  placement[3] = glm::vec4(center, 1.0f);
+  return placement;
+}
+
+bool LsCanvasTool::GetHoverCenter(glm::vec2 mouse, glm::vec3& center) const {
+  if (!hoverPicked) {
+    return false;
   }
-  world[3] = glm::vec4(center, 1.0f);
+  LsRay ray = projection.GetRay(mouse);
+  center = hoverDistance > 0.0f ? ray.At(hoverDistance) : GetFallbackCenter(ray);
+  return true;
+}
+
+void LsCanvasTool::PlaceAt(glm::vec3 center, glm::vec2 dragEnd) {
+  shape = LsShape::Default(armedType);
+  float radius = glm::length(dragEnd - pressPoint);
+  world = GetPlacement(shape, center, radius < kMinDragRadius ? kClickRadius : radius);
   placed = true;
 }
 
 void LsCanvasTool::UpdatePlacing(bool mouseAvailable) {
   glm::vec2 mouse = LsToVec2(ImGui::GetIO().MousePos);
   if (placing == Placing::None) {
-    if (armed && mouseAvailable && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (!armed || !mouseAvailable) {
+      hoverPicked = false;
+      return;
+    }
+    float distance;
+    if (canvas->TakePickedDistance(distance)) {
+      hoverPicked = true;
+      hoverDistance = distance;
+    }
+    glm::vec3 center;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
       pressPoint = mouse;
       released = false;
-      glm::vec2 pixel = (mouse - projection.origin)/projection.size*glm::vec2(canvas->GetSize());
-      canvas->RequestDistancePick(pixel);
-      placing = Placing::WaitingForDepth;
       pickFrames = 0;
+      // The distance under the mouse a frame ago is close enough to start from
+      if (GetHoverCenter(mouse, placeCenter)) {
+        placing = Placing::Dragging;
+      }
+      else {
+        placing = Placing::WaitingForDepth;
+      }
     }
-    return;
+    else if (GetHoverCenter(mouse, center)) {
+      // What a click would place, before the press
+      LsShape preview = LsShape::Default(armedType);
+      UpdateOutline(previewOutline, preview, GetPlacement(preview, center, kClickRadius));
+      DrawOutline(ImGui::GetBackgroundDrawList(), previewOutline, IM_COL32(160, 160, 160, 160));
+    }
+    // The distance under the mouse for the next frame
+    glm::vec2 pixel = (mouse - projection.origin)/projection.size*glm::vec2(canvas->GetSize());
+    canvas->RequestDistancePick(pixel);
+    if (placing == Placing::None) {
+      return;
+    }
   }
 
   // The press may be over before the pick comes back
@@ -163,11 +194,13 @@ void LsCanvasTool::UpdatePlacing(bool mouseAvailable) {
     LsRay ray = projection.GetRay(pressPoint);
     placeCenter = picked && distance > 0.0f ? ray.At(distance) : GetFallbackCenter(ray);
     placing = Placing::Dragging;
+    hoverPicked = false;
   }
   PlaceAt(placeCenter, released ? releasePoint : mouse);
   if (released) {
     placing = Placing::None;
     armed = false;
+    hoverPicked = false;
   }
 }
 
@@ -196,21 +229,27 @@ void LsCanvasTool::Update(bool mouseAvailable) {
   if (!placed) {
     return;
   }
-  UpdateOutline();
-  DrawOutline(drawList);
   // Not while placing, a press then places a new tool
-  bool gizmoMouse = mouseAvailable && !armed && placing == Placing::None;
-  gizmo.Manipulate(drawList, projection, gizmoMode, true, gizmoMouse, world);
-  if (gizmo.IsActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-    gizmo.Cancel(world);
+  bool toolMouse = mouseAvailable && !armed && placing == Placing::None;
+  glm::vec3 axes[3];
+  GetViewAxes(axes);
+  keys.Update(projection, axes, toolMouse, world);
+  UpdateOutline(outline, shape, world);
+  DrawOutline(drawList, outline, IM_COL32(160, 160, 160, 255));
+  if (keys.ShowsGizmo()) {
+    gizmo.Manipulate(drawList, projection, keys.GetMode(), true, toolMouse, world);
+    if (gizmo.IsActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      gizmo.Cancel(world);
+    }
   }
+  keys.DrawAxisLock(drawList, projection, world, axes);
   lastViewDepth = projection.camera.GetDepth(glm::vec3(world[3]));
 }
 
 // Marching squares over the smallest distance to the tool along the camera
 // rays through a grid of points on screen: positive outside the silhouette and
 // negative where the ray hits, so the zero crossing is the outline
-void LsCanvasTool::UpdateOutline() {
+void LsCanvasTool::UpdateOutline(Outline& outline, const LsShape& shape, const glm::mat4& world) const {
   const LsCamera& camera = projection.camera;
   OutlineKey key = {};
   key.world = world;
@@ -219,12 +258,12 @@ void LsCanvasTool::UpdateOutline() {
   key.lens = glm::vec4(camera.GetTanHalfFovY(), camera.GetAspect(), camera.GetLensShift());
   key.shapeParams = shape.params;
   key.shapeType = static_cast<uint32_t>(shape.type);
-  if (outlineValid && std::memcmp(&key, &outlineKey, sizeof(key)) == 0) {
+  if (outline.valid && std::memcmp(&key, &outline.key, sizeof(key)) == 0) {
     return;
   }
-  outlineKey = key;
-  outlineValid = true;
-  outline.clear();
+  outline.key = key;
+  outline.valid = true;
+  outline.segments.clear();
 
   // The tool's bounding box on screen, or the whole canvas when part of it is behind the camera
   glm::vec3 boundsMin, boundsMax;
@@ -263,52 +302,62 @@ void LsCanvasTool::UpdateOutline() {
   float distanceScale = objectToWorld.GetMinScale();
   glm::vec3 center(world[3]);
   float reach = glm::length(center - camera.GetPosition()) + 2.0f*GetBoundingExtent(shape)*std::sqrt(3.0f)*GetMaxScale(world);
-  // Inside the silhouette the field is a cell's width in world units below zero,
-  // so crossings interpolate about as far in as outside distances grow
-  float inside = -projection.GetPixelSize(center)*std::max(step.x, step.y);
+  // Within a tenth of a UI point of the surface counts as a hit, near the
+  // silhouette rays pass close to the surface for many steps
+  float hitTolerance = 0.1f*projection.GetPixelSize(center)/std::max(glm::length(center - camera.GetPosition()), 1.0e-6f);
+  auto hits = [&](glm::vec2 screen) {
+    LsRay ray = projection.GetRay(screen);
+    float t = 0.0f;
+    for (int i = 0; i < kOutlineSteps && t < reach; i++) {
+      float d = shape.Distance(glm::vec3(worldToObject*glm::vec4(ray.At(t), 1.0f)))*distanceScale;
+      if (d < hitTolerance*std::max(t, 1.0e-3f)) {
+        return true;
+      }
+      t += d;
+    }
+    return false;
+  };
 
-  std::vector<float> field((columns + 1)*(rows + 1));
+  std::vector<char> inside((columns + 1)*(rows + 1));
   for (int row = 0; row <= rows; row++) {
     for (int column = 0; column <= columns; column++) {
-      LsRay ray = projection.GetRay(screenMin + glm::vec2(column, row)*step);
-      float t = 0.0f;
-      float nearest = 1.0e30f;
-      for (int i = 0; i < kOutlineSteps && t < reach; i++) {
-        float d = Distance(ray.At(t), worldToObject, distanceScale);
-        nearest = std::min(nearest, d);
-        if (d < 1.0e-4f*std::max(t, 1.0f)) {
-          nearest = inside;
-          break;
-        }
-        t += d;
-      }
-      field[row*(columns + 1) + column] = nearest;
+      inside[row*(columns + 1) + column] = hits(screenMin + glm::vec2(column, row)*step);
     }
   }
 
-  auto value = [&](int column, int row) { return field[row*(columns + 1) + column]; };
+  auto isInside = [&](int column, int row) { return inside[row*(columns + 1) + column] != 0; };
   auto point = [&](int column, int row) { return screenMin + glm::vec2(column, row)*step; };
-  auto cross = [](glm::vec2 a, glm::vec2 b, float va, float vb) {
-    return a + (b - a)*(va/(va - vb));
+  // The silhouette between a point inside and one outside, found by bisection,
+  // so the outline is as straight as the shape's edges
+  auto cross = [&](glm::vec2 in, glm::vec2 out) {
+    for (int i = 0; i < kOutlineBisections; i++) {
+      glm::vec2 middle = (in + out)*0.5f;
+      if (hits(middle)) {
+        in = middle;
+      }
+      else {
+        out = middle;
+      }
+    }
+    return (in + out)*0.5f;
+  };
+  auto edge = [&](glm::vec2 p, glm::vec2 q, bool pInside, bool qInside) {
+    return pInside == qInside ? p : pInside ? cross(p, q) : cross(q, p);
   };
   for (int row = 0; row < rows; row++) {
     for (int column = 0; column < columns; column++) {
       // Corners a, b, c, d go round the cell from its top left
-      float va = value(column, row), vb = value(column + 1, row);
-      float vc = value(column + 1, row + 1), vd = value(column, row + 1);
-      int index = (va < 0.0f ? 1 : 0) | (vb < 0.0f ? 2 : 0) | (vc < 0.0f ? 4 : 0) | (vd < 0.0f ? 8 : 0);
+      bool ia = isInside(column, row), ib = isInside(column + 1, row);
+      bool ic = isInside(column + 1, row + 1), id = isInside(column, row + 1);
+      int index = (ia ? 1 : 0) | (ib ? 2 : 0) | (ic ? 4 : 0) | (id ? 8 : 0);
       if (index == 0 || index == 15) {
         continue;
       }
       glm::vec2 a = point(column, row), b = point(column + 1, row);
       glm::vec2 c = point(column + 1, row + 1), d = point(column, row + 1);
       // Crossings on the edges ab, bc, cd and da
-      glm::vec2 e[4] = { (va < 0.0f) != (vb < 0.0f) ? cross(a, b, va, vb) : a,
-                         (vb < 0.0f) != (vc < 0.0f) ? cross(b, c, vb, vc) : b,
-                         (vc < 0.0f) != (vd < 0.0f) ? cross(c, d, vc, vd) : c,
-                         (vd < 0.0f) != (va < 0.0f) ? cross(d, a, vd, va) : d };
-      bool centerInside = va + vb + vc + vd < 0.0f;
-      auto add = [&](int from, int to) { outline.push_back({ e[from], e[to] }); };
+      glm::vec2 e[4] = { edge(a, b, ia, ib), edge(b, c, ib, ic), edge(c, d, ic, id), edge(d, a, id, ia) };
+      auto add = [&](int from, int to) { outline.segments.push_back({ e[from], e[to] }); };
       switch (index) {
         case 1: case 14: add(3, 0); break;
         case 2: case 13: add(0, 1); break;
@@ -318,24 +367,38 @@ void LsCanvasTool::UpdateOutline() {
         case 7: case 8:  add(3, 2); break;
         // Saddles, a and c inside or b and d: joined through the centre or not
         case 5:
-          if (centerInside) { add(0, 1); add(2, 3); } else { add(3, 0); add(1, 2); }
+          if (hits((a + c)*0.5f)) { add(0, 1); add(2, 3); } else { add(3, 0); add(1, 2); }
           break;
         case 10:
-          if (centerInside) { add(3, 0); add(1, 2); } else { add(0, 1); add(2, 3); }
+          if (hits((a + c)*0.5f)) { add(3, 0); add(1, 2); } else { add(0, 1); add(2, 3); }
           break;
       }
     }
   }
 }
 
-void LsCanvasTool::DrawOutline(ImDrawList* drawList) const {
-  for (const auto& segment : outline) {
-    drawList->AddLine(LsToImVec2(segment.first), LsToImVec2(segment.second), IM_COL32(160, 160, 160, 255), 1.5f);
+void LsCanvasTool::DrawOutline(ImDrawList* drawList, const Outline& outline, uint32_t color) {
+  for (const auto& segment : outline.segments) {
+    drawList->AddLine(LsToImVec2(segment.first), LsToImVec2(segment.second), color, 1.5f);
   }
+}
+
+void LsCanvasTool::GetViewAxes(glm::vec3 axes[3]) const {
+  const LsCamera& camera = projection.camera;
+  glm::vec3 toCamera = camera.GetPosition() - glm::vec3(world[3]);
+  float length = glm::length(toCamera);
+  axes[0] = camera.GetRight();
+  axes[1] = camera.GetUp();
+  // Along the ray through the centre, so moving along it keeps the tool where it is on the canvas
+  axes[2] = length > 1.0e-6f ? toCamera/length : -camera.GetForward();
 }
 
 void LsCanvasTool::HandleShortcuts() {
   if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    // A hold or a drag along an axis first, then the gizmo's drag
+    if (keys.Cancel(world)) {
+      return;
+    }
     if (gizmo.IsActive()) {
       gizmo.Cancel(world);
     }
@@ -343,18 +406,15 @@ void LsCanvasTool::HandleShortcuts() {
       armed = false;
       placing = Placing::None;
     }
+    else {
+      keys.SetAxisLock(-1);
+    }
   }
   if (!placed || ImGui::GetIO().KeyCtrl) {
     return;
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
-    gizmoMode = LsGizmoMode::Translate;
-  }
-  else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
-    gizmoMode = LsGizmoMode::Scale;
-  }
-  else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
-    gizmoMode = LsGizmoMode::Rotate;
+  if (hasProjection) {
+    keys.HandleKeys(world, !gizmo.IsActive());
   }
   // Up pulls the tool out of the painting towards the camera, Down pushes it in
   float direction = 0.0f;
@@ -364,7 +424,7 @@ void LsCanvasTool::HandleShortcuts() {
   else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
     direction = 1.0f;
   }
-  if (direction != 0.0f && hasProjection && !gizmo.IsActive()) {
+  if (direction != 0.0f && hasProjection && !gizmo.IsActive() && !IsTransforming()) {
     float size = GetBoundingExtent(shape)*GetMaxScale(world);
     MoveInDepth(direction*size*(ImGui::GetIO().KeyShift ? kFineDepthStep : kDepthStep));
   }
@@ -400,18 +460,35 @@ void LsCanvasTool::DrawPanel() {
   if (placed) {
     ImGui::SeparatorText("Transform");
     struct { const char* label; LsGizmoMode mode; const char* tooltip; } modes[] = {
-      { "Move", LsGizmoMode::Translate, "Move the tool along its axes (W)" },
-      { "Scale", LsGizmoMode::Scale, "Scale the tool along its axes (E)" },
-      { "Rotate", LsGizmoMode::Rotate, "Rotate the tool about its axes (R)" },
+      { "Move", LsGizmoMode::Translate, "Move the tool (W), hold W to move it in screen space" },
+      { "Scale", LsGizmoMode::Scale, "Scale the tool (E), hold E to scale it uniformly" },
+      { "Rotate", LsGizmoMode::Rotate, "Rotate the tool (R), hold R to rotate it in screen space" },
     };
     for (const auto& mode : modes) {
       if (&mode != modes) {
         ImGui::SameLine();
       }
-      if (ImGui::RadioButton(mode.label, gizmoMode == mode.mode)) {
-        gizmoMode = mode.mode;
+      if (ImGui::RadioButton(mode.label, keys.GetMode() == mode.mode)) {
+        keys.SetMode(mode.mode);
       }
       ImGui::SetItemTooltip("%s", mode.tooltip);
+    }
+    // The gizmo, or a view axis a drag anywhere on the canvas goes along
+    const char* axisLabels[4] = { "Gizmo", "X", "Y", "Z" };
+    const char* axisTooltips[4] = {
+      "Drag the gizmo's handles, the mode's key again comes back here",
+      "Drag anywhere along the screen's horizontal (X)",
+      "Drag anywhere along the screen's vertical (Y)",
+      "Drag up and down to move towards or away from the camera, or about the view axis (Z)",
+    };
+    for (int axis = -1; axis < 3; axis++) {
+      if (axis >= 0) {
+        ImGui::SameLine();
+      }
+      if (ImGui::RadioButton(axisLabels[axis + 1], keys.GetAxisLock() == axis)) {
+        keys.SetAxisLock(axis);
+      }
+      ImGui::SetItemTooltip("%s", axisTooltips[axis + 1]);
     }
     if (hasProjection) {
       const LsCamera& camera = projection.camera;
@@ -427,11 +504,23 @@ void LsCanvasTool::DrawPanel() {
       ImGui::SetItemTooltip("How far the tool's centre is in front of the canvas camera.\n"
                             "Up pulls it out of the painting, Down pushes it in, Shift finely.");
     }
-    ImGui::SeparatorText("Union");
-    ImGui::SliderFloat("Blend", &blendRadius, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
-    ImGui::SetItemTooltip("How far the tool blends into the scene's construction geometry, in scene units");
-    ImGui::Checkbox("Ignore scene", &ignoreScene);
-    ImGui::SetItemTooltip("Depth and normal strokes transfer from the tool alone");
+    ImGui::SeparatorText("Mode");
+    if (ImGui::RadioButton("Union", !carve)) {
+      carve = false;
+    }
+    ImGui::SetItemTooltip("Depth and normal strokes transfer from the tool joined to the scene's construction geometry");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Carve", carve)) {
+      carve = true;
+    }
+    ImGui::SetItemTooltip("Depth and normal strokes carve the painted surface with the tool: positions\n"
+                          "inside it go back to its far side, normals take the cavity's");
+    if (!carve) {
+      ImGui::SliderFloat("Blend", &blendRadius, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+      ImGui::SetItemTooltip("How far the tool blends into the scene's construction geometry, in scene units");
+      ImGui::Checkbox("Ignore scene", &ignoreScene);
+      ImGui::SetItemTooltip("Depth and normal strokes transfer from the tool alone");
+    }
   }
   if (placed || armed) {
     if (ImGui::Button("Cancel")) {

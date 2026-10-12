@@ -134,7 +134,9 @@ struct LsCanvasBrush
   bool blend = false;
   // A blend leaves out neighbours whose view depth differs from the pixel's by
   // more than this fraction of it, so the edge of an object in front isn't
-  // blended with what is behind it. 0 blends across everything.
+  // blended with what is behind it. A depth stroke switches a pixel to a
+  // position that far in front or behind at half its opacity rather than
+  // blending to it. 0 blends across everything.
   float blendEdgeThreshold = 0.1f;
   // Normal strokes paint this view space normal instead of the construction
   // geometry's when set, and light strokes paint it with the rig, see

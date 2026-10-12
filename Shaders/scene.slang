@@ -16,6 +16,7 @@ static const uint ROLE_PARTICIPATING_MEDIA = 1u << 3;
 // The canvas tool, blended into the construction geometry, see LsScene.h
 static const uint ROLE_TOOL               = 1u << 4;
 static const uint ROLE_TOOL_ONLY          = 1u << 5;
+static const uint ROLE_TOOL_CARVE         = 1u << 6;
 
 struct ScenePrimitive
 {

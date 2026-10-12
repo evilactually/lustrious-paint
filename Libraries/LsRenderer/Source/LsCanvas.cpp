@@ -1368,8 +1368,10 @@ void LsCanvas::Render() {
       constants.dabMode |= kDabFixedNormal;
       constants.dabMaterial[0] = EncodeNormal(ViewToWorld(dab.brush.normal));
     }
-    if (dab.brush.blend) {
-      // Blend dabs paint no material, the shader reads the threshold from its place
+    if (dab.brush.blend || dab.brush.mode == LsCanvasDabMode::Depth) {
+      // Blend and depth dabs paint no material, the shader reads the threshold
+      // from its place: depth dabs switch to positions on another surface
+      // rather than blending to them
       float threshold = std::max(dab.brush.blendEdgeThreshold, 0.0f);
       std::memcpy(&constants.dabMaterial[0], &threshold, sizeof(threshold));
     }

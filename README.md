@@ -41,9 +41,12 @@ The **Rendering** view solves the rendering equation for direct light at every p
 The **Tool** panel places a temporary SDF primitive over the canvas for construction. Depth and normal strokes transfer from it in a smooth union with the scene's construction geometry, or from it alone with **Ignore scene**.
 
 - Pick a primitive, then **drag on the canvas**: the press is its centre, on the painted depth there, and the drag sets its size. It faces the camera.
-- **`W` `E` `R`** move, scale and rotate it with the gizmo, **Up**/**Down** pull it out of the painting or push it in (Shift finely).
+- **`W` `E` `R`** move, scale and rotate it with the gizmo. Held, they move it in screen space, scale it uniformly and rotate it in screen space with the mouse until released (Esc cancels).
+- **`X` `Y` `Z`** lock the mode to the screen's horizontal, its vertical or the view axis: a drag anywhere on the canvas then moves, scales or rotates along it, so dragging up and down with `Z` moves the tool in depth. The mode's key again goes back to the gizmo. The brush doesn't paint while an axis is locked.
+- **Up**/**Down** pull it out of the painting or push it in (Shift finely).
 - It shows as a grey outline, and the canvas draws where it passes through the painted surface.
-- **Blend** sets how far it blends into the scene, **Cancel** removes it.
+- **Union** transfers from the tool joined to the scene, **Blend** setting how far it blends in. **Carve** cuts the tool out of the painted surface instead: depth strokes push the positions inside it back to its far side, normal strokes paint the cavity's normals.
+- **Cancel** removes it.
 
 ## Lighting
 
@@ -56,7 +59,7 @@ The **Lighting** panel shows a surface patch with the hemisphere over it.
 
 ## Views
 
-**View → Display** switches between Depth, Position, Normal, Rendering, Material, Rigs and a red wax **Matcap** for judging form. The **3D View** button flies out of the canvas into the scene for placing shapes, lights and the camera.
+**View → Display** switches between Depth, Position, Normal, Rendering, Material, Rigs and a red wax **Matcap** for judging form. The **3D View** button flies out of the canvas into the scene for placing shapes, lights and the camera. The selection moves with the same keys as the tool: **`W` `E` `R`** tapped or held, and **`X` `Y` `Z`** locking the world axes, or the selection's own with the gizmo set to Local. On the canvas, the selection's gizmo and keys work too, through the canvas camera, while no tool is placed.
 
 ## Files
 

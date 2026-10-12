@@ -40,7 +40,8 @@ enum class LsSceneOverlay
 // middle drag pans, alt+right drag and the wheel zoom, right drag looks around
 // with WASD/QE flying, F frames the selection. As in Blender a double click puts
 // the 3D cursor on the surface under the mouse, new objects are created there,
-// and Alt+Home centres the view on it.
+// and Alt+Home centres the view on it. W, E and R transform the selection as
+// they do the canvas tool, see LsTransformKeys.
 //-------------------------------------------------------------------------------
 class LsSceneViewport
 {
@@ -54,7 +55,9 @@ class LsSceneViewport
   LsSceneViewSettings settings;
 
   LsTransformGizmo gizmo;
-  LsGizmoMode gizmoMode = LsGizmoMode::Translate;
+  // W, E and R, and X, Y and Z locking the world axes, or the selection's own
+  // when the gizmo is local
+  LsTransformKeys transformKeys;
   bool gizmoLocal = false;
 
   // Orbit camera: looks at target from distance, yaw about +Y and pitch above the horizon
@@ -115,6 +118,11 @@ class LsSceneViewport
   bool sceneOverCanvas = false;
   float sceneOverCanvasOpacity = 0.5f;
   LsSceneOverlay sceneOverlay = LsSceneOverlay::Outlines;
+  // The canvas area as last drawn in canvas mode, in UI points
+  glm::vec2 canvasAreaOrigin = glm::vec2(0.0f);
+  glm::vec2 canvasAreaSize = glm::vec2(1.0f);
+  // The selection's gizmo is shown over the canvas this frame
+  bool transformOverCanvas = false;
 
   glm::vec3 GetOrbitPosition() const;
   LsCamera GetOrbitCamera(float aspect) const;
@@ -166,6 +174,11 @@ class LsSceneViewport
 
   // Places a node so it ends up at world, whatever its parents are
   void SetWorldMatrix(LsNodeId id, const glm::mat4& world);
+  // A selection the gizmo and the transform keys move, not the root nor the
+  // camera being looked through
+  bool HasTransformableSelection() const;
+  // The axes X, Y and Z lock, see transformKeys
+  void GetTransformAxes(const glm::mat4& world, glm::vec3 axes[3]) const;
   void FrameSelection();
   // Orbits around the 3D cursor from now on, keeping the zoom
   void CenterViewOnCursor();
@@ -179,6 +192,17 @@ public:
   // Draws the 3D view over the canvas area, origin and size in UI points, unless
   // the canvas is showing. Call between BeginFrame and EndFrame.
   void Draw(glm::vec2 origin, glm::vec2 size);
+  // In canvas mode, shows the selection's gizmo over the canvas through the
+  // canvas camera and lets the transform keys move it there, unless it is the
+  // canvas camera itself. Call every frame after Draw, enabled when nothing
+  // else over the canvas, such as the canvas tool, has the transform keys.
+  void UpdateOverCanvas(bool enabled, bool keysAvailable, bool mouseAvailable);
+  // The selection's gizmo over the canvas has the transform keys
+  bool IsTransformingOverCanvas() const { return transformOverCanvas; }
+  // A press on the canvas goes to the selection's gizmo or transform keys
+  bool WantsCanvasMouse() const {
+    return transformOverCanvas && (gizmo.IsHovered() || gizmo.IsActive() || transformKeys.ClaimsMouse());
+  }
   // Switches between the canvas and the 3D view
   void ToggleSceneView();
   // The canvas area is taken by the 3D view, including during the transitions
@@ -196,5 +220,5 @@ public:
   }
   // An edit made through the view is still going on, such as a drag, the scene
   // changes are not finished yet
-  bool IsEditing() const { return gizmo.IsActive() || navigation != Navigation::None; }
+  bool IsEditing() const { return gizmo.IsActive() || transformKeys.IsTransforming() || navigation != Navigation::None; }
 };

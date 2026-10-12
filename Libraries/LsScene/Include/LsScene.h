@@ -26,6 +26,9 @@ enum LsSceneRole : uint32_t
   eRoleTool              = 1u << 4,
   // With eRoleTool, the brush transfers from the tool alone, ignoring the scene
   eRoleToolOnly          = 1u << 5,
+  // With eRoleTool, depth and normal strokes carve the painted surface with the
+  // tool instead, pushing positions inside it back to its far side
+  eRoleToolCarve         = 1u << 6,
 };
 using LsSceneRoles = uint32_t;
 const LsSceneRoles kLsAllRoles = ~0u;

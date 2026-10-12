@@ -180,14 +180,16 @@ public:
       HandleUndoShortcuts();
       HandleFileShortcuts();
 
-      // The system cursor shows only over the UI, the brush rig is the cursor over the canvas
+      // The system cursor shows only over the UI, the brush rig is the cursor over
+      // the canvas. While the tool takes the mouse, to be placed or by its gizmo,
+      // the system cursor stays instead of the brush.
       bool overUi = renderer->IsUiCapturingMouse();
       // While space or ctrl is held the canvas is being navigated, show a system cursor for that instead
       bool navigating = !overUi && canvasNavigator->IsActive();
       if (navigating) {
         canvasNavigator->UpdateCursor();
       }
-      else if (!overUi) {
+      else if (!overUi && !CanvasMouseClaimed()) {
         window->HideMouse();
       }
 
@@ -197,15 +199,24 @@ public:
       DrawToolbar();
       HandleToolShortcuts();
       HandleViewToggle(overUi);
-      // Before the canvas renders, so a placement's depth pick goes into this frame
+      // Before the canvas renders, so a placement's depth pick goes into this frame.
+      // The tool has the transform keys while it is there, the scene's selection
+      // otherwise.
       if (!sceneViewport->IsShowingScene()) {
-        if (!ImGui::GetIO().WantTextInput) {
+        bool keysAvailable = !ImGui::GetIO().WantTextInput;
+        bool mouseAvailable = !overUi && !navigating && !canvasPainter->IsPainting();
+        if (keysAvailable) {
           canvasTool->HandleShortcuts();
         }
-        canvasTool->Update(!overUi && !navigating && !canvasPainter->IsPainting());
+        canvasTool->Update(mouseAvailable);
+        bool toolHasKeys = canvasTool->IsPlaced() || canvasTool->WantsMouse();
+        sceneViewport->UpdateOverCanvas(!toolHasKeys, keysAvailable, mouseAvailable);
       }
-      // Presses on the tool's gizmo, or placing it, don't paint
-      canvasPainter->SetMouseClaimed(canvasTool->WantsMouse());
+      else {
+        sceneViewport->UpdateOverCanvas(false, false, false);
+      }
+      // Presses on a gizmo, or placing the tool, don't paint
+      canvasPainter->SetMouseClaimed(CanvasMouseClaimed());
 
       // Strokes painted since the last frame, before anything draws the canvas
       UpdateCanvas();
@@ -217,7 +228,7 @@ public:
       pointGrid->Render();
       if (!sceneViewport->IsShowingScene()) {
         renderer->DrawCanvas();
-        if (!overUi && !navigating && !canvasTool->WantsMouse()) {
+        if (!overUi && !navigating && !CanvasMouseClaimed()) {
           brushRig->Render();
           DrawBrushOutline();
         }
@@ -391,7 +402,8 @@ public:
     if (ImGui::Checkbox("##KeepEdges", &keepEdges)) {
       canvasPainter->SetBlendKeepsEdges(keepEdges);
     }
-    ImGui::SetItemTooltip("Blend only with neighbours on the same surface");
+    ImGui::SetItemTooltip("Blend only with neighbours on the same surface, and let depth strokes\n"
+                          "switch to another surface rather than blend into it");
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::BeginDisabled(!keepEdges);
@@ -512,6 +524,11 @@ public:
     }
   }
 
+  // The tool, or the scene selection's gizmo, takes presses on the canvas from the brush
+  bool CanvasMouseClaimed() const {
+    return canvasTool->WantsMouse() || sceneViewport->WantsCanvasMouse();
+  }
+
   // The display stays as chosen in the View panel, whatever the brush paints
   void SetBrushMode(LsCanvasDabMode mode) {
     canvasPainter->SetMode(mode);
@@ -543,7 +560,9 @@ public:
     else if (ImGui::IsKeyPressed(ImGuiKey_S, false) && !ImGui::GetIO().KeyCtrl) {
       SetBrushMode(LsCanvasDabMode::Sculpt);
     }
-    else if (ImGui::IsKeyPressed(ImGuiKey_X, false) && canvasPainter->GetMode() == LsCanvasDabMode::Sculpt) {
+    // While a tool is placed or the selection's gizmo is shown, X locks its X axis instead
+    else if (ImGui::IsKeyPressed(ImGuiKey_X, false) && canvasPainter->GetMode() == LsCanvasDabMode::Sculpt &&
+             !canvasTool->IsPlaced() && !sceneViewport->IsTransformingOverCanvas()) {
       canvasPainter->SetSculptPush(!canvasPainter->GetSculptPush());
     }
 

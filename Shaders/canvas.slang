@@ -378,6 +378,78 @@ float constructionDistance(float3 origin, float3 p)
   return toolOnly ? tool : smoothMin(distance, tool, blendRadius);
 }
 
+// Index of the canvas tool among the primitives, ~0 without one
+uint findTool()
+{
+  uint tool = ~0u;
+  for (uint i = 0; i < canvas.primitiveCount; i++) {
+    if ((primitives[i].roles & ROLE_TOOL) != 0) {
+      tool = i;
+    }
+  }
+  return tool;
+}
+
+// Marches from distance t inside the tool along the ray to where it leaves the
+// tool, the far side of the cavity it carves. Inside, the negated distance is
+// how far the surface is at least, so the steps never pass it.
+float traceToolExit(uint tool, float3 origin, float3 direction, float t)
+{
+  for (int step = 0; step < MAX_STEPS && t < MAX_DISTANCE; step++) {
+    float d = primitiveDistance(primitives[tool], origin + direction*t);
+    if (d >= -1.0e-6*max(t, 1.0)) {
+      return t;
+    }
+    t += max(-d, 1.0e-3*t*canvas.pixelAngle);
+  }
+  return t;
+}
+
+// The carved surface's normal at a point on the tool: into the tool, where the
+// cavity is open, which faces the camera on its far side
+float3 toolCavityNormal(uint tool, float3 p, float3 direction)
+{
+  float h = max(1.0e-4*length(p - canvas.origin.xyz), 1.0e-6);
+  const float2 k = float2(1.0, -1.0);
+  float3 n = k.xyy*primitiveDistance(primitives[tool], p + k.xyy*h) +
+             k.yyx*primitiveDistance(primitives[tool], p + k.yyx*h) +
+             k.yxy*primitiveDistance(primitives[tool], p + k.yxy*h) +
+             k.xxx*primitiveDistance(primitives[tool], p + k.xxx*h);
+  if (dot(n, n) < 1.0e-20) {
+    return -direction;
+  }
+  n = -normalize(n);
+  return dot(n, direction) > 0.0 ? -n : n;
+}
+
+// Carves the painted surface with the tool for a depth or normal dab: a pixel
+// whose position at the start of the stroke is inside the tool, or on the
+// cavity it carved, moves back along its ray to where the ray leaves the tool,
+// or takes the cavity's normal there. Painted depth carves this way whether or
+// not the scene has geometry behind it. Pixels outside the tool and pixels
+// without a position keep what they had.
+void carve(int2 pixel, uint tool, float coverage)
+{
+  float before = strokeDistanceImage[pixel];
+  if (before <= 0.0) {
+    return;
+  }
+  float3 origin = canvas.origin.xyz;
+  float3 direction = pixelRay(uint2(pixel));
+  // A position the tool carved before is on its surface, give or take rounding
+  float footprint = before*canvas.pixelAngle;
+  if (primitiveDistance(primitives[tool], origin + direction*before) > 0.25*footprint) {
+    return;
+  }
+  float t = traceToolExit(tool, origin, direction, before);
+  strokeCoverageImage[pixel] = coverage;
+  if (canvas.dabMode == DAB_NORMAL) {
+    paintNormal(pixel, toolCavityNormal(tool, origin + direction*t, direction), coverage);
+    return;
+  }
+  paintDistance(pixel, t, coverage);
+}
+
 // Sphere traces the construction geometry, returns the distance to the first hit
 // or 0 for a miss
 float traceConstruction(float3 origin, float3 direction)
@@ -533,6 +605,14 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
     return;
   }
 
+  // A carving tool pushes the painted positions inside it back to where their
+  // rays leave it, see carve
+  uint tool = findTool();
+  if (tool != ~0u && (primitives[tool].roles & ROLE_TOOL_CARVE) != 0) {
+    carve(pixel, tool, coverage);
+    return;
+  }
+
   // Pixels whose ray misses keep what they had
   float3 direction = pixelRay(uint2(pixel));
   float t = traceConstruction(canvas.origin.xyz, direction);
@@ -544,9 +624,26 @@ void paintMain(uint3 globalId : SV_DispatchThreadID)
     paintNormal(pixel, constructionNormal(canvas.origin.xyz, direction, t), coverage);
     return;
   }
-  // Blended along the ray, a pixel without a position takes the new one
+  paintDistance(pixel, t, coverage);
+}
+
+// Blended along the ray from the distance at the start of the stroke, a pixel
+// without a position takes the new one. A position on another surface, further
+// in front or behind than the edge threshold in dabMaterialColor as a share of
+// the depth, can't be partly there: blending would leave points floating
+// between the two surfaces, whose normals come out as noise. It switches where
+// the stroke covers the pixel half as much as it can, which keeps soft
+// brushes' edges smooth.
+void paintDistance(int2 pixel, float t, float coverage)
+{
   float before = strokeDistanceImage[pixel];
-  distanceImage[pixel] = before > 0.0 ? lerp(before, t, coverage) : t;
+  float edgeThreshold = asfloat(canvas.dabMaterialColor);
+  float after = t;
+  if (before > 0.0) {
+    bool otherSurface = edgeThreshold > 0.0 && abs(t - before) > edgeThreshold*min(t, before);
+    after = otherSurface ? (coverage >= 0.5*canvas.dabOpacity ? t : before) : lerp(before, t, coverage);
+  }
+  distanceImage[pixel] = after;
   radianceImage[pixel] = float4(0.0);
 }
 
@@ -1455,12 +1552,7 @@ bool toolDistanceAt(uint tool, int2 pixel, out float d)
 // is a pixel wide and shows how much of the tool stands out of the painting
 float3 withToolIntersection(int2 pixel, float3 color)
 {
-  uint tool = ~0u;
-  for (uint i = 0; i < canvas.primitiveCount; i++) {
-    if ((primitives[i].roles & ROLE_TOOL) != 0) {
-      tool = i;
-    }
-  }
+  uint tool = findTool();
   float d;
   if (tool == ~0u || !toolDistanceAt(tool, pixel, d)) {
     return color;

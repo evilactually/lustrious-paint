@@ -37,7 +37,7 @@ The outline also shows where the tool intersects the recorded canvas depth, i.e.
 
 Modes
     Normal - SDF smooth union with the scene: smin(scene, tool, blend radius); a radius of 0 is min(scene, tool).
-    Subtract (in future version) - SDF subtraction: max(scene, -tool). Not implemented currently.
+    Carve - The painted surface minus the tool: a pixel whose position is inside the tool moves back along its ray to where the ray leaves the tool, and normal strokes paint the cavity's normal there. It carves the painted depth itself, sculpted or transferred, whether or not the scene has geometry behind it. Unlike Normal it has no blend radius yet.
 
 Multiple Tools?
     Only one for now.
@@ -358,6 +358,8 @@ Stored attribute should be the default choice for picking.
 
 53. Subtract carves the scene SDF, so it only reaches the canvas through the Depth brush. Should it also be able to carve depth that was sculpted on the canvas and has no SDF behind it?
     Answer:
+
+    No, Carve works on the painted depth instead of the scene SDF, see Modes under TOOL.
 
 ### Application
 
