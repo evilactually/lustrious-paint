@@ -14,6 +14,7 @@
 //#include "IvTypes.h"
 #include <LsMath.h>
 #include <cmath>
+#include <cfloat>
 #include <algorithm>
 
 float IvSqrt( float val )        { return sqrtf( val ); }

@@ -26,6 +26,7 @@
 #pragma once
 
 #include <algorithm>
+#include <initializer_list>
 
 template <class T, int C>
 class LsTuple
@@ -34,8 +35,8 @@ public:
   LsTuple(std::initializer_list<T> l) {
     std::copy(l.begin(), l.end(), &components[0]);
   }
-  template <typename... T> 
-  explicit LsTuple(T... ts) : components{ts...} { }
+  template <typename... Args>
+  explicit LsTuple(Args... ts) : components{static_cast<T>(ts)...} { }
   inline T& operator[]( unsigned int i ) {
     return components[i];
   }

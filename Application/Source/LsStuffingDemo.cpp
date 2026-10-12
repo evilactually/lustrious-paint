@@ -143,12 +143,12 @@ void LsStuffingDemo::Render()
     glm::vec4 hp3 = m2*project(m*glm::vec4(p3, 1.0f));
     glm::vec4 hp4 = m2*project(m*glm::vec4(p4, 1.0f));
     
-    renderer->DrawLine(hp1.xy, hp2.xy);
-    renderer->DrawLine(hp1.xy, hp3.xy);
-    renderer->DrawLine(hp1.xy, hp4.xy);
-    renderer->DrawLine(hp2.xy, hp3.xy);
-    renderer->DrawLine(hp3.xy, hp4.xy);
-    renderer->DrawLine(hp2.xy, hp4.xy);
+    renderer->DrawLine(hp1.xy(), hp2.xy());
+    renderer->DrawLine(hp1.xy(), hp3.xy());
+    renderer->DrawLine(hp1.xy(), hp4.xy());
+    renderer->DrawLine(hp2.xy(), hp3.xy());
+    renderer->DrawLine(hp3.xy(), hp4.xy());
+    renderer->DrawLine(hp2.xy(), hp4.xy());
   } while (tit.Next());
   
   // Draw domain
@@ -221,12 +221,12 @@ void LsStuffingDemo::Render()
     points3[2] = m2*project(m*points3[2]);
     points3[3] = m2*project(m*points3[3]);
     renderer->SetLineWidth(1.0f);
-    renderer->DrawLine(points3[0].xy, points3[1].xy);
-    renderer->DrawLine(points3[0].xy, points3[2].xy);
-    renderer->DrawLine(points3[0].xy, points3[3].xy);
-    renderer->DrawLine(points3[1].xy, points3[2].xy);
-    renderer->DrawLine(points3[2].xy, points3[3].xy);
-    renderer->DrawLine(points3[3].xy, points3[1].xy);
+    renderer->DrawLine(points3[0].xy(), points3[1].xy());
+    renderer->DrawLine(points3[0].xy(), points3[2].xy());
+    renderer->DrawLine(points3[0].xy(), points3[3].xy());
+    renderer->DrawLine(points3[1].xy(), points3[2].xy());
+    renderer->DrawLine(points3[2].xy(), points3[3].xy());
+    renderer->DrawLine(points3[3].xy(), points3[1].xy());
 
   }
 }

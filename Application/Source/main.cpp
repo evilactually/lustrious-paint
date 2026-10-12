@@ -927,6 +927,8 @@ int main(int argc, char* argv[]) {
     LsErrorMessage(m, "Error");
   }
 
+#ifdef _WIN32
   system("pause");
+#endif
   return 0;
 }
