@@ -5,6 +5,44 @@ An digital painting application that allows physics based digital painting.
 
 In traditional painting rendering comes as a final process that is performed manually only after the form is established. Here rendering is continious feedback process and the artist works only with form and material properties.
 
+TOOL
+----
+
+A tool is a temporary SDF primitive placed in the scene for construction. All normal SDF primitives can be tools, as well as combinations of them (in future versions).
+
+The tool lives in world coordinates like any other scene shape and acts as one additional SDF object: the Depth and Normals brushes trace the scene together with the tool. Unlike scene shapes it is temporary, is placed from the canvas rather than the 3D view, and is never part of a light rig or a shadow caster.
+
+The tool is kept as a generic SDF, not rendered into a 2.5D depth buffer, so that modes which need its full volume (Subtract needs the far side, where a ray leaves the tool) work without a redesign.
+
+Workflow
+1. Place: drag the tool out the ZBrush way. The press point is the center and the drag length sets the size. It shows as an outline and doesn't change the canvas.
+   - The center goes on the recorded canvas depth under the press point (like ZBrush's Insert Mesh), so the tool starts out half above and half below the painting. On an empty pixel it uses the depth of the last placed tool, or a default distance when there is none.
+   - The tool faces the camera (like ZBrush drawing a tool on the canvas), since aligning to noisy painted normals would tilt boxes and cylinders. Aligning to the surface normal may come later as a modifier key or a panel option.
+2. Adjust: move, scale and rotate it with the transform modes, and push it into or pull it out of the canvas with a depth control. That last one matters a lot here, because it decides how much of the tool sits above the existing surface.
+3. Paint: the Depth and Normals brushes, with their opacity and falloff, move canvas depth and normals toward the first hit of the combined scene and tool SDF. Pixels whose ray misses keep what they had (question 18).
+4. Keep or dismiss: the tool stays put for more passes until you cancel it or place another.
+
+UI
+This feature adds a new panel called "Tool", with:
+
+1. Primitive selection buttons (placing a primitive starts step 1).
+2. Cancel, which removes the tool.
+3. Transform modes: move (`W`), scale (`E`), rotate (`R`). Erase moves from `E` to `N`, and the Normals brush loses its key since it is not used often.
+4. Ignore scene: the brushes trace the tool alone, ignoring the scene's SDFs.
+5. Blend radius: the smoothness of the union with the scene.
+
+Tool appears as outline in canvas. (Use lines, grey)
+
+The outline also shows where the tool intersects the recorded canvas depth, i.e. where the tool's surface crosses the painted positions in space, so the depth control shows how much of the tool sits above the painting.
+
+Modes
+    Normal - SDF smooth union with the scene: smin(scene, tool, blend radius); a radius of 0 is min(scene, tool).
+    Subtract (in future version) - SDF subtraction: max(scene, -tool). Not implemented currently.
+
+Multiple Tools?
+    Only one for now.
+
+
 CANVAS
 ------
 Each pixel in the canvas represents a point in 3D space storing following information:
@@ -284,6 +322,41 @@ Stored attribute should be the default choice for picking.
     Answer:
 
 46. Parked: storing captured incident light per pixel instead of a rig, which would decouple the canvas from the scene so pixels change only when painted. Set aside because a sharp per-pixel light environment is too large (gigabytes at 8000x8000 even compressed); the most compact form found was storing frozen emitter snapshots plus per-pixel visibility.
+    Answer:
+
+### Tool
+
+47. Erase moves to `N`, which the Normals brush uses now. Which key does the Normals brush get?
+    Answer:
+
+    None, it is not used often.
+
+48. Where does the press point land when placing a tool: on the canvas surface under the cursor (or at a default distance on an empty pixel)? Does the tool face the camera or align to the surface normal?
+    Answer:
+
+    On the recorded depth under the press point, or the last tool's depth (else a default) on an empty pixel. Facing the camera; surface alignment may come later as an option. See TOOL.
+
+49. Should union be smooth (a blend radius, as in the Modeling workflow), or hard min with the Shift smooth brush used to soften the crease?
+    Answer:
+
+    Smooth blend, with a blend radius in the Tool panel.
+
+50. Should the outline also show where the tool intersects the current canvas surface, so the depth control is readable?
+    Answer:
+
+    The tool is in space, not on the canvas surface. The outline shows where it intersects the recorded canvas depth.
+
+51. Which input drives the depth control: mouse wheel, a key pair, or the panel only?
+    Answer:
+
+    Up pulls the tool towards the camera and Down pushes it away, along the camera ray through its centre, by a tenth of its size (Shift: a fiftieth). The Tool panel also has a Depth field. The wheel stays with canvas zoom.
+
+52. Is the placed tool saved in `.lspaint` files, and are placing and transforming it undoable?
+    Answer:
+
+    Neither for now, it is temporary. The strokes painted with it are part of the canvas as usual.
+
+53. Subtract carves the scene SDF, so it only reaches the canvas through the Depth brush. Should it also be able to carve depth that was sculpted on the canvas and has no SDF behind it?
     Answer:
 
 ### Application

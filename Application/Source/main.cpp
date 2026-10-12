@@ -19,6 +19,7 @@
 #include <LsSceneViewport.h>
 #include <LsCanvasNavigator.h>
 #include <LsLightingPanel.h>
+#include <LsCanvasTool.h>
 #include <LsDocument.h>
 #include <mutex>
 #include <LsConsole.h>
@@ -52,6 +53,7 @@ class Application: LsFSdlEventHandler {
   std::shared_ptr<LsCanvas> canvas;
   std::shared_ptr<LsCanvasPainter> canvasPainter;
   std::unique_ptr<LsLightingPanel> lightingPanel;
+  std::unique_ptr<LsCanvasTool> canvasTool;
   // Top left of the area the canvas and the 3D view share, for the toolbar
   ImVec2 canvasAreaMin = ImVec2(0.0f, 0.0f);
   // Scene revision the canvas last got its primitives from
@@ -85,6 +87,7 @@ public:
   ~Application() {
     // Vulkan objects must be released before the window and SDL itself
     sceneViewport.reset();
+    canvasTool.reset();
     stuffingDemo.reset();
     lightingPanel.reset();
     canvasPainter.reset();
@@ -138,6 +141,7 @@ public:
     history = std::make_unique<LsSceneHistory>(scene);
     sceneEditor = std::make_unique<LsSceneEditor>(scene);
     sceneViewport = std::make_unique<LsSceneViewport>(renderer, scene, sceneEditor.get());
+    canvasTool = std::make_unique<LsCanvasTool>(renderer, scene, canvas);
     // The 3D view fades in from what surrounds the canvas
     sceneViewport->SetCanvasBackground(canvasBackground);
 
@@ -193,6 +197,15 @@ public:
       DrawToolbar();
       HandleToolShortcuts();
       HandleViewToggle(overUi);
+      // Before the canvas renders, so a placement's depth pick goes into this frame
+      if (!sceneViewport->IsShowingScene()) {
+        if (!ImGui::GetIO().WantTextInput) {
+          canvasTool->HandleShortcuts();
+        }
+        canvasTool->Update(!overUi && !navigating && !canvasPainter->IsPainting());
+      }
+      // Presses on the tool's gizmo, or placing it, don't paint
+      canvasPainter->SetMouseClaimed(canvasTool->WantsMouse());
 
       // Strokes painted since the last frame, before anything draws the canvas
       UpdateCanvas();
@@ -204,7 +217,7 @@ public:
       pointGrid->Render();
       if (!sceneViewport->IsShowingScene()) {
         renderer->DrawCanvas();
-        if (!overUi && !navigating) {
+        if (!overUi && !navigating && !canvasTool->WantsMouse()) {
           brushRig->Render();
           DrawBrushOutline();
         }
@@ -238,11 +251,11 @@ public:
         struct { const char* label; LsCanvasDabMode mode; const char* tooltip; } modes[] = {
           { "Depth", LsCanvasDabMode::Depth, "Paint positions from the construction geometry (B)" },
           { "Normals", LsCanvasDabMode::Normal,
-            "Paint normals from the construction geometry, or the Lighting panel's normal (N)" },
+            "Paint normals from the construction geometry, or the Lighting panel's normal" },
           { "Material", LsCanvasDabMode::Material, "Paint the BRDF panel's material (M)" },
           { "Light", LsCanvasDabMode::Light, "Paint the light selected in the Lighting panel (L)" },
           { "Erase", LsCanvasDabMode::Erase,
-            "Remove painted positions, normals and lights, back to the default material (E)" },
+            "Remove painted positions, normals and lights, back to the default material (N)" },
           { "Sculpt", LsCanvasDabMode::Sculpt,
             "Pull painted positions towards the camera or push them away, dabs build up (S)" },
         };
@@ -360,6 +373,11 @@ public:
       }
       ImGui::End();
 
+      if (ImGui::Begin("Tool", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        canvasTool->DrawPanel();
+      }
+      ImGui::End();
+
       renderer->EndFrame();
     }
 
@@ -471,6 +489,8 @@ public:
       canvas->SetPrimitives(scene->Flatten());
       canvasSceneRevision = scene->GetRevision();
     }
+    LsScenePrimitive tool;
+    canvas->SetTool(canvasTool->GetPrimitive(tool) ? &tool : nullptr);
     LsNodeId camera = scene->GetActiveCamera();
     if (camera != kLsInvalidNode) {
       glm::vec2 size = renderer->GetCanvasSize();
@@ -497,18 +517,15 @@ public:
     canvasPainter->SetMode(mode);
   }
 
-  // B paints depth, N normals, M materials, L lights and E erases, B and E as
-  // the brush and the eraser in most painting applications. F fills the canvas
-  // with the brush.
+  // B paints depth, M materials, L lights and N erases. Normals have no key,
+  // they are painted seldom, and W, E and R belong to the tool's gizmo, see
+  // LsCanvasTool. F fills the canvas with the brush.
   void HandleToolShortcuts() {
     if (ImGui::GetIO().WantTextInput || sceneViewport->IsShowingScene()) {
       return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_B, false)) {
       SetBrushMode(LsCanvasDabMode::Depth);
-    }
-    else if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
-      SetBrushMode(LsCanvasDabMode::Normal);
     }
     else if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
       SetBrushMode(LsCanvasDabMode::Material);
@@ -519,7 +536,7 @@ public:
     else if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
       canvasPainter->Fill(ImGui::GetIO().KeyShift);
     }
-    else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+    else if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
       SetBrushMode(LsCanvasDabMode::Erase);
     }
     // Not with Ctrl, which saves
@@ -864,9 +881,11 @@ public:
       ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
 
       ImGuiID rightId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, nullptr, nullptr);
-      // Lighting on the left, so the sphere stays in view while painting
+      // Lighting on the left, so the sphere stays in view while painting, with the Tool panel under it
       ImGuiID lightingId = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.2f, nullptr, nullptr);
+      ImGuiID toolId = ImGui::DockBuilderSplitNode(lightingId, ImGuiDir_Down, 0.3f, nullptr, &lightingId);
       ImGui::DockBuilderDockWindow("Lighting", lightingId);
+      ImGui::DockBuilderDockWindow("Tool", toolId);
       ImGuiID propertiesId;
       ImGuiID sceneId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Up, 0.3f, nullptr, &propertiesId);
       ImGuiID brushId = ImGui::DockBuilderSplitNode(propertiesId, ImGuiDir_Down, 0.62f, nullptr, &propertiesId);

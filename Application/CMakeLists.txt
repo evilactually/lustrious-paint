@@ -18,6 +18,7 @@ set(INCLUDE_FILES
   "Include/LsLightingPanel.h"
   "Include/LsDocument.h"
   "Include/LsViewportProjection.h"
+  "Include/LsCanvasTool.h"
   "Include/Version.h.in")
 
 set(SOURCE_FILES
@@ -32,7 +33,8 @@ set(SOURCE_FILES
   "Source/LsSceneViewport.cpp"
   "Source/LsTransformGizmo.cpp"
   "Source/LsLightingPanel.cpp"
-  "Source/LsDocument.cpp")
+  "Source/LsDocument.cpp"
+  "Source/LsCanvasTool.cpp")
 
 # Version information and the icon are Windows resources
 if (WIN32)

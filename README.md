@@ -24,10 +24,10 @@ The **Rendering** view solves the rendering equation for direct light at every p
 | Mode | Key | What a stroke does |
 |---|---|---|
 | Depth | `B` | Paints positions traced from the construction geometry |
-| Normals | `N` | Paints normals from the construction geometry, or the Lighting panel's normal |
+| Normals | | Paints normals from the construction geometry, or the Lighting panel's normal |
 | Material | `M` | Paints the BRDF panel's material |
 | Light | `L` | Paints the selected light rig, with its normal |
-| Erase | `E` | Removes positions and normals, back to the default material and no rig |
+| Erase | `N` | Removes positions and normals, back to the default material and no rig |
 | Sculpt | `S` | Pulls the surface towards the camera or pushes it away (`X` switches), optionally along the surface normal |
 
 - **Shift** while painting blends instead: it smooths depth, normals or materials, keeping object edges apart. With the Light brush it paints no rig.
@@ -35,6 +35,15 @@ The **Rendering** view solves the rendering equation for direct light at every p
 - **F** fills the whole canvas with the brush.
 - **`[` `]`** change the brush size, **Shift+`[` `]`** its falloff, and **`1`…`0`** set its opacity from 10% to 100%.
 - Strokes respect opacity and falloff: overlapping dabs of one stroke don't add up past its opacity. Sculpting and blending build up instead.
+
+## Tool
+
+The **Tool** panel places a temporary SDF primitive over the canvas for construction. Depth and normal strokes transfer from it in a smooth union with the scene's construction geometry, or from it alone with **Ignore scene**.
+
+- Pick a primitive, then **drag on the canvas**: the press is its centre, on the painted depth there, and the drag sets its size. It faces the camera.
+- **`W` `E` `R`** move, scale and rotate it with the gizmo, **Up**/**Down** pull it out of the painting or push it in (Shift finely).
+- It shows as a grey outline, and the canvas draws where it passes through the painted surface.
+- **Blend** sets how far it blends into the scene, **Cancel** removes it.
 
 ## Lighting
 

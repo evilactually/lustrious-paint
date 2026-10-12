@@ -306,6 +306,9 @@ class LsCanvas
     void* mapped = nullptr;
   } pickBuffer;
   bool pickRequested = false;
+  // A distance pick only reads the distance, it leaves the picked normal and rig alone
+  bool pickDistanceOnly = false;
+  bool pickRecordedDistanceOnly = false;
   glm::vec2 pickCenter = glm::vec2(0.0f);
   float pickRadius = 1.0f;
   bool pickRecorded = false;
@@ -315,6 +318,8 @@ class LsCanvas
   glm::vec3 pickedNormal = glm::vec3(0.0f, 0.0f, 1.0f);
   bool pickedRigReady = false;
   uint32_t pickedRig = 0;
+  bool pickedDistanceReady = false;
+  float pickedDistance = 0.0f;
   void CollectPick();
   // Reading the attributes back: requested, copied into the staging buffer in
   // a frame, then read once that frame has finished
@@ -365,6 +370,9 @@ class LsCanvas
 
   std::vector<LsScenePrimitive> primitives;
   bool primitivesDirty = true;
+  // The canvas tool, uploaded after the scene's primitives
+  bool hasTool = false;
+  LsScenePrimitive tool = {};
 
   bool hasCamera = false;
   LsCamera camera;
@@ -410,6 +418,11 @@ public:
   // Copied, uploaded by the next Render. The construction geometry in them is
   // what strokes transfer positions from.
   void SetPrimitives(const std::vector<LsScenePrimitive>& primitives);
+  // The canvas tool, a primitive with eRoleTool that depth and normal strokes
+  // transfer from together with the construction geometry, and whose
+  // intersection with the painted positions the canvas image shows. Null for
+  // none. It lights nothing, so changing it doesn't start the rendering over.
+  void SetTool(const LsScenePrimitive* tool);
   // The camera the canvas is painted from, with the canvas aspect
   void SetCamera(const LsCamera& camera);
   // Without a canvas camera strokes paint nothing
@@ -462,6 +475,11 @@ public:
   bool TakePickedNormal(glm::vec3& normal);
   // The rig of the pixel under the centre of the latest pick, 0 for none, true once when it has finished
   bool TakePickedRig(uint32_t& rig);
+  // Picks the distance along the ray of the pixel under center, in canvas
+  // pixels, without picking a normal or a rig. Only the latest request is picked.
+  void RequestDistancePick(glm::vec2 center);
+  // The picked distance, 0 for a pixel without a position, true once when it has finished
+  bool TakePickedDistance(float& distance);
   // Copies every pixel's attributes from the GPU, as the next Render has them
   void RequestAttributes();
   // True once the requested attributes have been copied, a frame after the request

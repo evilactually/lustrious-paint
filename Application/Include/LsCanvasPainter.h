@@ -15,6 +15,8 @@ class LsCanvasPainter: public LsFSdlEventHandler
   SDL_FPoint grabOffset;
   bool dragging = false;
   bool painting = false;
+  // Something over the canvas, such as the tool's gizmo, takes presses instead
+  bool mouseClaimed = false;
   float x = 0.0f;
   float y = 0.0f;
   float width = 64.0f;
@@ -99,5 +101,8 @@ public:
   // What the brush paints, see LsCanvasDabMode
   LsCanvasDabMode GetMode() const { return mode; }
   void SetMode(LsCanvasDabMode mode) { this->mode = mode; }
+  // While claimed a press doesn't start a stroke, see LsCanvasTool::WantsMouse
+  void SetMouseClaimed(bool claimed) { mouseClaimed = claimed; }
+  bool IsPainting() const { return painting; }
   void OnSdlEvent(const SDL_Event& event) override;
 };

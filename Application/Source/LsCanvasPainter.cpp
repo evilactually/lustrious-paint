@@ -139,8 +139,9 @@ void LsCanvasPainter::OnSdlEvent(const SDL_Event& event) {
     }
     break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    // A drag with space or ctrl held navigates the canvas instead
-    if (event.button.button != SDL_BUTTON_LEFT || navigator->IsActive()) {
+    // A drag with space or ctrl held navigates the canvas instead, and the tool
+    // takes presses on its gizmo and while it is being placed
+    if (event.button.button != SDL_BUTTON_LEFT || navigator->IsActive() || mouseClaimed) {
       break;
     }
     cursor = { event.button.x, event.button.y };

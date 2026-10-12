@@ -221,7 +221,8 @@ Rig pixelRig(int2 pixel)
 [[vk::binding(19)]]
 RWStructuredBuffer<uint> rigCounts;
 
-// Written by pickMain and read back by the host: xyz = sum of the normals, w = their count
+// Written by pickMain and read back by the host: xyz = sum of the normals, w = their
+// count, then the rig bits and the distance of the pixel under the centre
 [[vk::binding(16)]]
 RWStructuredBuffer<float4> pickResult;
 
@@ -340,19 +341,41 @@ float3 pixelRay(uint2 pixel)
 
 static const int REFINE_STEPS = 16;
 
+// Polynomial smooth minimum, blending over a distance of k, min for k = 0
+float smoothMin(float a, float b, float k)
+{
+  if (k <= 0.0) {
+    return min(a, b);
+  }
+  float h = max(k - abs(a - b), 0.0)/k;
+  return min(a, b) - h*h*k*0.25;
+}
+
 // Union of the construction geometry, skipping primitives that contain the
-// camera, so a camera inside a room still sees its walls
+// camera, so a camera inside a room still sees its walls. The tool joins it in
+// a smooth union with its blend radius, or replaces it with ROLE_TOOL_ONLY.
 float constructionDistance(float3 origin, float3 p)
 {
   float distance = 1.0e30;
+  float tool = 1.0e30;
+  float blendRadius = 0.0;
+  bool toolOnly = false;
   for (uint i = 0; i < canvas.primitiveCount; i++) {
     ScenePrimitive primitive = primitives[i];
-    if ((primitive.roles & ROLE_CONSTRUCTION) == 0 || primitiveDistance(primitive, origin) < 0.0) {
+    bool isTool = (primitive.roles & ROLE_TOOL) != 0;
+    if ((!isTool && (primitive.roles & ROLE_CONSTRUCTION) == 0) || primitiveDistance(primitive, origin) < 0.0) {
       continue;
     }
-    distance = min(distance, primitiveDistance(primitive, p));
+    if (isTool) {
+      tool = primitiveDistance(primitive, p);
+      blendRadius = primitive.medium.x;
+      toolOnly = (primitive.roles & ROLE_TOOL_ONLY) != 0;
+    }
+    else {
+      distance = min(distance, primitiveDistance(primitive, p));
+    }
   }
-  return distance;
+  return toolOnly ? tool : smoothMin(distance, tool, blendRadius);
 }
 
 // Sphere traces the construction geometry, returns the distance to the first hit
@@ -1272,9 +1295,10 @@ void pickMain(uint3 threadId : SV_GroupThreadID)
   }
   if (index == 0) {
     pickResult[0] = pickSums[0];
-    // And the rig of the pixel under the centre, to select it
+    // And the rig of the pixel under the centre, to select it, and its distance
+    // along its ray, where the tool is placed
     int2 center = clamp(int2(floor(canvas.dabCenter)), int2(0), int2(canvas.size) - 1);
-    pickResult[1] = float4(asfloat(rigImage[center]), 0.0, 0.0, 0.0);
+    pickResult[1] = float4(asfloat(rigImage[center]), distanceImage[center], 0.0, 0.0);
   }
 }
 
@@ -1410,6 +1434,48 @@ float3 redWax(float3 n)
   return saturate(color);
 }
 
+// Signed distance from the tool to a painted pixel's position, false without
+// a tool or a position
+bool toolDistanceAt(uint tool, int2 pixel, out float d)
+{
+  d = 0.0;
+  if (any(pixel < 0) || any(pixel >= int2(canvas.size))) {
+    return false;
+  }
+  float t = distanceImage[pixel];
+  if (t <= 0.0) {
+    return false;
+  }
+  d = primitiveDistance(primitives[tool], pixelPosition(pixel, t));
+  return true;
+}
+
+// Draws a grey line where the tool's surface passes through the painted
+// positions, on the pixels of each crossing that are nearer to it, so the line
+// is a pixel wide and shows how much of the tool stands out of the painting
+float3 withToolIntersection(int2 pixel, float3 color)
+{
+  uint tool = ~0u;
+  for (uint i = 0; i < canvas.primitiveCount; i++) {
+    if ((primitives[i].roles & ROLE_TOOL) != 0) {
+      tool = i;
+    }
+  }
+  float d;
+  if (tool == ~0u || !toolDistanceAt(tool, pixel, d)) {
+    return color;
+  }
+  const int2 neighbours[4] = { int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1) };
+  for (int k = 0; k < 4; k++) {
+    float other;
+    if (toolDistanceAt(tool, pixel + neighbours[k], other) && (d < 0.0) != (other < 0.0) &&
+        abs(d) <= abs(other)) {
+      return float3(0.6);
+    }
+  }
+  return color;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void resolveMain(uint3 globalId : SV_DispatchThreadID)
@@ -1425,7 +1491,7 @@ void resolveMain(uint3 globalId : SV_DispatchThreadID)
     if (accumulated.a > 0.0) {
       color = linearToSrgb(accumulated.rgb/accumulated.a*rendering.exposure);
     }
-    displayImage[globalId.xy] = float4(color, 1.0);
+    displayImage[globalId.xy] = float4(withToolIntersection(pixel, color), 1.0);
     return;
   }
   if (canvas.display == DISPLAY_MATCAP) {
@@ -1433,7 +1499,7 @@ void resolveMain(uint3 globalId : SV_DispatchThreadID)
     if (shadingNormal(pixel, n)) {
       color = redWax(toViewSpace(n));
     }
-    displayImage[globalId.xy] = float4(color, 1.0);
+    displayImage[globalId.xy] = float4(withToolIntersection(pixel, color), 1.0);
     return;
   }
   if (canvas.display == DISPLAY_MATERIAL) {
@@ -1477,5 +1543,5 @@ void resolveMain(uint3 globalId : SV_DispatchThreadID)
     float shift = (luminance > 0.5 ? -1.0 : 1.0)*(major ? 0.14 : 0.08);
     color = saturate(color + shift*coverage);
   }
-  displayImage[globalId.xy] = float4(color, 1.0);
+  displayImage[globalId.xy] = float4(withToolIntersection(pixel, color), 1.0);
 }

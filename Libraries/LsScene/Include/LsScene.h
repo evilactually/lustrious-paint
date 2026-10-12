@@ -20,6 +20,12 @@ enum LsSceneRole : uint32_t
   eRoleShadowCaster      = 1u << 1, // Occludes light rays towards canvas points
   eRoleLightEmitter      = 1u << 2, // Area light with the node's emission
   eRoleParticipatingMedia = 1u << 3, // Attenuates light passing through the volume
+  // The canvas tool, see TOOL in SPECIFICATION.md: a temporary shape the brush
+  // transfers from in a smooth union with the construction geometry, whose
+  // blend radius is in LsScenePrimitive::medium.x. Never part of the scene.
+  eRoleTool              = 1u << 4,
+  // With eRoleTool, the brush transfers from the tool alone, ignoring the scene
+  eRoleToolOnly          = 1u << 5,
 };
 using LsSceneRoles = uint32_t;
 const LsSceneRoles kLsAllRoles = ~0u;

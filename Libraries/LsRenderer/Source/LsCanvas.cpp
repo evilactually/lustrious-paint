@@ -544,6 +544,23 @@ void LsCanvas::SetPrimitives(const std::vector<LsScenePrimitive>& primitives) {
   radianceStale = true;
 }
 
+void LsCanvas::SetTool(const LsScenePrimitive* tool) {
+  bool had = hasTool;
+  hasTool = tool != nullptr;
+  if (tool) {
+    if (had && std::memcmp(tool, &this->tool, sizeof(*tool)) == 0) {
+      return;
+    }
+    this->tool = *tool;
+  }
+  else if (!had) {
+    return;
+  }
+  primitivesDirty = true;
+  // Its intersection with the painted positions is drawn over the canvas
+  resolveNeeded = true;
+}
+
 void LsCanvas::SetCamera(const LsCamera& camera) {
   this->camera = camera;
   hasCamera = true;
@@ -598,6 +615,7 @@ void LsCanvas::Paint(const std::vector<glm::vec2>& centers, const LsCanvasBrush&
 
 void LsCanvas::RequestNormalPick(glm::vec2 center, float radius) {
   pickRequested = true;
+  pickDistanceOnly = false;
   pickCenter = center;
   pickRadius = std::max(radius, 0.5f);
 }
@@ -609,6 +627,11 @@ void LsCanvas::CollectPick() {
   }
   pickRecorded = false;
   const glm::vec4* results = static_cast<const glm::vec4*>(pickBuffer.mapped);
+  if (pickRecordedDistanceOnly) {
+    pickedDistance = results[1].y;
+    pickedDistanceReady = true;
+    return;
+  }
   glm::vec4 sum = results[0];
   pickedNormalReady = sum.w > 0.0f && glm::dot(glm::vec3(sum), glm::vec3(sum)) >= 1.0e-12f;
   if (pickedNormalReady) {
@@ -637,6 +660,24 @@ bool LsCanvas::TakePickedRig(uint32_t& rig) {
   }
   pickedRigReady = false;
   rig = GetRig(pickedRig) ? pickedRig : 0u;
+  return true;
+}
+
+void LsCanvas::RequestDistancePick(glm::vec2 center) {
+  pickRequested = true;
+  pickDistanceOnly = true;
+  pickedDistanceReady = false;
+  pickCenter = center;
+  pickRadius = 0.5f;
+}
+
+bool LsCanvas::TakePickedDistance(float& distance) {
+  CollectPick();
+  if (!pickedDistanceReady) {
+    return false;
+  }
+  pickedDistanceReady = false;
+  distance = pickedDistance;
   return true;
 }
 
@@ -1106,15 +1147,21 @@ void LsCanvas::RecordStrokeStart(VkCommandBuffer commandBuffer) {
 }
 
 void LsCanvas::Render() {
-  if (primitives.size() > primitiveBuffer.capacity) {
+  // The tool goes after the scene's primitives
+  size_t primitiveCount = primitives.size() + (hasTool ? 1 : 0);
+  if (primitiveCount > primitiveBuffer.capacity) {
     vkDeviceWaitIdle(device);
     DestroyPrimitiveBuffer();
-    CreatePrimitiveBuffer(primitives.size()*2);
+    CreatePrimitiveBuffer(primitiveCount*2);
   }
   if (primitivesDirty) {
-    // Host writes before the submission are visible to it without a barrier
+    // Host writes before the submission are visible to it without a barrier.
+    // The previous frame has finished reading the buffer, its fence was waited on.
     if (!primitives.empty()) {
       std::memcpy(primitiveBuffer.mapped, primitives.data(), primitives.size()*sizeof(LsScenePrimitive));
+    }
+    if (hasTool) {
+      std::memcpy(static_cast<LsScenePrimitive*>(primitiveBuffer.mapped) + primitives.size(), &tool, sizeof(tool));
     }
     primitivesDirty = false;
   }
@@ -1135,7 +1182,7 @@ void LsCanvas::Render() {
   }
   constants.size[0] = width;
   constants.size[1] = height;
-  constants.primitiveCount = static_cast<uint32_t>(primitives.size());
+  constants.primitiveCount = static_cast<uint32_t>(primitiveCount);
   constants.display = static_cast<uint32_t>(display);
   constants.isolineSpacing = isolines ? isolineSpacing : 0.0f;
 
@@ -1363,6 +1410,7 @@ void LsCanvas::Render() {
                          0, 1, &hostBarrier, 0, nullptr, 0, nullptr);
     pickRequested = false;
     pickRecorded = true;
+    pickRecordedDistanceOnly = pickDistanceOnly;
     pickFrame = renderer->frameNumber;
   }
 

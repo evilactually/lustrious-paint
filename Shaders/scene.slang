@@ -13,6 +13,9 @@ static const uint ROLE_CONSTRUCTION       = 1u << 0;
 static const uint ROLE_SHADOW_CASTER      = 1u << 1;
 static const uint ROLE_LIGHT_EMITTER      = 1u << 2;
 static const uint ROLE_PARTICIPATING_MEDIA = 1u << 3;
+// The canvas tool, blended into the construction geometry, see LsScene.h
+static const uint ROLE_TOOL               = 1u << 4;
+static const uint ROLE_TOOL_ONLY          = 1u << 5;
 
 struct ScenePrimitive
 {
